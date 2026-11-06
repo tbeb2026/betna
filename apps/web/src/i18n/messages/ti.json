@@ -1,0 +1,29 @@
+{
+  "brand": "Betna",
+  "nav": {
+    "home": "ተረጋገጹ ቦታታት ድለ",
+    "owner": "ፖርታል ባለቤት",
+    "verifier": "ፖርታል ኣረጋጋጺ",
+    "admin": "ፖርታል ኣስተዳዳሪ",
+    "signIn": "እቶ"
+  },
+  "home": {
+    "eyebrow": "ብእምነት ዝተመስረተ ምድላይ ንብረት",
+    "title": "ብምሉእ እምነት ቦታ ድለ።",
+    "description": "Betna ብከባቢ ሰባት ዝተመርመሩን ብሰራሕተኛታት Betna ዝተገምገሙን ቦታታት የራኽበካ።",
+    "ownerCta": "ቦታኻ ዘርዝር",
+    "searchCta": "ተረጋገጹ ቦታታት ተመልከት"
+  },
+  "portal": {
+    "ownerTitle": "ፖርታል ባለቤት",
+    "ownerDescription": "ቦታታትካ ኣመሓድር እሞ ነፍሲ ወከፍ መስርሕ ምግምጋም ተኸታተል።",
+    "verifierTitle": "ፖርታል ኣረጋጋጺ",
+    "verifierDescription": "ኣብ ክልልካ ዝተመደቡ ምርመራታት ፈጽም።",
+    "adminTitle": "ፖርታል ኣስተዳዳሪ",
+    "adminDescription": "ምልክታት፣ ምድባትን መቆጻጸሪታት ህትመትን ገምግም።"
+  },
+  "errors": {
+    "notFound": "እዚ ገጽ ክርከብ ኣይከኣለን።",
+    "backHome": "ናብ መበገሲ ተመለስ"
+  }
+}

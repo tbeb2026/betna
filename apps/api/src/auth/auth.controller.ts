@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Post, Req, UseGuards } from "@nestjs/common";
 import { AuthService } from "./auth.service";
 import { AuthSessionGuard } from "./guards";
 
@@ -25,5 +25,17 @@ export class AuthController {
   @UseGuards(AuthSessionGuard)
   revokeSession(@Req() request: { session: { id: string } }) {
     return this.auth.revokeSession(request.session.id);
+  }
+
+  @Get("session")
+  @UseGuards(AuthSessionGuard)
+  currentSession(@Req() request: { session: {
+    userId: string;
+    roles: string[];
+    territoryIds: string[];
+    expiresAt: Date;
+  } }) {
+    const { userId, roles, territoryIds, expiresAt } = request.session;
+    return { userId, roles, territoryIds, expiresAt: expiresAt.toISOString() };
   }
 }

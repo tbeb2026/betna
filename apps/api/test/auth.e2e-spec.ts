@@ -51,4 +51,26 @@ describe("authorization boundary", () => {
     await controller.revokeSession(request as never);
     expect(revoked).toEqual(["session-current"]);
   });
+
+  it("projects the current session without returning its bearer token", async () => {
+    const controller = new AuthController({} as never);
+    const result = controller.currentSession({
+      session: {
+        id: "session-current",
+        token: "secret-token",
+        userId: "user-1",
+        roles: ["OWNER"],
+        territoryIds: ["territory-1"],
+        expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+      },
+    } as never);
+
+    expect(result).toEqual({
+      userId: "user-1",
+      roles: ["OWNER"],
+      territoryIds: ["territory-1"],
+      expiresAt: "2030-01-01T00:00:00.000Z",
+    });
+    expect(result).not.toHaveProperty("token");
+  });
 });

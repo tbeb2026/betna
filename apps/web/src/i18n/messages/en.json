@@ -1,0 +1,29 @@
+{
+  "brand": "Betna",
+  "nav": {
+    "home": "Discover verified places",
+    "owner": "Owner portal",
+    "verifier": "Verifier portal",
+    "admin": "Admin portal",
+    "signIn": "Sign in"
+  },
+  "home": {
+    "eyebrow": "Trust-first property discovery",
+    "title": "Find a place with confidence.",
+    "description": "Betna connects you with places inspected by local people and reviewed by Betna staff.",
+    "ownerCta": "List your place",
+    "searchCta": "Explore verified places"
+  },
+  "portal": {
+    "ownerTitle": "Owner portal",
+    "ownerDescription": "Manage your places and follow every review step.",
+    "verifierTitle": "Verifier portal",
+    "verifierDescription": "Work through assigned inspections in your territory.",
+    "adminTitle": "Admin portal",
+    "adminDescription": "Review submissions, assignments, and publication controls."
+  },
+  "errors": {
+    "notFound": "This page could not be found.",
+    "backHome": "Back to home"
+  }
+}
