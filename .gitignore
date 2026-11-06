@@ -1,8 +1,17 @@
 .worktrees/
 .superpowers/
 node_modules/
-.next/
+.pnpm-store/
+.turbo/
 dist/
 coverage/
+.next/
+playwright-report/
+test-results/
 .env
-.env.local
+.env.*
+!.env.example
+*.log
+
+# Local infrastructure data
+infra/data/
