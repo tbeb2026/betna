@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import { promisify } from "node:util";
 import {
   randomBytes,
@@ -7,6 +7,7 @@ import {
 } from "node:crypto";
 import { OtpService, normalizePhone } from "./otp.service";
 import { AuthenticationError, SessionService } from "./session.service";
+import { PrismaService } from "../prisma/prisma.service";
 
 const scrypt = promisify(scryptCallback);
 
@@ -20,23 +21,43 @@ export interface AuthResult {
   session: Awaited<ReturnType<SessionService["create"]>>;
 }
 
+interface AuthUserRecord {
+  id: string;
+  email?: string | null;
+  phone?: string | null;
+  passwordHash?: string | null;
+  status: string;
+  roles?: Array<string | { name?: string; role?: { name?: string } | null }>;
+  territoryAssignments?: Array<{ territoryId: string }>;
+  territoryIds?: string[];
+}
+
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly prisma: any,
-    private readonly otpService = new OtpService(),
-    private readonly sessionService = new SessionService(),
-  ) {}
+    private readonly prisma: PrismaService,
+    @Optional() @Inject(OtpService) otpService?: OtpService,
+    @Optional() @Inject(SessionService) sessionService?: SessionService,
+  ) {
+    this.otpService = otpService ?? new OtpService();
+    this.sessionService = sessionService ?? new SessionService();
+  }
+
+  private readonly otpService: OtpService;
+  private readonly sessionService: SessionService;
 
   async signInWithPassword(
     email: string,
     password: string,
   ): Promise<AuthResult> {
     const normalizedEmail = email.trim().toLowerCase();
-    const user = await this.prisma.user.findUnique({
+    const user = (await this.prisma.user.findUnique({
       where: { email: normalizedEmail },
-      include: { roles: { include: { role: true } } },
-    });
+      include: {
+        roles: { include: { role: true } },
+        territoryAssignments: { select: { territoryId: true } },
+      },
+    })) as AuthUserRecord | null;
     if (
       !user ||
       user.status !== "ACTIVE" ||
@@ -55,10 +76,13 @@ export class AuthService {
   async verifyOtp(phone: string, code: string): Promise<AuthResult> {
     const normalizedPhone = normalizePhone(phone);
     await this.otpService.verify(normalizedPhone, code);
-    const user = await this.prisma.user.findUnique({
+    const user = (await this.prisma.user.findUnique({
       where: { phone: normalizedPhone },
-      include: { roles: { include: { role: true } } },
-    });
+      include: {
+        roles: { include: { role: true } },
+        territoryAssignments: { select: { territoryId: true } },
+      },
+    })) as AuthUserRecord | null;
     if (!user || user.status !== "ACTIVE") {
       throw new AuthenticationError("Invalid phone or OTP");
     }
@@ -73,13 +97,16 @@ export class AuthService {
     return this.sessionService.validate(token);
   }
 
-  private async issueSession(user: any): Promise<AuthResult> {
+  private async issueSession(user: AuthUserRecord): Promise<AuthResult> {
     const roles = (user.roles ?? [])
-      .map((entry: any) =>
+      .map((entry) =>
         typeof entry === "string" ? entry : (entry.role?.name ?? entry.name),
       )
-      .filter(Boolean);
-    const territoryIds = user.territoryIds ?? [];
+      .filter((role): role is string => Boolean(role));
+    const territoryIds =
+      user.territoryAssignments?.map(({ territoryId }) => territoryId) ??
+      user.territoryIds ??
+      [];
     const session = await this.sessionService.create(
       user.id,
       roles,

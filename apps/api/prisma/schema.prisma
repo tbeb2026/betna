@@ -113,6 +113,8 @@ model User {
   auditEvents    AuditEvent[] @relation("AuditActor")
   conversions    Conversion[]
   commissions    Commission[] @relation("CommissionOwner")
+  sessions       AuthSession[]
+  territoryAssignments UserTerritory[]
 }
 
 model UserRole {
@@ -122,6 +124,47 @@ model UserRole {
   role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@id([userId, roleId])
+}
+
+model UserTerritory {
+  userId      String    @db.Uuid
+  territoryId String    @db.Uuid
+  assignedAt  DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  territory   Territory @relation(fields: [territoryId], references: [id], onDelete: Cascade)
+
+  @@id([userId, territoryId])
+  @@index([territoryId])
+}
+
+model AuthSession {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  tokenHash    String   @unique @db.VarChar(128)
+  roles        Json     @default("[]")
+  territoryIds Json     @default("[]")
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+}
+
+model OtpChallenge {
+  id          String   @id @default(uuid()) @db.Uuid
+  phone       String   @db.VarChar(40)
+  salt        String   @db.VarChar(128)
+  codeHash    String   @db.VarChar(128)
+  expiresAt   DateTime
+  requestedAt DateTime @default(now())
+  attempts    Int      @default(0)
+  maxAttempts Int      @default(5)
+  consumedAt  DateTime?
+
+  @@index([phone, requestedAt])
+  @@index([phone, expiresAt])
 }
 
 model Territory {
@@ -134,6 +177,7 @@ model Territory {
   country     Country     @relation(fields: [countryId], references: [id])
   cities      City[]
   inspections Inspection[]
+  userAssignments UserTerritory[]
 
   @@unique([countryId, slug])
   @@index([countryId])

@@ -1,16 +1,18 @@
 import { Injectable } from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service";
+import { Prisma } from "@prisma/client";
 
 export interface AuditEntity {
   type?: string;
   entityType?: string;
   id?: string;
   entityId?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: Prisma.InputJsonValue;
 }
 
 @Injectable()
 export class AuditService {
-  constructor(private readonly prisma: any) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Audit is append-only by API contract. The database trigger installed by

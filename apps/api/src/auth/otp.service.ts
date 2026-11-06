@@ -3,8 +3,10 @@ import {
   createHash,
   randomInt,
   randomBytes,
+  randomUUID,
   timingSafeEqual,
 } from "node:crypto";
+import { PrismaService } from "../prisma/prisma.service";
 
 export interface WhatsAppProvider {
   sendOtp(phone: string, code: string, expiresAt: Date): Promise<void>;
@@ -54,6 +56,7 @@ interface Challenge {
 
 @Injectable()
 export class OtpService {
+  private readonly prisma?: PrismaService;
   private readonly provider: WhatsAppProvider;
   private readonly codeTtlMs: number;
   private readonly maxRequests: number;
@@ -61,12 +64,19 @@ export class OtpService {
   private readonly maxAttempts: number;
   private readonly records = new Map<string, RequestRecord>();
 
-  constructor(options: OtpOptions = {}) {
-    this.provider = options.provider ?? new NoopWhatsAppProvider();
-    this.codeTtlMs = options.codeTtlMs ?? 5 * 60_000;
-    this.maxRequests = options.maxRequests ?? 3;
-    this.windowMs = options.windowMs ?? 15 * 60_000;
-    this.maxAttempts = options.maxAttempts ?? 5;
+  constructor(
+    prismaOrOptions: PrismaService | OtpOptions = {},
+    options: OtpOptions = {},
+  ) {
+    const configured = isPrismaService(prismaOrOptions)
+      ? options
+      : prismaOrOptions;
+    if (isPrismaService(prismaOrOptions)) this.prisma = prismaOrOptions;
+    this.provider = configured.provider ?? new NoopWhatsAppProvider();
+    this.codeTtlMs = configured.codeTtlMs ?? 5 * 60_000;
+    this.maxRequests = configured.maxRequests ?? 3;
+    this.windowMs = configured.windowMs ?? 15 * 60_000;
+    this.maxAttempts = configured.maxAttempts ?? 5;
   }
 
   async request(phone: string): Promise<{ expiresAt: Date }> {
@@ -76,9 +86,16 @@ export class OtpService {
     record.requestedAt = record.requestedAt.filter(
       (time) => now - time < this.windowMs,
     );
-    if (record.requestedAt.length >= this.maxRequests) {
+    const requestCount = this.prisma
+      ? await this.prisma.otpChallenge.count({
+          where: {
+            phone: normalizedPhone,
+            requestedAt: { gte: new Date(now - this.windowMs) },
+          },
+        })
+      : record.requestedAt.length;
+    if (requestCount >= this.maxRequests)
       throw new OtpError("Too many OTP requests", 429);
-    }
 
     const code = randomInt(100000, 1000000).toString();
     const salt = randomBytes(16).toString("hex");
@@ -91,7 +108,20 @@ export class OtpService {
       attempts: 0,
       maxAttempts: this.maxAttempts,
     };
-    this.records.set(normalizedPhone, record);
+    if (this.prisma) {
+      await this.prisma.otpChallenge.create({
+        data: {
+          id: randomUUID(),
+          phone: normalizedPhone,
+          salt: record.challenge.salt,
+          codeHash: record.challenge.codeHash,
+          expiresAt,
+          maxAttempts: this.maxAttempts,
+        },
+      });
+    } else {
+      this.records.set(normalizedPhone, record);
+    }
     await this.provider.sendOtp(normalizedPhone, code, expiresAt);
     return { expiresAt };
   }
@@ -101,23 +131,42 @@ export class OtpService {
   }
 
   async verify(phone: string, code: string): Promise<boolean> {
-    const record = this.records.get(normalizePhone(phone));
-    const challenge = record?.challenge;
+    const normalizedPhone = normalizePhone(phone);
+    const record = this.records.get(normalizedPhone);
+    const challenge = this.prisma
+      ? await this.prisma.otpChallenge.findFirst({
+          where: { phone: normalizedPhone, consumedAt: null },
+          orderBy: { requestedAt: "desc" },
+        })
+      : record?.challenge;
     if (!challenge || challenge.expiresAt.getTime() <= Date.now()) {
       throw new OtpError("OTP is invalid or expired", 401);
     }
-    challenge.attempts += 1;
     const expected = Buffer.from(challenge.codeHash, "hex");
     const actual = Buffer.from(this.hash(code, challenge.salt), "hex");
     const valid =
       expected.length === actual.length && timingSafeEqual(expected, actual);
-    if (!valid && challenge.attempts >= challenge.maxAttempts) {
+    const attempts = challenge.attempts + 1;
+    if (this.prisma) {
+      if (!("id" in challenge) || typeof challenge.id !== "string") {
+        throw new OtpError("OTP is invalid or expired", 401);
+      }
+      await this.prisma.otpChallenge.update({
+        where: { id: challenge.id },
+        data: {
+          attempts,
+          ...(valid || attempts >= challenge.maxAttempts
+            ? { consumedAt: new Date() }
+            : {}),
+        },
+      });
+    } else if (!valid && attempts >= challenge.maxAttempts) {
       record!.challenge = undefined;
     }
     if (!valid) {
       throw new OtpError("OTP is invalid or expired", 401);
     }
-    record!.challenge = undefined;
+    if (!this.prisma) record!.challenge = undefined;
     return true;
   }
 
@@ -128,6 +177,12 @@ export class OtpService {
   private hash(code: string, salt: string): string {
     return createHash("sha256").update(`${salt}:${code}`).digest("hex");
   }
+}
+
+function isPrismaService(
+  value: PrismaService | OtpOptions,
+): value is PrismaService {
+  return "otpChallenge" in value;
 }
 
 export function normalizePhone(phone: string): string {

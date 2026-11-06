@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { createHash, randomBytes } from "node:crypto";
+import { PrismaService } from "../prisma/prisma.service";
 
 export interface Session {
   id: string;
@@ -36,10 +37,19 @@ type StoredSession = Omit<Session, "token"> & {
 @Injectable()
 export class SessionService {
   private readonly ttlMs: number;
+  private readonly prisma?: PrismaService;
   private readonly sessions = new Map<string, StoredSession>();
 
-  constructor(options: SessionOptions = {}) {
-    this.ttlMs = options.ttlMs ?? 1000 * 60 * 60 * 24 * 30;
+  constructor(
+    prismaOrOptions: PrismaService | SessionOptions = {},
+    options: SessionOptions = {},
+  ) {
+    if (isPrismaService(prismaOrOptions)) {
+      this.prisma = prismaOrOptions;
+      this.ttlMs = options.ttlMs ?? 1000 * 60 * 60 * 24 * 30;
+    } else {
+      this.ttlMs = prismaOrOptions.ttlMs ?? 1000 * 60 * 60 * 24 * 30;
+    }
   }
 
   async create(
@@ -50,14 +60,28 @@ export class SessionService {
     const token = randomBytes(32).toString("base64url");
     const id = randomBytes(16).toString("hex");
     const expiresAt = new Date(Date.now() + this.ttlMs);
-    this.sessions.set(this.hash(token), {
+    const stored: StoredSession = {
       id,
       tokenHash: this.hash(token),
       userId,
       roles: [...roles],
       territoryIds: [...territoryIds],
       expiresAt,
-    });
+    };
+    if (this.prisma) {
+      await this.prisma.authSession.create({
+        data: {
+          id,
+          userId,
+          tokenHash: stored.tokenHash,
+          roles: stored.roles,
+          territoryIds: stored.territoryIds,
+          expiresAt,
+        },
+      });
+    } else {
+      this.sessions.set(stored.tokenHash, stored);
+    }
     return {
       id,
       token,
@@ -70,7 +94,9 @@ export class SessionService {
 
   async validate(token: string): Promise<Session> {
     const tokenHash = this.hash(token);
-    const stored = this.sessions.get(tokenHash);
+    const stored = this.prisma
+      ? await this.prisma.authSession.findUnique({ where: { tokenHash } })
+      : this.sessions.get(tokenHash);
     if (
       !stored ||
       stored.revokedAt ||
@@ -82,8 +108,8 @@ export class SessionService {
       id: stored.id,
       token,
       userId: stored.userId,
-      roles: [...stored.roles],
-      territoryIds: [...stored.territoryIds],
+      roles: jsonStringArray(stored.roles),
+      territoryIds: jsonStringArray(stored.territoryIds),
       expiresAt: stored.expiresAt,
     };
   }
@@ -101,6 +127,23 @@ export class SessionService {
   }
 
   async revoke(tokenOrId: string): Promise<void> {
+    if (this.prisma) {
+      const byToken = await this.prisma.authSession.findUnique({
+        where: { tokenHash: this.hash(tokenOrId) },
+      });
+      const session =
+        byToken ??
+        (await this.prisma.authSession.findUnique({
+          where: { id: tokenOrId },
+        }));
+      if (session && !session.revokedAt) {
+        await this.prisma.authSession.update({
+          where: { id: session.id },
+          data: { revokedAt: new Date() },
+        });
+      }
+      return;
+    }
     const byToken = this.sessions.get(this.hash(tokenOrId));
     if (byToken) {
       byToken.revokedAt = new Date();
@@ -121,4 +164,16 @@ export class SessionService {
   private hash(value: string): string {
     return createHash("sha256").update(value).digest("hex");
   }
+}
+
+function isPrismaService(
+  value: PrismaService | SessionOptions,
+): value is PrismaService {
+  return "authSession" in value;
+}
+
+function jsonStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
 }

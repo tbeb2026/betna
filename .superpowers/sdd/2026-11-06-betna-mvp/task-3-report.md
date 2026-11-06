@@ -21,3 +21,12 @@ Passing:
 
 The full API test command also collects the existing `prisma/seed.test.ts`, which exits at collection when `DATABASE_URL` is not set. This is an environment prerequisite from Task 2, not an auth failure; the Task 3 suite remains green.
 
+## Round 1 hardening
+
+- Replaced untyped Prisma constructor dependencies with `PrismaService` injection and explicit module factories; added `AppModule`, `main.ts`, and a real Nest application bootstrap test.
+- Added durable `AuthSession`, `OtpChallenge`, and `UserTerritory` Prisma models/migration. The running Nest module uses Prisma-backed sessions and OTP challenges; process-local maps remain only as a constructor-level fallback for isolated unit tests.
+- Added persisted territory assignment loading to sign-in/session context and a `UsersService.assignTerritory()` write boundary.
+- Protected `POST /auth/session/revoke` with `AuthSessionGuard`; it reads the bearer session and revokes that current session ID, ignoring arbitrary body tokens.
+- Added OTP provider/expiry/max-attempt tests, session expiry, territory allow/deny/admin-bypass tests, persisted territory context coverage, and authenticated revoke coverage.
+
+Additional verification: `pnpm --filter @betna/api build`, `pnpm --filter @betna/api typecheck`, `DATABASE_URL=postgresql://user:pass@localhost:5432/betna pnpm --filter @betna/api prisma validate`, 10 auth unit tests, and 2 auth e2e tests pass.
