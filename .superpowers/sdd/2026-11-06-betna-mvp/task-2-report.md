@@ -46,5 +46,17 @@ Commands run:
 ## Concerns / follow-up
 
 - The schema keeps currencies as short strings on persisted geography/offering rows so future countries and currencies remain extensible; API validation should enforce the launch contract mapping when accepting property data.
-- The migration includes PostgreSQL/PostGIS compatibility through the selected image, but exact coordinates are currently represented as private decimal columns. A future spatial query migration can add a private PostGIS geometry column without changing the public projection.
-- Seed integration tests skip when `DATABASE_URL` is absent so the repository’s no-infrastructure test command remains runnable; CI should provide a database URL to execute them.
+- The migration includes PostgreSQL/PostGIS compatibility through the selected image. Exact coordinates are represented by private decimal input/read columns plus the private PostGIS geometry column added in the review migration.
+- Seed integration tests require `DATABASE_URL`; CI should provide a database URL to execute them.
+
+## Round 1 review fixes
+
+- Added `Property.exactLocationGeometry` as a private `geometry(Point,4326)` PostGIS column and enabled the `postgis` extension in the initial migration. The existing exact decimal fields remain available as a normalized input/read representation; public approximate coordinates remain separate.
+- Added a statement-level `BEFORE TRUNCATE` trigger in addition to the row-level update/delete trigger, making `AuditEvent` append-only for all table mutation paths covered by PostgreSQL triggers.
+- Removed the seed-test skip. The test now fails clearly with `DATABASE_URL is required to run apps/api/prisma/seed.test.ts` when no database is configured.
+- Added regression coverage for UUID column types, public/private location columns, PostGIS extension availability, and update/delete/truncate audit immutability.
+
+Round 1 verification:
+
+- With a clean isolated PostGIS database, migration reset and all 5 seed/database contract tests passed.
+- With `DATABASE_URL` unset, the seed test fails immediately with the explicit configuration error above rather than silently skipping.

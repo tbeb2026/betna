@@ -188,6 +188,8 @@ model Property {
   exactAddress          String?
   exactLatitude         Decimal?       @db.Decimal(9, 6)
   exactLongitude        Decimal?       @db.Decimal(9, 6)
+  /// Private PostGIS point captured during physical verification; never part of public projections.
+  exactLocationGeometry Unsupported("geometry(Point,4326)")?
   authorizationAttested Boolean        @default(false)
   verificationValidUntil DateTime?
   lastInspectedAt       DateTime?
