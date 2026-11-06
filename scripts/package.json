@@ -5,6 +5,13 @@
   "scripts": {
     "test": "vitest run workspace-smoke.test.ts"
   },
+  "dependencies": {
+    "@betna/api": "workspace:*",
+    "@betna/config": "workspace:*",
+    "@betna/contracts": "workspace:*",
+    "@betna/ui": "workspace:*",
+    "@betna/web": "workspace:*"
+  },
   "devDependencies": {
     "vitest": "^2.1.8"
   }
