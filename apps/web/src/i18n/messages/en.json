@@ -14,6 +14,13 @@
     "ownerCta": "List your place",
     "searchCta": "Explore verified places"
   },
+  "auth": {
+    "title": "Sign in to Betna",
+    "description": "Use your Betna account to manage places and protected work.",
+    "emailLabel": "Email address",
+    "passwordLabel": "Password",
+    "submit": "Sign in"
+  },
   "portal": {
     "ownerTitle": "Owner portal",
     "ownerDescription": "Manage your places and follow every review step.",

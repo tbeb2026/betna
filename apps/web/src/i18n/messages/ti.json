@@ -14,6 +14,13 @@
     "ownerCta": "ቦታኻ ዘርዝር",
     "searchCta": "ተረጋገጹ ቦታታት ተመልከት"
   },
+  "auth": {
+    "title": "ናብ Betna እቶ",
+    "description": "ቦታታትን ዕቑባዊ ስራሕን ንምምሕዳር ናይ Betna መለለዪኻ ተጠቐም።",
+    "emailLabel": "ኢመይል ኣድራሻ",
+    "passwordLabel": "መሕለፊ ቃል",
+    "submit": "እቶ"
+  },
   "portal": {
     "ownerTitle": "ፖርታል ባለቤት",
     "ownerDescription": "ቦታታትካ ኣመሓድር እሞ ነፍሲ ወከፍ መስርሕ ምግምጋም ተኸታተል።",

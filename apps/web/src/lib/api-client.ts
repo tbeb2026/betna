@@ -4,6 +4,20 @@ export type ApiClientOptions = {
   fetch?: typeof globalThis.fetch;
 };
 
+export type ApiEnvironment = {
+  [key: string]: string | undefined;
+  API_INTERNAL_URL?: string;
+  NEXT_PUBLIC_API_URL?: string;
+};
+
+export function getApiBaseUrl(environment: ApiEnvironment = process.env) {
+  return (
+    environment.API_INTERNAL_URL ??
+    environment.NEXT_PUBLIC_API_URL ??
+    "http://localhost:4000"
+  ).replace(/\/$/, "");
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -21,7 +35,10 @@ export class ApiClient {
   private readonly fetcher: typeof globalThis.fetch;
 
   constructor(options: ApiClientOptions = {}) {
-    this.baseUrl = (options.baseUrl ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").replace(/\/$/, "");
+    this.baseUrl = getApiBaseUrl({
+      API_INTERNAL_URL: options.baseUrl,
+      NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+    });
     this.token = options.token;
     this.fetcher = options.fetch ?? globalThis.fetch;
   }

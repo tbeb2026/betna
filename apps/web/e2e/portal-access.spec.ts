@@ -31,3 +31,15 @@ test("renders both locales left-to-right and redirects an owner away from admin"
     page.getByRole("heading", { name: "ፖርታል ባለቤት" }),
   ).toBeVisible();
 });
+
+test("provides a localized sign-in route", async ({ page }) => {
+  await page.goto("/en/sign-in");
+  await expect(page.getByRole("heading", { name: "Sign in to Betna" })).toBeVisible();
+  await expect(page.getByLabel("Email address")).toBeVisible();
+  await expect(page.getByLabel("Password")).toBeVisible();
+
+  await page.goto("/ti/sign-in");
+  await expect(page.locator("html")).toHaveAttribute("lang", "ti");
+  await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
+  await expect(page.getByRole("heading", { name: "Betna እቶ" })).toBeVisible();
+});

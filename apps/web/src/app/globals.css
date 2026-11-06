@@ -20,6 +20,12 @@ h1 { font-size: clamp(2.4rem, 8vw, 5.5rem); letter-spacing: -.05em; line-height:
 .button.secondary { color: var(--brand); }
 .portal { padding-top: 4rem; }
 .portal-card { background: var(--surface); border: 1px solid var(--line); border-radius: 1rem; margin-top: 2rem; max-width: 42rem; padding: 1.5rem; }
+.auth-page { display: grid; min-height: 60vh; place-items: center; padding: clamp(2rem, 8vw, 6rem) 1rem; }
+.auth-card { background: var(--surface); border: 1px solid var(--line); border-radius: 1rem; max-width: 32rem; padding: clamp(1.5rem, 5vw, 3rem); width: 100%; }
+.auth-card h1 { font-size: clamp(2rem, 5vw, 3.5rem); }
+.auth-form { display: grid; gap: .55rem; margin-top: 1.75rem; }
+.auth-form input { border: 1px solid var(--line); border-radius: .5rem; font: inherit; margin-bottom: .75rem; padding: .75rem; }
+.auth-form button { cursor: pointer; font: inherit; justify-self: start; }
 .site-footer { border-top: 1px solid var(--line); color: var(--muted); display: flex; justify-content: space-between; padding: 1rem clamp(1rem, 4vw, 4rem); }
 .empty-state { text-align: center; }
 @media (max-width: 700px) { .site-header { align-items: flex-start; flex-wrap: wrap; } nav { order: 3; width: 100%; justify-content: flex-start; } }
