@@ -1,0 +1,1538 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#28564A">
+<meta name="description" content="Find stays, rentals and useful spaces across East Africa with Betna.">
+<title>Betna | Stays, rentals and spaces</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%2328564A'/%3E%3Cpath d='M10 30 32 11 54 30M17 27v26h30V27' fill='none' stroke='%23FFF9EF' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3Crect x='27' y='37' width='10' height='16' fill='%23D96C4F'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Ethiopic:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: a night-blue hero with a few lit windows (the "home" motif), search card overlapping its foot, results grid below. Back-office screens open as wide panels. */
+:root{
+  --bg:#F1F4F5; --surface:#FFFFFF; --surface2:#E7EDEF; --ink:#10222B; --muted:#566872; --line:#D5DEE2;
+  --brand:#0D4A5B; --on-brand:#FFFFFF; --lamp:#E3A03A; --lamp-ink:#3A2606;
+  --ok:#17694A; --okbg:#DCF0E6; --no:#9C3A27; --nobg:#F7E1DB;
+  --hero:#0D2F3B; --hero-ink:#F2F6F7; --hero-mute:#A9C0C8; --hero-line:rgba(255,255,255,.18);
+  --shadow:0 1px 2px rgba(16,34,43,.06),0 10px 28px rgba(16,34,43,.09);
+  --f-display:'Bricolage Grotesque','DM Sans','Noto Sans Ethiopic',system-ui,sans-serif;
+  --f-body:'DM Sans','Noto Sans Ethiopic',system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0A151B; --surface:#122028; --surface2:#1A2C36; --ink:#E9EFF1; --muted:#98A9B1; --line:#263B46;
+    --brand:#5BC0D6; --on-brand:#04222B; --lamp:#F0B54F; --lamp-ink:#3A2606;
+    --ok:#6FD6A8; --okbg:#133A2B; --no:#F29A85; --nobg:#3B1D17;
+    --hero:#0B2630; --hero-ink:#F2F6F7; --hero-mute:#8FB0BA; --hero-line:rgba(255,255,255,.14);
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px rgba(0,0,0,.35);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0A151B; --surface:#122028; --surface2:#1A2C36; --ink:#E9EFF1; --muted:#98A9B1; --line:#263B46;
+  --brand:#5BC0D6; --on-brand:#04222B; --lamp:#F0B54F; --lamp-ink:#3A2606;
+  --ok:#6FD6A8; --okbg:#133A2B; --no:#F29A85; --nobg:#3B1D17;
+  --hero:#0B2630; --hero-ink:#F2F6F7; --hero-mute:#8FB0BA; --hero-line:rgba(255,255,255,.14);
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px rgba(0,0,0,.35);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+#res-title{scroll-margin-top:14px}
+.toast{position:fixed;left:50%;bottom:max(18px,env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;font-weight:600;z-index:80;box-shadow:var(--shadow);max-width:calc(100% - 32px)}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5;margin:0}
+body.lock{overflow:hidden}
+h1,h2,h3,h4,p{margin:0}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--lamp);outline-offset:2px}
+.wrap{max-width:1120px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+
+/* header + hero */
+.hero{background:var(--hero);color:var(--hero-ink)}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:14px;flex-wrap:wrap}
+.logo{display:flex;align-items:center;gap:10px;font-family:var(--f-display);font-weight:700;font-size:24px;letter-spacing:-.01em}
+.logo svg{width:32px;height:32px;color:var(--hero-ink)}
+.logo small{font-family:'Noto Sans Ethiopic',var(--f-body);font-weight:500;font-size:15px;color:var(--hero-mute);margin-left:2px}
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--hero-line);border-radius:999px;padding:3px}
+.seg button{background:none;border:0;color:var(--hero-mute);padding:5px 11px;border-radius:999px;font-size:13px;font-weight:600;min-height:30px}
+.seg button[aria-pressed="true"]{background:var(--hero-ink);color:var(--hero)}
+.ghost{background:none;border:1px solid var(--hero-line);color:var(--hero-ink);border-radius:999px;padding:6px 14px;font-weight:600;font-size:13px;min-height:36px}
+.who{position:relative}
+.chipbtn{display:flex;align-items:center;gap:8px;background:var(--hero-ink);color:var(--hero);border:0;border-radius:999px;padding:5px 14px 5px 6px;font-weight:600;font-size:13px;min-height:36px}
+.avatar{width:26px;height:26px;border-radius:50%;background:var(--lamp);color:var(--lamp-ink);display:grid;place-items:center;font-size:12px;font-weight:700}
+.menu{position:absolute;right:0;top:calc(100% + 8px);background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);min-width:210px;padding:6px;z-index:40;display:grid}
+.menu button{background:none;border:0;text-align:left;padding:10px 12px;border-radius:8px;font-weight:500}
+.menu button:hover{background:var(--surface2)}
+.menu .who-line{padding:8px 12px;font-size:13px;color:var(--muted);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.menu .sep{height:1px;background:var(--line);margin:4px 0}
+.hero-grid{display:grid;grid-template-columns:1fr auto;gap:24px;align-items:end;padding-top:30px}
+.hero h1{font-family:var(--f-display);font-weight:700;font-size:clamp(32px,6vw,56px);line-height:1.05;letter-spacing:-.025em;max-width:15ch;text-wrap:balance}
+.hero p.sub{color:var(--hero-mute);margin-top:12px;max-width:46ch}
+.windows{display:grid;grid-template-columns:repeat(6,16px);gap:8px;padding-bottom:6px}
+.windows i{display:block;width:16px;height:22px;border-radius:3px;background:rgba(255,255,255,.1)}
+.windows i.on{background:var(--lamp)}
+.tabs{display:flex;gap:8px;overflow-x:auto;padding-top:28px;padding-bottom:62px;scrollbar-width:thin}
+.tab{flex:0 0 auto;display:flex;align-items:center;gap:8px;background:transparent;border:1px solid var(--hero-line);color:var(--hero-ink);padding:10px 16px;border-radius:12px;font-weight:600;font-size:14px;white-space:nowrap}
+.tab svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tab[aria-pressed="true"]{background:var(--lamp);border-color:var(--lamp);color:var(--lamp-ink)}
+
+/* search */
+.search{background:var(--surface);border-radius:16px;box-shadow:var(--shadow);padding:16px;margin-top:-38px;position:relative;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;align-items:end;border:1px solid var(--line)}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field label{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.field select,.field input,.field textarea{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:44px;width:100%;min-width:0}
+.field textarea{min-height:72px;resize:vertical}
+.btn{background:var(--brand);color:var(--on-brand);border:0;border-radius:10px;padding:11px 18px;font-weight:600;min-height:44px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.alt{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.hint{font-size:13px;color:var(--muted);margin-top:10px}
+
+/* filters + results */
+.filters{display:flex;flex-wrap:wrap;gap:14px 22px;align-items:end;padding-block:22px 6px}
+.filters .field{min-width:150px}
+.filters input[type=range]{padding:0;min-height:30px;accent-color:var(--brand);background:none;border:0}
+.res-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;padding-block:14px 12px}
+.res-head h2{font-family:var(--f-display);font-size:22px;font-weight:700;letter-spacing:-.01em}
+.res-head span{color:var(--muted);font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px;padding-bottom:36px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.art{position:relative;aspect-ratio:16/10;overflow:hidden;background:var(--surface2)}
+.art svg,.art img{display:block;width:100%;height:100%}
+.art img{object-fit:cover}
+.vbadge{position:absolute;left:10px;top:10px;background:var(--surface);color:var(--ink);font-size:12px;font-weight:600;border-radius:999px;padding:3px 9px 3px 7px;display:flex;align-items:center;gap:5px}
+.vbadge svg{width:14px;height:14px;fill:none;stroke:var(--ok);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.cbody{padding:14px;display:flex;flex-direction:column;gap:6px;flex:1}
+.card h3{font-family:var(--f-display);font-size:18px;font-weight:650;letter-spacing:-.01em;line-height:1.2}
+.loc{color:var(--muted);font-size:13px}
+.meta{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:2px}
+.rate{display:inline-flex;align-items:center;gap:4px;font-weight:600;font-size:14px}
+.rate svg{width:14px;height:14px;fill:var(--lamp)}
+.rate span{color:var(--muted);font-weight:400}
+.price b{font-size:18px;font-variant-numeric:tabular-nums}
+.price span{color:var(--muted);font-size:13px}
+.status{font-size:13px;font-weight:600;border-radius:8px;padding:5px 9px;width:fit-content}
+.status.ok{background:var(--okbg);color:var(--ok)}
+.status.no{background:var(--nobg);color:var(--no)}
+.status.info{background:var(--surface2);color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{background:var(--surface2);border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600}
+.card .btn{margin-top:auto}
+.cbody .push{flex:1}
+.empty{grid-column:1/-1;background:var(--surface);border:1px dashed var(--line);border-radius:14px;padding:30px 20px;text-align:center;color:var(--muted)}
+.empty .btn{margin-top:14px}
+
+.how{background:var(--surface);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.how-in{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px;padding-block:28px}
+.how h4{font-family:var(--f-display);font-size:16px;margin-bottom:4px}
+.how p{color:var(--muted);font-size:14px}
+footer{padding-block:22px 40px;color:var(--muted);font-size:13px}
+.footlinks{display:flex;gap:6px 18px;flex-wrap:wrap;margin-top:12px}
+.linkbtn{background:none;border:0;padding:0;color:var(--brand);font-weight:600;text-decoration:underline;font-size:inherit}
+
+/* modal */
+.overlay{position:fixed;inset:0;background:rgba(6,16,21,.62);z-index:50;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:max(16px,env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
+.modal{background:var(--surface);border-radius:18px;width:100%;max-width:940px;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.35);margin-block:auto;min-width:0}
+.modal.narrow{max-width:520px}
+.modal.wide{max-width:1040px}
+.x{position:absolute;right:10px;top:10px;z-index:3;width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--surface);font-size:20px;line-height:1}
+.bk{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr)}
+.bk-side{padding:0 0 20px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:8px;min-width:0}
+.bk-side .art{border-radius:18px 0 0 0;aspect-ratio:16/11}
+.bk-side>*:not(.art){margin-inline:20px}
+.bk-side h2{font-family:var(--f-display);font-size:24px;line-height:1.15;letter-spacing:-.015em;margin-top:6px}
+.facts{margin:0;padding:0;list-style:none;display:grid;gap:4px;font-size:14px}
+.facts li{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding:5px 0}
+.facts li span:first-child{color:var(--muted)}
+.fine{font-size:12.5px;color:var(--muted)}
+.bk-main{padding:22px 22px 24px;min-width:0}
+.bk-main h3{font-family:var(--f-display);font-size:20px;margin-bottom:4px}
+.cal-nav{display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;font-weight:600}
+.cal-nav button{width:36px;height:36px;border-radius:10px;border:1px solid var(--line);background:var(--surface)}
+.cal-nav button:disabled{opacity:.35;cursor:not-allowed}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.dow{font-size:11px;text-align:center;color:var(--muted);font-weight:600;padding-bottom:2px}
+.cal-empty{display:block}
+.day{min-height:42px;border-radius:9px;border:1px solid transparent;background:var(--bg);font-size:14px;font-variant-numeric:tabular-nums;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;padding:2px}
+.day small{font-size:9.5px;color:var(--muted)}
+.day.past{background:none;color:var(--muted);opacity:.5}
+.day.full{background:var(--nobg);color:var(--no);text-decoration:line-through;text-decoration-thickness:1px}
+.day.full small{text-decoration:none;color:var(--no)}
+.day.held{background:var(--lamp);color:var(--lamp-ink)}
+.day.held small{color:var(--lamp-ink);font-weight:700}
+.day.few small{color:var(--lamp-ink);background:var(--lamp);border-radius:4px;padding:0 4px}
+.day.short{color:var(--muted);opacity:.55}
+.day.inrange{background:color-mix(in srgb,var(--brand) 22%,var(--surface));border-radius:0}
+.day.sel{background:var(--brand);color:var(--on-brand);border-radius:9px}
+.day.sel small{color:var(--on-brand)}
+.day:disabled{cursor:not-allowed}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:10px}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.sumbox{background:var(--bg);border-radius:12px;padding:12px 14px;margin-top:14px;display:grid;gap:4px;font-size:14px}
+.sumbox .row{display:flex;justify-content:space-between;gap:12px}
+.sumbox .total{font-weight:700;font-size:17px;border-top:1px solid var(--line);padding-top:6px;margin-top:4px}
+.msg{font-size:13px;color:var(--no);margin-top:8px;min-height:18px}
+.terms{display:flex;gap:8px;margin:10px 0 0}
+.terms button{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 14px;font-weight:600}
+.terms button[aria-pressed="true"]{background:var(--brand);color:var(--on-brand);border-color:var(--brand)}
+.form{display:grid;gap:10px;margin-top:12px}
+.radios{display:grid;gap:6px}
+.radios label{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-weight:500;text-transform:none;letter-spacing:0;color:var(--ink);font-size:14px}
+.radios input{width:auto;min-height:0;accent-color:var(--brand)}
+.agree{display:flex;gap:10px;align-items:flex-start;font-size:13.5px}
+.agree input{margin-top:3px;accent-color:var(--brand);width:18px;height:18px;flex:0 0 auto}
+.actions{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+.actions .btn{flex:1}
+.done{text-align:left}
+.done .tick{width:46px;height:46px;border-radius:50%;background:var(--okbg);display:grid;place-items:center;margin-bottom:10px}
+.done .tick svg{width:24px;height:24px;fill:none;stroke:var(--ok);stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+.ref{font-family:ui-monospace,Menlo,monospace;background:var(--bg);border-radius:8px;padding:2px 8px;font-weight:600}
+.pad{padding:24px}
+.holdbar{background:var(--okbg);color:var(--ok);border-radius:10px;padding:8px 12px;font-weight:600;margin:10px 0;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:14px}
+.banner{background:var(--lamp);color:var(--lamp-ink);border-radius:10px;padding:8px 12px;font-size:13px;font-weight:600;margin:10px 0}
+.thumbs{display:flex;gap:6px;overflow-x:auto}
+.thumbs button{border:2px solid transparent;border-radius:6px;padding:0;background:none;width:58px;height:44px;flex:0 0 auto;overflow:hidden}
+.thumbs button[aria-pressed="true"]{border-color:var(--lamp)}
+.thumbs img{width:100%;height:100%;object-fit:cover;display:block}
+.maps{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.maps svg{display:block;width:100%;height:auto}
+.maps p{padding:8px 12px;font-size:12.5px;color:var(--muted)}
+.maps a{color:var(--brand);font-weight:600}
+
+/* panels (dashboards, documents) */
+.panel{padding:22px 22px 26px}
+.panel h3{font-family:var(--f-display);font-size:22px;margin-bottom:2px;padding-right:44px}
+.panel h4{font-family:var(--f-display);font-size:16px;margin:18px 0 6px}
+.ptabs{display:flex;gap:6px;overflow-x:auto;margin:14px 0;padding-bottom:2px}
+.ptabs button{flex:0 0 auto;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 14px;font-weight:600;font-size:13px}
+.ptabs button[aria-pressed="true"]{background:var(--brand);color:var(--on-brand);border-color:var(--brand)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:12px 0}
+.tile{background:var(--bg);border-radius:12px;padding:12px 14px}
+.tile b{display:block;font-family:var(--f-display);font-size:26px;font-variant-numeric:tabular-nums}
+.tile span{font-size:13px;color:var(--muted)}
+.tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+.tbl{width:100%;border-collapse:collapse;font-size:14px;min-width:560px}
+.tbl th,.tbl td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:var(--bg);white-space:nowrap}
+.tbl tr:last-child td{border-bottom:0}
+.tbl select{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:5px 8px}
+.badge{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:2px 9px;white-space:nowrap}
+.badge.ok{background:var(--okbg);color:var(--ok)}
+.badge.no{background:var(--nobg);color:var(--no)}
+.badge.info{background:var(--surface2);color:var(--muted)}
+.badge.warn{background:var(--lamp);color:var(--lamp-ink)}
+.mini{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-weight:600;font-size:13px;min-height:32px}
+.mini.pri{background:var(--brand);color:var(--on-brand);border-color:var(--brand)}
+.row2{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pcard{display:grid;grid-template-columns:96px minmax(0,1fr);gap:14px;border:1px solid var(--line);border-radius:12px;padding:12px;margin-top:10px}
+.pcard .art{aspect-ratio:1/1;border-radius:8px}
+.pcard h5{font-family:var(--f-display);font-size:16px;margin:0 0 2px}
+.checks{display:grid;gap:8px;margin:8px 0}
+.checks label{display:flex;gap:10px;align-items:flex-start;font-weight:500;font-size:14px}
+.checks input{margin-top:3px;accent-color:var(--brand);width:18px;height:18px;flex:0 0 auto}
+.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.slot{border:1px dashed var(--line);border-radius:10px;padding:8px;font-size:13px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.slot.done{border-style:solid;border-color:var(--ok)}
+.slot img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px}
+.slot input[type=file]{font-size:12px;width:100%;min-width:0}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.doc ol{padding-left:20px;display:grid;gap:10px;margin:12px 0 0}
+.doc li b{font-weight:600}
+
+[lang="ti"] body,[lang="am"] body{font-family:'Noto Sans Ethiopic','DM Sans',system-ui,sans-serif}
+[lang="ti"] h1,[lang="am"] h1,[lang="ti"] h2,[lang="am"] h2,[lang="ti"] h3,[lang="am"] h3{font-family:'Noto Sans Ethiopic','Bricolage Grotesque',sans-serif;letter-spacing:0}
+
+/* Betna visual refresh: editorial travel feel, clearer hierarchy, and more confident spacing. */
+:root{--bg:#F7F7F3;--surface:#FFFFFF;--surface2:#E9EDE8;--ink:#172C29;--muted:#667570;--line:#DCE3DD;--brand:#174C43;--on-brand:#FFFFFF;--lamp:#E8B45A;--lamp-ink:#2F260F;--hero:#102F2A;--hero-ink:#F8FAF6;--hero-mute:#C4D3CC;--hero-line:rgba(255,255,255,.22);--shadow:0 4px 12px rgba(23,44,41,.05),0 20px 45px rgba(23,44,41,.08)}
+body{font-size:15px;line-height:1.6;letter-spacing:-.005em}
+.wrap{max-width:1240px;padding-left:max(22px,env(safe-area-inset-left,0px));padding-right:max(22px,env(safe-area-inset-right,0px))}
+.hero{background:var(--hero);position:relative;overflow:hidden}
+.hero:before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 12% 8%,rgba(82,125,101,.22),transparent 45%);pointer-events:none}
+.hero .wrap{position:relative;z-index:1}
+.top{padding-block:20px;border-bottom:1px solid rgba(255,255,255,.12)}
+.logo{font-size:27px;letter-spacing:-.04em;gap:12px}
+.logo svg{width:36px;height:36px}
+.logo small{font-size:13px;opacity:.8}
+.seg{border-radius:8px;padding:3px}
+.seg button{border-radius:6px}
+.ghost{border-radius:7px;padding:8px 14px;border-color:rgba(255,255,255,.3)}
+.chipbtn{border-radius:7px}
+.hero-grid{grid-template-columns:minmax(0,1.05fr) minmax(280px,.95fr);gap:clamp(28px,5vw,76px);align-items:center;padding-top:54px;padding-bottom:30px}
+.hero-copy{padding-bottom:4px}
+.hero .eyebrow{font-size:11px;letter-spacing:.18em;font-weight:700;color:#E8B45A;margin-bottom:18px}
+.hero h1{font-size:clamp(42px,5.2vw,68px);line-height:1.02;letter-spacing:-.055em;max-width:11ch}
+.hero p.sub{font-size:17px;line-height:1.7;max-width:47ch;margin-top:20px;color:#D1DDD7}
+.hero-grid:after{content:"";display:block;min-height:300px;height:clamp(300px,32vw,420px);border-radius:4px;background-color:#D96C4F;background-image:linear-gradient(135deg,transparent 0 48%,rgba(255,249,239,.16) 48% 49%,transparent 49%),linear-gradient(45deg,transparent 0 64%,rgba(40,86,74,.22) 64% 65%,transparent 65%);background-size:100% 100%;box-shadow:0 16px 38px rgba(20,40,33,.12);border:1px solid rgba(255,255,255,.2);position:relative}
+.windows{display:none}
+.tabs{padding-top:24px;padding-bottom:70px;gap:10px}
+.tab{border-radius:7px;padding:11px 15px;border-color:rgba(255,255,255,.24);background:rgba(255,255,255,.025)}
+.tab[aria-pressed="true"]{background:var(--lamp);border-color:var(--lamp);color:var(--lamp-ink)}
+.search{margin-top:-36px;border-radius:8px;padding:20px;gap:14px;box-shadow:0 14px 42px rgba(23,44,41,.12);border-color:#E0E5DF}
+.field label{letter-spacing:.08em;font-size:11px}
+.field select,.field input,.field textarea{border-radius:6px;background:#FBFCF9;border-color:#D7DFD8;min-height:48px}
+.btn{border-radius:6px;letter-spacing:.005em;transition:background .15s ease,transform .15s ease}
+.btn:not(:disabled):hover{background:#103C34;transform:translateY(-1px)}
+.btn.alt{background:transparent}
+.filters{padding-block:28px 10px;gap:16px 24px}
+.res-head{padding-block:22px 16px;align-items:center}
+.res-head h2{font-size:clamp(23px,2.6vw,30px);letter-spacing:-.035em}
+.res-head span{font-size:13px}
+.grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:22px;padding-bottom:52px}
+.card{border-radius:8px;border-color:#E0E5DF;box-shadow:0 2px 8px rgba(23,44,41,.025);transition:box-shadow .18s ease,border-color .18s ease}
+.card:hover{transform:none!important;box-shadow:0 14px 32px rgba(23,44,41,.11);border-color:#C7D4CA}
+.art{aspect-ratio:4/3;background:#E8EDE7}
+.vbadge{border-radius:4px;padding:5px 8px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.card h3{font-size:20px;letter-spacing:-.035em;line-height:1.25}
+.card .btn{margin-top:14px}
+.how{margin-top:8px;background:#EEF2EC;border:0}
+.how-in{gap:30px;padding-block:36px}
+.how-in>div{padding-left:16px;border-left:2px solid #D8B06B}
+.how h4{font-size:17px;letter-spacing:-.02em;margin-bottom:7px}
+.how p{line-height:1.7;max-width:36ch}
+footer{padding-block:28px 48px;line-height:1.7}
+.footlinks{display:flex;flex-wrap:wrap;gap:12px 18px;margin-top:14px}
+.linkbtn{color:var(--brand)}
+.overlay .modal,.panel{border-radius:10px}
+@media(max-width:760px){
+ .wrap{padding-left:18px;padding-right:18px}
+ .top{align-items:flex-start;padding-block:16px}
+ .tools{gap:6px}
+ .hero-grid{grid-template-columns:1fr;gap:25px;padding-top:38px;padding-bottom:20px}
+ .hero h1{font-size:clamp(40px,11vw,56px);max-width:10ch}
+ .hero p.sub{font-size:15px;margin-top:15px}
+ .hero-grid:after{height:230px;min-height:230px;order:2;background-position:center 55%}
+ .tabs{padding-top:22px;padding-bottom:60px}
+ .search{padding:14px;margin-top:-30px;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ .search .field{min-width:0}
+ .search .btn{grid-column:1/-1;width:100%}
+ .filters{gap:12px;padding-top:24px}
+ .grid{gap:15px;grid-template-columns:repeat(auto-fill,minmax(min(100%,245px),1fr))}
+ .how-in{padding-block:28px;gap:22px}
+}
+@media(max-width:420px){.search{grid-template-columns:1fr}.search .btn{grid-column:auto}.tools{width:100%;justify-content:flex-start}.hero-grid:after{height:200px;min-height:200px}}
+@media(prefers-reduced-motion:reduce){.btn,.card{transition:none}}
+
+@media (max-width:760px){
+  .hero-grid{grid-template-columns:1fr}
+  .windows{display:none}
+  .bk{grid-template-columns:1fr}
+  .bk-side{border-right:0;border-bottom:1px solid var(--line)}
+  .bk-side .art{border-radius:18px 18px 0 0}
+  .bk-main{padding:18px 16px 22px}
+  .panel{padding:18px 14px 22px}
+  .pcard{grid-template-columns:72px minmax(0,1fr)}
+}
+@media (prefers-reduced-motion:no-preference){
+  .card{transition:transform .15s ease,box-shadow .15s ease}
+  .card:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
+}
+
+/* Betna design system: warm ivory, evergreen and terracotta. Distinct from Booking.com while retaining a clear travel-booking hierarchy. */
+:root{
+  --bg:#F8F6F0;--surface:#FFFFFF;--surface2:#EEEAE0;--ink:#202D27;--muted:#66736B;--line:#DCDDD3;
+  --brand:#28564A;--on-brand:#FFFFFF;--lamp:#D96C4F;--lamp-ink:#FFFFFF;
+  --ok:#286A4B;--okbg:#E1F0E5;--no:#9A3C2B;--nobg:#F8E5DE;
+  --hero:#28564A;--hero-ink:#FFF9EF;--hero-mute:#D8E4DB;--hero-line:rgba(255,249,239,.25);
+  --shadow:0 2px 5px rgba(32,45,39,.04),0 12px 30px rgba(32,45,39,.08);
+  color-scheme:light;
+}
+:root[data-theme="dark"]{color-scheme:light;--bg:#F8F6F0;--surface:#FFFFFF;--surface2:#EEEAE0;--ink:#202D27;--muted:#66736B;--line:#DCDDD3;--brand:#28564A;--on-brand:#FFFFFF;--lamp:#D96C4F;--lamp-ink:#FFFFFF;--ok:#286A4B;--okbg:#E1F0E5;--no:#9A3C2B;--nobg:#F8E5DE;--hero:#28564A;--hero-ink:#FFF9EF;--hero-mute:#D8E4DB;--hero-line:rgba(255,249,239,.25)}
+body{background:var(--bg);color:var(--ink)}
+.hero{background:var(--hero)}
+.hero:before{display:none}
+.hero .eyebrow{color:#F1B7A5}
+.hero p.sub{color:#E3EAE3}
+.tab[aria-pressed="true"],.btn:not(.alt){background:var(--lamp);border-color:var(--lamp);color:var(--lamp-ink)}
+.btn:not(.alt):hover{background:#C55C42;border-color:#C55C42;color:#fff}
+.btn,.ghost,.chipbtn,.tab,.search,.card,.panel,.overlay .modal,.field select,.field input,.field textarea{border-radius:5px}
+.seg{border-radius:5px}
+.seg button,.ghost,.chipbtn,.tab,.ptabs button{border-radius:4px}
+.toast,.vbadge,.chip,.badge,.ptabs button{border-radius:4px}
+.avatar{border-radius:3px}
+.btn{transition:background-color .12s ease,border-color .12s ease}
+.btn:not(:disabled):hover{transform:none}
+.card,.card:hover{transform:none!important}
+.how{background:#EEEAE0}
+.how-in>div{border-left-color:#D96C4F}
+.linkbtn{color:var(--brand)}
+footer{color:var(--muted)}
+footer .footlinks .linkbtn{text-decoration:underline;text-underline-offset:3px}
+:focus-visible{outline-color:#D96C4F}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
+
+/* Betna visual system: warm paper, ink, and a confident vermilion accent. */
+:root{
+  --bg:#F7F4EE;
+  --surface:#FFFEFB;
+  --surface2:#EEE8DE;
+  --ink:#252923;
+  --muted:#66685F;
+  --line:#D8D2C7;
+  --brand:#B8432E;
+  --on-brand:#FFFFFF;
+  --lamp:#D6A64F;
+  --lamp-ink:#30230D;
+  --ok:#286447;
+  --okbg:#E3EEE5;
+  --no:#A53627;
+  --nobg:#F7E7E1;
+  --hero:#F0E9DC;
+  --hero-ink:#252923;
+  --hero-mute:#5C5D54;
+  --hero-line:#D8D0C2;
+  --shadow:0 2px 8px rgba(44,36,25,.055),0 14px 32px rgba(44,36,25,.045);
+  --f-display:Georgia,'Times New Roman','Noto Sans Ethiopic',serif;
+  --f-body:Arial,'Noto Sans Ethiopic',sans-serif;
+  color-scheme:light;
+}
+:root[data-theme="dark"]{
+  --bg:#1F211D;--surface:#292B26;--surface2:#34362F;--ink:#F3EFE7;--muted:#C1BBAF;--line:#49493F;
+  --brand:#E06B4F;--on-brand:#211B18;--lamp:#E4BB6C;--lamp-ink:#292113;
+  --ok:#83C69D;--okbg:#263D2D;--no:#F0A18D;--nobg:#482B26;
+  --hero:#292B26;--hero-ink:#F3EFE7;--hero-mute:#C1BBAF;--hero-line:#49493F;
+  --shadow:0 8px 24px rgba(0,0,0,.18);color-scheme:dark;
+}
+body{font-family:var(--f-body);font-size:15px;line-height:1.55;letter-spacing:0;background:var(--bg);}
+.hero{background:var(--hero);color:var(--hero-ink);border-bottom:1px solid var(--line)}
+.hero:before{display:none!important;background:none!important;content:none!important}
+.top{padding-block:18px 16px;border-bottom:1px solid var(--hero-line)}
+.logo{font-family:Georgia,'Times New Roman',serif;font-size:29px;font-weight:700;letter-spacing:-.045em;gap:11px}
+.logo svg{color:var(--brand)}
+.logo small{font-family:var(--f-body);color:var(--hero-mute);font-size:12px;letter-spacing:.02em}
+.hero-grid{padding-top:34px;gap:26px}
+.hero h1{font-family:Georgia,'Times New Roman',serif;font-size:clamp(36px,5.2vw,58px);font-weight:700;line-height:1.03;letter-spacing:-.045em;max-width:13ch;text-wrap:balance}
+.hero p.sub{font-size:16px;line-height:1.6;color:var(--hero-mute);max-width:48ch;margin-top:16px}
+.windows{display:none!important}
+.tabs{padding-top:26px;padding-bottom:38px;gap:9px}
+.tab{border:1px solid #C9BFAF;background:transparent;color:var(--ink);border-radius:7px;padding:10px 15px;font-weight:600;transition:none}
+.tab[aria-pressed="true"]{background:var(--brand);border-color:var(--brand);color:#fff}
+.tab:hover{background:#E4D8C8;border-color:#B8A993;color:#252923}
+.tab[aria-pressed="true"]:hover{background:#963622;border-color:#963622;color:#fff}
+.search{background:var(--surface);border:1px solid var(--line);border-radius:9px;box-shadow:var(--shadow);margin-top:-18px;position:relative}
+input,select,textarea{background:var(--surface);border:1px solid #BEB7AA;border-radius:6px;min-height:43px}
+input:focus,select:focus,textarea:focus{border-color:var(--brand);outline:2px solid rgba(184,67,46,.14);outline-offset:1px}
+.btn{background:var(--brand);color:#fff;border:1px solid var(--brand);border-radius:7px;padding:11px 19px;font-weight:700;min-height:44px;box-shadow:none;transition:background-color .12s ease,border-color .12s ease}
+.btn:hover{background:#963622;border-color:#963622;color:#fff}
+.btn.alt{background:transparent;color:var(--ink);border:1px solid #AFA797}
+.btn.alt:hover{background:var(--surface2);border-color:#898273;color:var(--ink)}
+.ghost{border-radius:7px;border-color:var(--hero-line);color:var(--ink);padding:8px 12px}
+.chipbtn{border-radius:7px;background:var(--surface);color:var(--ink);border:1px solid var(--line);padding:5px 12px;font-size:13px}
+.avatar{border-radius:5px;background:var(--lamp);color:var(--lamp-ink)}
+.seg{border-radius:7px;border-color:var(--line)}
+.seg button,.seg button[aria-pressed="true"]{border-radius:5px}
+.card{border:1px solid var(--line);border-radius:9px;box-shadow:none;transition:border-color .12s ease}
+.card:hover{border-color:#B8A993;box-shadow:0 5px 16px rgba(44,36,25,.06);transform:none}
+.art{background:var(--surface2);border-radius:0}
+.vbadge{border-radius:5px;box-shadow:none}
+.menu{border-radius:8px;box-shadow:var(--shadow)}
+.menu button{border-radius:5px}
+.modal,.panel,.dialog{border-radius:10px}
+.cal-nav button,.day,.mini{border-radius:6px}
+.toast{border-radius:7px;background:var(--ink);color:var(--surface);box-shadow:var(--shadow)}
+footer{border-top:1px solid var(--line);margin-top:22px}
+:focus-visible{outline:3px solid var(--brand);outline-offset:3px}
+@media(max-width:640px){
+ .top{padding-block:13px}.logo{font-size:26px}.hero-grid{padding-top:25px;grid-template-columns:1fr}.hero h1{font-size:clamp(34px,10vw,46px);max-width:12ch}.hero p.sub{font-size:15px}.tabs{padding-top:22px;padding-bottom:32px;gap:7px}.tab{padding:9px 12px;font-size:13px}.search{margin-top:-12px}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+
+
+
+/* Final art direction: editorial, practical, and deliberately not a template. */
+:root{
+  --bg:#F5F0E7;
+  --surface:#FFFCF7;
+  --surface2:#E9E1D4;
+  --ink:#262720;
+  --muted:#68685F;
+  --line:#D5CCBE;
+  --brand:#B83B27;
+  --on-brand:#FFFFFF;
+  --lamp:#D7A746;
+  --lamp-ink:#2B2111;
+  --ok:#276347;
+  --okbg:#E1EDE3;
+  --no:#A53324;
+  --nobg:#F5E2DC;
+  --hero:#282923;
+  --hero-ink:#FFF9EF;
+  --hero-mute:#D2CABB;
+  --hero-line:#4C4B42;
+  --shadow:0 2px 5px rgba(39,35,27,.035),0 10px 24px rgba(39,35,27,.055);
+  --f-display:Georgia,'Times New Roman','Noto Sans Ethiopic',serif;
+  --f-body:Arial,'Noto Sans Ethiopic',sans-serif;
+  color-scheme:light;
+}
+body{font-family:Arial,'Noto Sans Ethiopic',sans-serif;font-size:15px;line-height:1.58;letter-spacing:0;background:var(--bg);}
+.hero{background:var(--hero);color:var(--hero-ink);border-bottom:4px solid var(--brand);}
+.hero:before,.hero-grid:after{display:none!important;content:none!important;background:none!important;box-shadow:none!important;}
+.top{padding-block:17px 15px;border-bottom:1px solid var(--hero-line);}
+.logo{font-family:Georgia,'Times New Roman',serif;font-size:30px;font-weight:700;letter-spacing:-.055em;gap:10px;}
+.logo svg{color:#E06A4D;width:34px;height:34px;}
+.logo small{font-family:Arial,'Noto Sans Ethiopic',sans-serif;color:var(--hero-mute);font-size:12px;letter-spacing:.04em;}
+.hero-grid{display:block;padding-top:39px;padding-bottom:8px;}
+.hero-copy{max-width:760px;}
+.hero .eyebrow{font-size:11px;letter-spacing:.16em;font-weight:700;color:#E97858;margin-bottom:15px;}
+.hero h1{font-family:Georgia,'Times New Roman',serif;font-size:clamp(38px,5.1vw,62px);font-weight:700;line-height:1.04;letter-spacing:-.04em;max-width:17ch;text-wrap:pretty;}
+.hero p.sub{font-family:Arial,'Noto Sans Ethiopic',sans-serif;font-size:16px;line-height:1.65;color:#D2CABB;max-width:62ch;margin-top:16px;}
+.tabs{padding-top:27px;padding-bottom:35px;gap:9px;}
+.tab{border:1px solid #65645A;background:transparent;color:var(--hero-ink);border-radius:8px;padding:10px 15px;font-weight:600;transition:none;}
+.tab[aria-pressed="true"]{background:#E97858;border-color:#E97858;color:#241F1A;}
+.tab:hover{background:#45453D;border-color:#77766B;color:#FFF9EF;}
+.tab[aria-pressed="true"]:hover{background:#F08A6A;border-color:#F08A6A;color:#241F1A;}
+.search{background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);margin-top:-15px;padding:16px;}
+.field label{color:#56564E;letter-spacing:.06em;font-size:11px;}
+.field select,.field input,.field textarea,input,select,textarea{background:#FFFEFA;border:1px solid #BEB5A6;border-radius:7px;min-height:44px;}
+.field select,.field input,.field textarea{padding:10px 11px;}
+input:focus,select:focus,textarea:focus{border-color:var(--brand);outline:2px solid rgba(184,59,39,.15);outline-offset:1px;}
+.btn{background:var(--brand);color:#fff;border:1px solid var(--brand);border-radius:8px;padding:11px 18px;font-weight:700;min-height:44px;box-shadow:none;letter-spacing:.005em;transition:background-color .12s ease,border-color .12s ease;}
+.btn:hover{background:#962F20;border-color:#962F20;color:#fff;}
+.btn.alt{background:transparent;color:var(--ink);border:1px solid #BEB5A6;}
+.btn.alt:hover{background:var(--surface2);border-color:#948A7B;color:var(--ink);}
+.ghost{border-radius:8px;border-color:#65645A;color:var(--hero-ink);padding:8px 12px;}
+.chipbtn{border-radius:8px;background:transparent;color:var(--hero-ink);border:1px solid #65645A;padding:5px 12px;font-size:13px;}
+.seg{border-radius:7px;border-color:#65645A;}
+.seg button,.seg button[aria-pressed="true"]{border-radius:5px;}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:none;transition:border-color .12s ease;}
+.card:hover{border-color:#A99B87;box-shadow:0 4px 12px rgba(39,35,27,.055);transform:none;}
+.art{background:#E8DFD0;border-radius:0;}
+.vbadge{background:#FFFCF7;color:#33332D;border:1px solid #D5CCBE;border-radius:5px;padding:4px 8px;}
+.chip,.badge,.status{border-radius:5px;}
+.chip{background:#E9E1D4;padding:4px 8px;}
+.menu{border-radius:9px;box-shadow:var(--shadow);}
+.menu button{border-radius:6px;}
+.modal,.panel,.dialog{border-radius:12px;}
+.x{border-radius:8px;}
+.cal-nav button,.day,.mini{border-radius:7px;}
+.toast{border-radius:8px;background:#262720;color:#FFFCF7;box-shadow:var(--shadow);}
+.how{background:#EAE2D6;border-top:1px solid #D5CCBE;border-bottom:1px solid #D5CCBE;}
+.how-in{gap:0;}
+.how-in>div{padding:0 20px;border-left:1px solid #C8BBA8;}
+.how-in>div:first-child{border-left:0;padding-left:0;}
+.how h4{font-family:Georgia,'Times New Roman',serif;font-size:19px;font-weight:700;line-height:1.25;margin-bottom:8px;}
+.how p{font-size:14px;line-height:1.65;color:#5E5D54;}
+.res-head h2,.panel h3,.panel h4,.bk-side h2,.bk-main h3,.card h3,.how h4{font-family:Georgia,'Times New Roman','Noto Sans Ethiopic',serif;}
+.res-head h2{font-size:clamp(24px,2.6vw,31px);letter-spacing:-.025em;}
+.card h3{font-size:20px;line-height:1.2;letter-spacing:-.02em;}
+.price b{font-size:19px;letter-spacing:-.02em;}
+.linkbtn{color:#9E3221;}
+footer{border-top:1px solid var(--line);margin-top:22px;color:#68685F;}
+footer .footlinks .linkbtn{text-underline-offset:3px;}
+:focus-visible{outline:3px solid #E97858;outline-offset:3px;}
+.card,.card:hover{transform:none!important;}
+@media(max-width:640px){
+ .top{padding-block:13px;}.logo{font-size:27px;}.hero-grid{padding-top:29px;padding-bottom:4px;}.hero h1{font-size:clamp(36px,10vw,47px);max-width:15ch;}.hero p.sub{font-size:15px;}.tabs{padding-top:22px;padding-bottom:29px;gap:7px;}.tab{padding:9px 11px;font-size:13px;}.search{margin-top:-10px;}.how-in{gap:20px;padding-block:25px;}.how-in>div,.how-in>div:first-child{padding:0;border-left:0;}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important;}}
+
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="top">
+      <div class="logo" aria-label="Betna">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3.5 15 16 4.5 28.5 15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 13.5V27h18V13.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="13" y="16" width="6" height="7.5" rx="1.2" fill="var(--lamp)"/></svg>
+        <span>Betna <small>ቤትና</small></span>
+      </div>
+      <div class="tools">
+        <div class="seg" role="group" aria-label="Language">
+          <button data-act="lang" data-lang="en" aria-pressed="true">EN</button>
+          <button data-act="lang" data-lang="ti" aria-pressed="false">ትግ</button>
+          <button data-act="lang" data-lang="am" aria-pressed="false">አማ</button>
+        </div>
+        <div class="seg" role="group" aria-label="Currency">
+          <button data-act="cur" data-cur="USD" aria-pressed="true">USD</button>
+          <button data-act="cur" data-cur="EUR" aria-pressed="false">EUR</button>
+        </div>
+        <div class="who" id="who"></div>
+        <button class="ghost" data-act="owner" data-i18n="list">List your place</button>
+      </div>
+    </div>
+    <div class="hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow">STAYS · RENTALS · SPACES</p>
+        <h1 data-i18n="tagline">Find stays and spaces across East Africa.</h1>
+        <p class="sub" data-i18n="sub">Compare guest houses, homes for rent, workspaces and event halls in Ethiopia, Eritrea, Kenya and Uganda.</p>
+      </div>
+      <div class="windows" id="windows" aria-hidden="true"></div>
+    </div>
+    <nav class="tabs" id="tabs" aria-label="Categories"></nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <section class="search" id="search" aria-label="Search"></section>
+    <p class="hint" id="hint"></p>
+    <div class="filters" id="filters"></div>
+    <div class="res-head"><h2 id="res-title"></h2><span id="res-note"></span></div>
+    <div class="grid" id="grid" aria-live="polite"></div>
+  </div>
+</main>
+
+<section class="how">
+  <div class="wrap how-in">
+    <div><h4>Every place is visited</h4><p>A Betna agent visits each property, checks it, takes the photos and posts it. Nothing goes live unseen.</p></div>
+    <div><h4>Owners pay a fixed fee</h4><p>Guests see the price and pay it. There is no extra service fee added on top.</p></div>
+    <div><h4>Taken dates close automatically</h4><p>While someone is paying, their dates are held for 10 minutes. Once paid, they close for everyone else.</p></div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>Preview version: property names, availability, prices and locations are sample data. No real payment or message is sent. Confirm all listing details, currency conversion, translations and legal text before launch.</p>
+    <div class="footlinks">
+      <button class="linkbtn" data-act="doc" data-doc="terms">Terms and conditions</button>
+      <button class="linkbtn" data-act="doc" data-doc="privacy">Privacy policy</button>
+      <button class="linkbtn" data-act="doc" data-doc="owner">Owner agreement</button>
+      <button class="linkbtn" data-act="doc" data-doc="agent">Agent contract</button>
+    </div>
+  </div>
+</footer>
+
+<div class="overlay" id="overlay" hidden>
+  <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"></div>
+</div>
+
+<div class="overlay" id="doc-ov" hidden style="z-index:70">
+  <div class="modal wide" id="doc-modal" role="dialog" aria-modal="true" aria-label="Document"></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* ---------- text (EN / Tigrinya / Amharic) ---------- */
+var I18N={
+ en:{tagline:'Find stays and spaces across East Africa.',sub:'Compare guest houses, homes for rent, workspaces and event halls in Ethiopia, Eritrea, Kenya and Uganda.',
+  cat_stays:'Guest houses & hotels',cat_rent:'House rent',cat_work:'Workspace',cat_halls:'Halls',cat_agency:'Travel agencies',
+  country:'Country',city:'City',checkin:'Check-in',checkout:'Check-out',movein:'Move-in',date:'Date',service:'Service',search:'Search',
+  verified:'Verified',book:'View & book',quote:'Request a quote',list:'List your place',night:'night',month:'month',day:'day',
+  ok_dates:'Available for your dates',no_dates:'Taken for your dates',avail_now:'Available now',avail_from:'Available from',
+  rating:'Rating',maxprice:'Max price',sort:'Sort',any:'Any',anyprice:'Any price',all:'All',rec:'Recommended',
+  s_rating:'Highest rated',s_low:'Price: low to high',s_high:'Price: high to low',from:'From',visa:'Visa',flights:'Flights',other:'Other',signin:'Sign in',new_:'New'},
+ ti:{tagline:'ከም ገዛኻ ዝስምዓካ ቦታ ድለ።',sub:'ኣብ ኢትዮጵያ፣ ኤርትራ፣ ኬንያን ዩጋንዳን ዝተረጋገጹ ቦታታት።',
+  cat_stays:'ጌስት ሃውስን ሆቴልን',cat_rent:'ገዛ ክራይ',cat_work:'መስርሒ ቦታ',cat_halls:'ኣዳራሻት',cat_agency:'ወኪላት ጉዕዞ',
+  country:'ሃገር',city:'ከተማ',checkin:'ዝኣቱሉ ዕለት',checkout:'ዝወጽኡሉ ዕለት',movein:'ዝኣቱሉ ዕለት',date:'ዕለት',service:'ኣገልግሎት',search:'ድለ',
+  verified:'ዝተረጋገጸ',book:'ርኣይን ሓዝን',quote:'ዋጋ ሕተት',list:'ቦታኻ ኣዝርብ',night:'ለይቲ',month:'ወርሒ',day:'መዓልቲ',
+  ok_dates:'ንዕለታትካ ይርከብ',no_dates:'ንዕለታትካ ተሓዚዙ',avail_now:'ሕጂ ይርከብ',avail_from:'ካብ',
+  rating:'ደረጃ',maxprice:'ልዑል ዋጋ',sort:'ስርዓት',any:'ዝኾነ',anyprice:'ዝኾነ ዋጋ',all:'ኩሉ',rec:'ዝተመከረ',
+  s_rating:'ልዑል ደረጃ',s_low:'ዋጋ: ካብ ትሑት',s_high:'ዋጋ: ካብ ልዑል',from:'ካብ',visa:'ቪዛ',flights:'ነፈርቲ',other:'ካልእ',signin:'እቶ',new_:'ሓድሽ'},
+ am:{tagline:'እንደ ቤትዎ የሚሰማዎትን ቦታ ያግኙ።',sub:'በኢትዮጵያ፣ በኤርትራ፣ በኬንያና በኡጋንዳ የተረጋገጡ ቦታዎች።',
+  cat_stays:'የእንግዳ ማረፊያና ሆቴል',cat_rent:'የቤት ኪራይ',cat_work:'የሥራ ቦታ',cat_halls:'አዳራሾች',cat_agency:'የጉዞ ወኪሎች',
+  country:'ሀገር',city:'ከተማ',checkin:'መግቢያ ቀን',checkout:'መውጫ ቀን',movein:'መግቢያ ቀን',date:'ቀን',service:'አገልግሎት',search:'ፈልግ',
+  verified:'የተረጋገጠ',book:'ይመልከቱ እና ይያዙ',quote:'ዋጋ ይጠይቁ',list:'ቦታዎን ያስመዝግቡ',night:'ሌሊት',month:'ወር',day:'ቀን',
+  ok_dates:'ለቀኖችዎ ክፍት ነው',no_dates:'ለቀኖችዎ ተይዟል',avail_now:'አሁን ክፍት ነው',avail_from:'ከ',
+  rating:'ደረጃ',maxprice:'ከፍተኛ ዋጋ',sort:'ደርድር',any:'ማንኛውም',anyprice:'ማንኛውም ዋጋ',all:'ሁሉም',rec:'የሚመከር',
+  s_rating:'ከፍተኛ ደረጃ',s_low:'ዋጋ: ከዝቅተኛ',s_high:'ዋጋ: ከከፍተኛ',from:'ከ',visa:'ቪዛ',flights:'በረራዎች',other:'ሌላ',signin:'ይግቡ',new_:'አዲስ'}
+};
+var COUNTRY_NAME={Ethiopia:{ti:'ኢትዮጵያ',am:'ኢትዮጵያ'},Eritrea:{ti:'ኤርትራ',am:'ኤርትራ'},Kenya:{ti:'ኬንያ',am:'ኬንያ'},Uganda:{ti:'ዩጋንዳ',am:'ኡጋንዳ'}};
+var CITY_NAME={'Addis Ababa':{ti:'ኣዲስ ኣበባ',am:'አዲስ አበባ'},'Asmara':{ti:'ኣስመራ',am:'አስመራ'},'Massawa':{ti:'ምጽዋዕ',am:'ምጽዋ'},'Nairobi':{ti:'ናይሮቢ',am:'ናይሮቢ'},'Kampala':{ti:'ካምፓላ',am:'ካምፓላ'}};
+var CITIES={Ethiopia:['Addis Ababa'],Eritrea:['Asmara','Massawa'],Kenya:['Nairobi'],Uganda:['Kampala']};
+var CENTER={'Addis Ababa':[9.03,38.74],'Asmara':[15.34,38.93],'Massawa':[15.61,39.45],'Nairobi':[-1.286,36.82],'Kampala':[0.347,32.58]};
+function countryOf(city){for(var k in CITIES){if(CITIES[k].indexOf(city)>-1)return k;}return 'Ethiopia';}
+
+var CATS=[
+ {id:'stays',k:'cat_stays',mode:'nights',unit:'night',icon:'<path d="M3 18V7"/><path d="M3 13h18v5"/><path d="M21 13v-1.5A2.5 2.5 0 0 0 18.5 9H11v4"/>'},
+ {id:'rent',k:'cat_rent',mode:'lease',unit:'month',icon:'<path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/><path d="M10 19v-5h4v5"/>'},
+ {id:'work',k:'cat_work',mode:'day',unit:'day',icon:'<rect x="4" y="5" width="16" height="10" rx="2"/><path d="M9 19h6M12 15v4"/>'},
+ {id:'halls',k:'cat_halls',mode:'day',unit:'day',icon:'<path d="M3 20h18"/><path d="M5 20V9l7-5 7 5v11"/><path d="M9 20v-6a3 3 0 0 1 6 0v6"/>'},
+ {id:'agency',k:'cat_agency',mode:null,unit:'',icon:'<path d="M3 12l18-8-5 16-4-6-9-2z"/><path d="M12 14l4-6"/>'}
+];
+var SLOTS={
+ stays:['Exterior or entrance','Bedroom','Bathroom','Common area or kitchen','Street outside'],
+ rent:['Exterior','Living room','Bedroom','Kitchen','Bathroom'],
+ work:['Entrance','Desk area','Meeting or quiet room','Restroom'],
+ halls:['Exterior and parking','Main hall, empty','Stage or seating area','Kitchen or restrooms'],
+ agency:['Office front with signboard','License on the wall','Counter or reception']
+};
+var FEES={stays:'$20 / month',work:'$15 / month',halls:'$25 / month',agency:'$30 / month',rent:'$40 per 6 months, $70 per 12 months'};
+
+/* ---------- sample listings ---------- */
+var AG=function(s,w,l){return {services:s,serves:w,langs:l};};
+var RAW=[
+ ['stays','Ethiopia','Addis Ababa','Bole Garden Guest House','Bole',4.7,128,38,8],
+ ['stays','Ethiopia','Addis Ababa','Piassa Court Hotel','Piassa',4.5,342,72,40],
+ ['stays','Ethiopia','Addis Ababa','Kazanchis Family Stay','Kazanchis',4.8,64,29,5],
+ ['rent','Ethiopia','Addis Ababa','3-bedroom villa','CMC',4.6,21,650,1],
+ ['rent','Ethiopia','Addis Ababa','2-bedroom apartment','Bole',4.4,17,480,1],
+ ['work','Ethiopia','Addis Ababa','Meskel Cowork','Meskel Square',4.6,88,9,20],
+ ['work','Ethiopia','Addis Ababa','Quiet Desks','Kazanchis',4.8,31,12,6],
+ ['halls','Ethiopia','Addis Ababa','Gabriel Wedding Hall','Bole',4.7,54,900,1,{cap:400}],
+ ['halls','Ethiopia','Addis Ababa','Lideta Conference Room','Lideta',4.5,40,350,1,{cap:80}],
+ ['agency','Ethiopia','Addis Ababa','Abay Travel & Visa','Bole',4.6,73,0,0,AG(['Visa','Flights'],'Gulf, Europe, North America','EN · አማ · ትግ')],
+ ['agency','Ethiopia','Addis Ababa','Meda Tickets & Tours','Piassa',4.3,41,0,0,AG(['Flights','Other'],'Africa, Gulf, Europe','EN · አማ')],
+ ['stays','Eritrea','Asmara','Harnet Avenue Guest House','Harnet Avenue',4.6,77,45,6],
+ ['stays','Eritrea','Asmara','Piazza Court Hotel','Piazza',4.4,120,60,20],
+ ['stays','Eritrea','Asmara','Godaif Home Stay','Godaif',4.8,25,30,3],
+ ['work','Eritrea','Asmara','Asmara Desk Hub','Tiravolo',4.3,14,8,8],
+ ['halls','Eritrea','Asmara','Expo Garden Hall','Expo',4.6,33,700,1,{cap:300}],
+ ['agency','Eritrea','Asmara','Red Sea Travel & Visa','Asmara centre',4.5,52,0,0,AG(['Visa','Flights'],'Gulf, Europe, Africa','ትግ · EN · አማ')],
+ ['stays','Eritrea','Massawa','Gurgussum Beach Guest House','Gurgussum',4.5,52,55,6],
+ ['stays','Eritrea','Massawa','Old Town Harbor Stay','Old Town',4.7,39,48,4],
+ ['stays','Kenya','Nairobi','Eastleigh Palm Guest House','Eastleigh',4.5,90,42,10],
+ ['stays','Kenya','Nairobi','Kilimani Suites','Kilimani',4.7,210,85,24],
+ ['rent','Kenya','Nairobi','2-bedroom apartment','Kilimani',4.5,12,700,1],
+ ['work','Kenya','Nairobi','Westlands Desk Space','Westlands',4.6,66,11,15],
+ ['halls','Kenya','Nairobi','Karen Garden Hall','Karen',4.7,28,1100,1,{cap:250}],
+ ['agency','Kenya','Nairobi','Savannah Visa & Flights','Eastleigh',4.4,58,0,0,AG(['Visa','Flights','Other'],'Gulf, Europe, North America','EN · ትግ · አማ')],
+ ['stays','Uganda','Kampala','Kololo Guest House','Kololo',4.6,101,50,9],
+ ['stays','Uganda','Kampala','Ntinda Family Inn','Ntinda',4.5,74,35,7],
+ ['rent','Uganda','Kampala','3-bedroom house','Muyenga',4.6,19,550,1],
+ ['rent','Uganda','Kampala','1-bedroom flat','Kabalagala',4.3,26,300,1],
+ ['work','Uganda','Kampala','Nakasero Cowork','Nakasero',4.7,59,10,18],
+ ['halls','Uganda','Kampala','Munyonyo Events Hall','Munyonyo',4.8,47,950,1,{cap:350}],
+ ['agency','Uganda','Kampala','Nile Travel & Visa','Kampala Road',4.6,64,0,0,AG(['Visa','Flights'],'Gulf, Europe, North America','EN · ትግ')],
+ ['agency','Uganda','Kampala','Pearl Flights & Tours','Kololo',4.3,35,0,0,AG(['Flights','Other'],'Africa, Gulf','EN · አማ')]
+];
+
+/* ---------- dates ---------- */
+var now=new Date(); var today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+function addDays(d,n){return new Date(d.getFullYear(),d.getMonth(),d.getDate()+n);}
+function addMonths(d,n){return new Date(d.getFullYear(),d.getMonth()+n,d.getDate());}
+function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function parse(s){var p=s.split('-').map(Number);return new Date(p[0],p[1]-1,p[2]);}
+function diffDays(a,b){return Math.round((b-a)/864e5);}
+var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var MONL=['January','February','March','April','May','June','July','August','September','October','November','December'];
+function human(d){return MON[d.getMonth()]+' '+d.getDate();}
+function stamp(ts){var d=new Date(ts);return human(d)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
+
+/* ---------- accounts, holds, bookings, messages (in memory) ---------- */
+var DB={
+ me:null,
+ users:[
+  {id:'u-guest',name:'Selam Guest',phone:'+39 320 000 0001',email:'guest@example.com',role:'guest'},
+  {id:'u-owner',name:'Owner Demo',phone:'+251 900 000 002',email:'owner@example.com',role:'owner'},
+  {id:'u-agent',name:'Agent Demo',phone:'+251 911 000 003',email:'agent@example.com',role:'agent'},
+  {id:'u-admin',name:'Admin Demo',phone:'+256 700 000 004',email:'admin@example.com',role:'admin'}
+ ],
+ bookings:[],holds:[],pending:[],messages:[]
+};
+var VIEW='anon';
+var MENU=false;
+function uid(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5);}
+function userById(id){for(var i=0;i<DB.users.length;i++)if(DB.users[i].id===id)return DB.users[i];return null;}
+function send(channel,to,text){DB.messages.unshift({ts:Date.now(),channel:channel,to:to,text:text});}
+
+/* ---------- seeded demo bookings ---------- */
+function rng(seed){var a=seed>>>0;return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function addBook(l,d,n){var k=iso(d);l.booked[k]=Math.min(l.units,(l.booked[k]||0)+n);}
+function seed(l,i){
+  if(l.cat==='agency')return;
+  var r=rng(i*7919+11),k,b;
+  if(l.cat==='rent'){
+    if(r()<0.6){var off=-Math.floor(r()*90),len=r()<0.5?183:365;for(k=0;k<len;k++)addBook(l,addDays(today,off+k),1);}
+    return;
+  }
+  var blocks=l.cat==='stays'?5:6;
+  for(b=0;b<blocks;b++){
+    var st=1+Math.floor(r()*55),len2=l.cat==='stays'?1+Math.floor(r()*5):1;
+    var cnt=l.units>1?(r()<0.35?l.units:1+Math.floor(r()*l.units)):1;
+    for(k=0;k<len2;k++)addBook(l,addDays(today,st+k),cnt);
+  }
+  if(l.name==='Bole Garden Guest House'){for(k=0;k<3;k++)l.booked[iso(addDays(today,5+k))]=l.units;}
+}
+var OWNED={0:1,1:1,3:1,7:1};
+var L=RAW.map(function(r,i){
+  var l={id:'l'+i,cat:r[0],country:r[1],city:r[2],name:r[3],area:r[4],rating:0,reviews:0,price:r[7],units:r[8],extra:r[9]||null,booked:{},blocked:{},blocks:[],photos:[],owner:OWNED[i]?'u-owner':null,status:'live',fee:{status:i===1?'due':'paid'}};
+  var h=hue(l.id),c=CENTER[l.city];
+  l.lat=c[0]+((h%60)-30)/1500;l.lng=c[1]+(((h*7)%60)-30)/1500;
+  seed(l,i);return l;
+});
+function byId(id){for(var i=0;i<L.length;i++)if(L[i].id===id)return L[i];return null;}
+function catOf(id){for(var i=0;i<CATS.length;i++)if(CATS[i].id===id)return CATS[i];return CATS[0];}
+/* No fabricated bookings, ratings, reviews, or pending-owner requests are preloaded. */
+
+/* ---------- availability ---------- */
+function baseUsed(l,d){var k=iso(d);return l.blocked[k]?l.units:(l.booked[k]||0);}
+function heldByOthers(l,k){
+  var n=0;for(var i=0;i<DB.holds.length;i++){var h=DB.holds[i];if(h.lid===l.id&&h.by!==VIEW&&h.keys.indexOf(k)>-1)n++;}return n;
+}
+function used(l,d){var k=iso(d);return Math.min(l.units,baseUsed(l,d)+heldByOthers(l,k));}
+function freeDay(l,d){return d>=today&&used(l,d)<l.units;}
+function freeNights(l,start,n){for(var i=0;i<n;i++){if(!freeDay(l,addDays(start,i)))return false;}return true;}
+function leaseFree(l,start,months){
+  if(start<today)return false;
+  var end=addMonths(start,months),n=diffDays(start,end);
+  for(var i=0;i<n;i++){if(used(l,addDays(start,i))>=l.units)return false;}
+  return true;
+}
+function availableFrom(l){
+  for(var i=0;i<420;i++){var d=addDays(today,i);if(leaseFree(l,d,6))return d;}
+  return null;
+}
+function minLeft(l,start,n){var m=l.units;for(var i=0;i<n;i++){m=Math.min(m,l.units-used(l,addDays(start,i)));}return m;}
+
+/* ---------- state ---------- */
+var S={cat:'stays',country:'Ethiopia',city:'Addis Ababa',cin:'',cout:'',day:'',svc:'All',minRating:0,maxPrice:null,sort:'rec',cur:'USD',lang:'en'};
+var RATE=0.92;
+function t(k){return (I18N[S.lang]&&I18N[S.lang][k])||I18N.en[k]||k;}
+function cname(c){return S.lang==='en'?c:((COUNTRY_NAME[c]||{})[S.lang]||c);}
+function ciname(c){return S.lang==='en'?c:((CITY_NAME[c]||{})[S.lang]||c);}
+function money(usd){return S.cur==='USD'?'$'+Math.round(usd).toLocaleString('en-US'):'€'+Math.round(usd*RATE).toLocaleString('en-US');}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function $(s){return document.querySelector(s);}
+function catOpen(cat,country,city){
+  if(country==='Eritrea'){if(cat==='rent')return false;if(city==='Massawa')return cat==='stays';}
+  return true;
+}
+
+/* ---------- art, map ---------- */
+function hue(id){var h=0;for(var i=0;i<id.length;i++)h=(h*31+id.charCodeAt(i))%360;return h;}
+function art(l,i){
+  if(l.photos&&l.photos.length)return '<img src="'+l.photos[i||0]+'" alt="'+esc(l.name)+'">';
+  var h=hue(l.id), h2=(h+40)%360, glyph='';
+  var lamp='#F0B54F';
+  if(l.cat==='stays')glyph='<path d="M60 150V92l60-44 60 44v58z" fill="rgba(255,255,255,.14)"/><rect x="80" y="104" width="22" height="26" rx="3" fill="'+lamp+'"/><rect x="138" y="104" width="22" height="26" rx="3" fill="rgba(255,255,255,.35)"/><rect x="108" y="124" width="24" height="26" rx="3" fill="rgba(0,0,0,.28)"/>';
+  else if(l.cat==='rent')glyph='<path d="M70 150V96l50-38 50 38v54z" fill="rgba(255,255,255,.14)"/><rect x="108" y="112" width="24" height="38" rx="3" fill="rgba(0,0,0,.28)"/><rect x="82" y="104" width="18" height="18" rx="3" fill="'+lamp+'"/><rect x="140" y="104" width="18" height="18" rx="3" fill="rgba(255,255,255,.35)"/>';
+  else if(l.cat==='work')glyph='<rect x="76" y="64" width="88" height="56" rx="6" fill="rgba(255,255,255,.18)"/><rect x="84" y="72" width="72" height="40" rx="3" fill="'+lamp+'"/><rect x="112" y="120" width="16" height="16" fill="rgba(255,255,255,.22)"/><rect x="92" y="136" width="56" height="8" rx="3" fill="rgba(255,255,255,.22)"/>';
+  else if(l.cat==='halls')glyph='<path d="M50 150h140M62 150V86l58-34 58 34v64" fill="rgba(255,255,255,.14)" stroke="none"/><rect x="84" y="96" width="14" height="54" fill="rgba(255,255,255,.2)"/><rect x="142" y="96" width="14" height="54" fill="rgba(255,255,255,.2)"/><path d="M104 150v-26a16 16 0 0 1 32 0v26z" fill="'+lamp+'"/>';
+  else glyph='<path d="M60 112l120-52-34 80-26-38-60-4z" fill="rgba(255,255,255,.2)"/><path d="M120 102l26-42" stroke="'+lamp+'" stroke-width="5" stroke-linecap="round" fill="none"/>';
+  return '<svg viewBox="0 0 240 150" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Photo placeholder"><defs><linearGradient id="g'+l.id+'" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl('+h+',38%,32%)"/><stop offset="1" stop-color="hsl('+h2+',42%,20%)"/></linearGradient></defs><rect width="240" height="150" fill="url(#g'+l.id+')"/>'+glyph+'</svg>';
+}
+function mapCard(l){
+  var link='https://www.google.com/maps/search/?api=1&query='+l.lat.toFixed(5)+','+l.lng.toFixed(5);
+  return '<div class="maps"><svg viewBox="0 0 240 110" role="img" aria-label="Map placeholder showing the approximate area"><rect width="240" height="110" fill="var(--surface2)"/><path d="M0 30H240M0 78H240M60 0V110M150 0V110M200 0V110" stroke="var(--line)" stroke-width="5" fill="none"/><path d="M0 100L240 12" stroke="var(--line)" stroke-width="3" fill="none"/><circle cx="118" cy="52" r="20" fill="var(--lamp)" fill-opacity=".25"/><path d="M118 70c-9-11-14-17-14-24a14 14 0 0 1 28 0c0 7-5 13-14 24z" fill="var(--brand)"/><circle cx="118" cy="46" r="5" fill="var(--surface)"/></svg><p>Approximate area in '+esc(l.area)+'. The exact address is shared after booking. <a href="'+link+'" target="_blank" rel="noopener">Open in Google Maps</a></p></div>';
+}
+var STAR='<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1.8l2.4 5.2 5.6.6-4.2 3.8 1.2 5.6L10 14.2 5 17l1.2-5.6L2 7.6l5.6-.6z"/></svg>';
+var CHECK='<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10.5l4 4 8-9"/></svg>';
+function rateHTML(l){
+  if(!l.reviews)return '<span class="rate">No reviews yet</span>';
+  return '<span class="rate">'+STAR+l.rating.toFixed(1)+' <span>('+l.reviews+')</span></span>';
+}
+
+/* ---------- render ---------- */
+function renderTabs(){
+  var h='';
+  CATS.forEach(function(c){
+    h+='<button class="tab" data-act="cat" data-id="'+c.id+'" aria-pressed="'+(S.cat===c.id)+'"><svg viewBox="0 0 24 24" aria-hidden="true">'+c.icon+'</svg>'+esc(t(c.k))+'</button>';
+  });
+  $('#tabs').innerHTML=h;
+}
+function opt(v,label,sel){return '<option value="'+esc(v)+'"'+(sel?' selected':'')+'>'+esc(label)+'</option>';}
+function renderSearch(){
+  var h='';
+  h+='<div class="field"><label for="s-country">'+esc(t('country'))+'</label><select id="s-country">';
+  Object.keys(CITIES).forEach(function(k){h+=opt(k,cname(k),k===S.country);});
+  h+='</select></div>';
+  h+='<div class="field"><label for="s-city">'+esc(t('city'))+'</label><select id="s-city">';
+  CITIES[S.country].forEach(function(k){h+=opt(k,ciname(k),k===S.city);});
+  h+='</select></div>';
+  var mn=iso(today);
+  if(S.cat==='stays'){
+    h+='<div class="field"><label for="s-cin">'+esc(t('checkin'))+'</label><input type="date" id="s-cin" min="'+mn+'" value="'+S.cin+'"></div>';
+    h+='<div class="field"><label for="s-cout">'+esc(t('checkout'))+'</label><input type="date" id="s-cout" min="'+(S.cin||mn)+'" value="'+S.cout+'"></div>';
+  }else if(S.cat==='rent'){
+    h+='<div class="field"><label for="s-day">'+esc(t('movein'))+'</label><input type="date" id="s-day" min="'+mn+'" value="'+S.day+'"></div>';
+  }else if(S.cat==='work'||S.cat==='halls'){
+    h+='<div class="field"><label for="s-day">'+esc(t('date'))+'</label><input type="date" id="s-day" min="'+mn+'" value="'+S.day+'"></div>';
+  }else{
+    h+='<div class="field"><label for="s-svc">'+esc(t('service'))+'</label><select id="s-svc">'+opt('All',t('all'),S.svc==='All')+opt('Visa',t('visa'),S.svc==='Visa')+opt('Flights',t('flights'),S.svc==='Flights')+opt('Other',t('other'),S.svc==='Other')+'</select></div>';
+  }
+  h+='<button class="btn" data-act="go">'+esc(t('search'))+'</button>';
+  $('#search').innerHTML=h;
+  var hint='';
+  if(S.country==='Eritrea')hint='In Eritrea, guests pay in USD or EUR. House rent is not offered there yet, and Massawa has guest houses only.';
+  $('#hint').textContent=hint;
+}
+function priceMax(){
+  var m=0;L.forEach(function(l){if(l.cat===S.cat&&l.price>m)m=l.price;});
+  return Math.ceil(m/50)*50||50;
+}
+function renderFilters(){
+  var h='';
+  h+='<div class="field"><label for="f-rating">'+esc(t('rating'))+'</label><select id="f-rating">'+opt('0',t('any'),S.minRating===0)+opt('4','4.0+',S.minRating===4)+opt('4.5','4.5+',S.minRating===4.5)+'</select></div>';
+  if(S.cat!=='agency'){
+    var pm=priceMax(),cur=S.maxPrice==null?pm:Math.min(S.maxPrice,pm);
+    h+='<div class="field"><label for="f-price">'+esc(t('maxprice'))+': <span id="f-price-out">'+(cur>=pm?esc(t('anyprice')):esc(money(cur)))+'</span></label><input type="range" id="f-price" min="0" max="'+pm+'" step="10" value="'+cur+'"></div>';
+  }
+  h+='<div class="field"><label for="f-sort">'+esc(t('sort'))+'</label><select id="f-sort">'+opt('rec',t('rec'),S.sort==='rec')+opt('rating',t('s_rating'),S.sort==='rating')+(S.cat!=='agency'?opt('low',t('s_low'),S.sort==='low')+opt('high',t('s_high'),S.sort==='high'):'')+'</select></div>';
+  $('#filters').innerHTML=h;
+}
+function statusFor(l){
+  if(l.cat==='stays'&&S.cin&&S.cout&&S.cout>S.cin){
+    var n=diffDays(parse(S.cin),parse(S.cout)),ok=freeNights(l,parse(S.cin),n);
+    return {cls:ok?'ok':'no',text:t(ok?'ok_dates':'no_dates')};
+  }
+  if((l.cat==='work'||l.cat==='halls')&&S.day){
+    var ok2=freeDay(l,parse(S.day));return {cls:ok2?'ok':'no',text:t(ok2?'ok_dates':'no_dates')};
+  }
+  if(l.cat==='rent'){
+    if(S.day){var ok3=leaseFree(l,parse(S.day),6);return {cls:ok3?'ok':'no',text:t(ok3?'ok_dates':'no_dates')};}
+    var af=availableFrom(l);
+    if(!af)return {cls:'no',text:'Rented'};
+    return af.getTime()===today.getTime()?{cls:'ok',text:t('avail_now')}:{cls:'info',text:t('avail_from')+' '+human(af)};
+  }
+  return null;
+}
+function results(){
+  var arr=L.filter(function(l){
+    if(l.status!=='live')return false;
+    if(l.cat!==S.cat||l.country!==S.country||l.city!==S.city)return false;
+    if(l.rating<S.minRating)return false;
+    if(l.cat==='agency'){return S.svc==='All'||l.extra.services.indexOf(S.svc)>-1;}
+    if(S.maxPrice!=null&&l.price>S.maxPrice)return false;
+    return true;
+  });
+  if(S.sort==='rating')arr.sort(function(a,b){return b.rating-a.rating;});
+  else if(S.sort==='low')arr.sort(function(a,b){return a.price-b.price;});
+  else if(S.sort==='high')arr.sort(function(a,b){return b.price-a.price;});
+  return arr;
+}
+function renderResults(){
+  var c=catOf(S.cat);
+  $('#res-title').textContent=t(c.k)+' · '+ciname(S.city);
+  var g=$('#grid');
+  if(!catOpen(S.cat,S.country,S.city)){
+    $('#res-note').textContent='';
+    var msg=(S.country==='Eritrea'&&S.cat==='rent')?'House rent is not offered in Eritrea yet.':'This is not available in '+S.city+' yet.';
+    g.innerHTML='<div class="empty"><p>'+esc(msg)+'</p><button class="btn" data-act="cat" data-id="stays">Show guest houses & hotels</button></div>';
+    return;
+  }
+  var arr=results();
+  $('#res-note').textContent=arr.length+' listing'+(arr.length===1?'':'s');
+  if(!arr.length){g.innerHTML='<div class="empty"><p>No places match these filters.</p><button class="btn" data-act="clear">Clear filters</button></div>';return;}
+  var h='';
+  arr.forEach(function(l){
+    var st=statusFor(l),unit=c.unit?t(c.unit):'';
+    h+='<article class="card"><div class="art">'+art(l)+'<span class="vbadge">'+CHECK+esc(t('verified'))+'</span></div><div class="cbody"><h3>'+esc(l.name)+'</h3><p class="loc">'+esc(l.area)+' · '+esc(ciname(l.city))+'</p>';
+    h+='<div class="meta">'+rateHTML(l);
+    if(l.cat!=='agency')h+='<span class="price"><b>'+esc(money(l.price))+'</b> <span>/ '+esc(unit)+'</span></span>';
+    h+='</div>';
+    if(l.cat==='agency'){
+      h+='<div class="chips">'+l.extra.services.map(function(s){return '<span class="chip">'+esc(t(s.toLowerCase()))+'</span>';}).join('')+'</div>';
+      h+='<p class="loc">Serves: '+esc(l.extra.serves)+'<br>Languages: '+esc(l.extra.langs)+'</p>';
+    }else if(l.cat==='halls'&&l.extra){h+='<p class="loc">Up to '+l.extra.cap+' guests</p>';}
+    if(st)h+='<p class="status '+st.cls+'">'+esc(st.text)+'</p>';
+    h+='<div class="push"></div><button class="btn" data-act="'+(l.cat==='agency'?'quote':'open')+'" data-id="'+l.id+'">'+esc(t(l.cat==='agency'?'quote':'book'))+'</button></div></article>';
+  });
+  g.innerHTML=h;
+}
+function menuHTML(){
+  var u=DB.me,h='<div class="menu" role="menu"><div class="who-line"><span>'+esc(u.name)+'</span><span class="badge info">'+esc(u.role)+'</span></div><div class="sep"></div>';
+  h+='<button role="menuitem" data-act="my-bookings">My bookings</button>';
+  if(u.role==='owner')h+='<button role="menuitem" data-act="owner-dash">Owner dashboard</button>';
+  if(u.role==='agent'||u.role==='admin')h+='<button role="menuitem" data-act="agent-tool">Agent tool</button>';
+  if(u.role==='admin')h+='<button role="menuitem" data-act="admin-panel">Admin panel</button>';
+  h+='<div class="sep"></div><button role="menuitem" data-act="signout">Sign out</button></div>';
+  return h;
+}
+function renderWho(){
+  var w=$('#who');
+  if(!DB.me){w.innerHTML='<button class="ghost" data-act="signin">'+esc(t('signin'))+'</button>';return;}
+  var u=DB.me,ini=u.name.trim().charAt(0).toUpperCase();
+  w.innerHTML='<button class="chipbtn" data-act="menu" aria-haspopup="true" aria-expanded="'+MENU+'"><span class="avatar">'+esc(ini)+'</span>'+esc(u.name.split(' ')[0])+'</button>'+(MENU?menuHTML():'');
+}
+function renderAll(){
+  document.documentElement.lang=S.lang;
+  document.querySelectorAll('[data-i18n]').forEach(function(el){el.textContent=t(el.getAttribute('data-i18n'));});
+  document.querySelectorAll('[data-act="lang"]').forEach(function(b){b.setAttribute('aria-pressed',String(b.getAttribute('data-lang')===S.lang));});
+  document.querySelectorAll('[data-act="cur"]').forEach(function(b){b.setAttribute('aria-pressed',String(b.getAttribute('data-cur')===S.cur));});
+  renderTabs();renderSearch();renderFilters();renderResults();renderWho();
+}
+function toast(msg){
+  var old=document.querySelector('.toast');if(old)old.remove();
+  var d=document.createElement('div');d.className='toast';d.setAttribute('role','status');d.textContent=msg;document.body.appendChild(d);
+  setTimeout(function(){if(d.parentNode)d.remove();},2800);
+}
+
+/* ---------- modal ---------- */
+var M=null,lastFocus=null;
+function openModal(html,mode){
+  lastFocus=document.activeElement;
+  var m=$('#modal');m.className='modal'+(mode==='narrow'||mode===true?' narrow':'')+(mode==='wide'?' wide':'');
+  m.innerHTML='<button class="x" data-act="close" aria-label="Close">×</button>'+html;
+  $('#overlay').hidden=false;document.body.classList.add('lock');
+  var x=m.querySelector('.x');if(x)x.focus();
+}
+function releaseHold(){
+  if(M&&M.hold){var i=DB.holds.indexOf(M.hold);if(i>-1)DB.holds.splice(i,1);M.hold=null;}
+}
+function closeModal(){
+  releaseHold();
+  VIEW=DB.me?DB.me.id:'anon';
+  $('#overlay').hidden=true;document.body.classList.remove('lock');M=null;
+  if(lastFocus&&lastFocus.focus)lastFocus.focus();
+  renderResults();
+}
+function panelModal(html){openModal('<div class="panel">'+html+'</div>','wide');}
+function doneHTML(title,body,actions){
+  return '<div class="done"><div class="tick"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg></div><h3 id="modal-title" style="font-family:var(--f-display);font-size:22px">'+title+'</h3><p style="margin-top:6px">'+body+'</p><div class="actions">'+actions+'</div></div>';
+}
+
+/* ---------- accounts ---------- */
+function authHTML(){
+  return '<p class="fine">Sign in to continue. This is a demo: pick a demo account, or create a guest account.</p>'+
+   '<div class="row2" style="margin-top:10px"><button class="mini pri" data-act="demo-login" data-id="u-guest">Demo guest</button><button class="mini" data-act="demo-login" data-id="u-owner">Demo owner</button><button class="mini" data-act="demo-login" data-id="u-agent">Demo agent</button><button class="mini" data-act="demo-login" data-id="u-admin">Demo admin</button></div>'+
+   '<h4 style="font-family:var(--f-display);font-size:16px;margin:16px 0 0">Create a guest account</h4>'+
+   '<div class="form" style="margin-top:8px"><div class="field"><label for="a-name">Full name</label><input id="a-name" autocomplete="name"></div>'+
+   '<div class="field"><label for="a-phone">Phone or WhatsApp</label><input id="a-phone" autocomplete="tel"></div>'+
+   '<div class="field"><label for="a-email">Email</label><input id="a-email" type="email" autocomplete="email"></div>'+
+   '<label class="agree"><input type="checkbox" id="a-agree"><span>I agree to the <button class="linkbtn" data-act="doc" data-doc="terms">Terms and conditions</button> and <button class="linkbtn" data-act="doc" data-doc="privacy">Privacy policy</button>.</span></label></div>'+
+   '<p class="msg" id="a-msg"></p><div class="actions"><button class="btn" data-act="create-account">Create account</button></div>';
+}
+function openSignin(){
+  M={auth:true};
+  openModal('<div class="pad"><h3 id="modal-title" style="font-family:var(--f-display);font-size:22px">Sign in to Betna</h3>'+authHTML()+'</div>','narrow');
+}
+function login(u){
+  DB.me=u;VIEW=u.id;MENU=false;renderWho();
+  toast('Signed in as '+u.name);
+  if(M&&M.step==='auth')startHold();
+  else if(M&&M.auth)closeModal();
+}
+
+/* ---------- booking ---------- */
+function methodsFor(country){
+  var base=[['card','Card']];
+  if(country==='Kenya'||country==='Uganda')base.push(['mobile','Mobile money']);
+  if(country==='Eritrea')base[0][1]='Card (USD or EUR)';
+  return base;
+}
+function payNote(country){
+  if(country==='Ethiopia')return 'Payment options for Ethiopia are still being arranged. Card is shown as a stand-in.';
+  if(country==='Eritrea')return 'Eritrea: pay in USD or EUR.';
+  return 'Demo only. No real payment is taken.';
+}
+function openBooking(id){
+  var l=byId(id),c=catOf(l.cat);
+  M={l:l,mode:c.mode,step:'pick',vy:today.getFullYear(),vm:today.getMonth(),term:6,start:null,end:null,day:null,msg:'',hold:null,preview:false};
+  if(c.mode==='nights'&&S.cin&&S.cout&&S.cout>S.cin&&freeNights(l,parse(S.cin),diffDays(parse(S.cin),parse(S.cout)))){M.start=S.cin;M.end=S.cout;M.vy=parse(S.cin).getFullYear();M.vm=parse(S.cin).getMonth();}
+  if((c.mode==='day')&&S.day&&freeDay(l,parse(S.day))){M.day=S.day;M.vy=parse(S.day).getFullYear();M.vm=parse(S.day).getMonth();}
+  var facts='';
+  if(l.cat==='stays')facts+='<li><span>Rooms</span><span>'+l.units+'</span></li><li><span>Price</span><span>'+esc(money(l.price))+' / night</span></li>';
+  if(l.cat==='rent')facts+='<li><span>Lease</span><span>6 or 12 months</span></li><li><span>Rent</span><span>'+esc(money(l.price))+' / month</span></li>';
+  if(l.cat==='work')facts+='<li><span>Desks</span><span>'+l.units+'</span></li><li><span>Price</span><span>'+esc(money(l.price))+' / desk / day</span></li>';
+  if(l.cat==='halls')facts+='<li><span>Capacity</span><span>'+(l.extra?l.extra.cap:'-')+' guests</span></li><li><span>Price</span><span>'+esc(money(l.price))+' / day</span></li>';
+  var thumbs='';
+  if(l.photos.length>1){thumbs='<div class="thumbs">'+l.photos.map(function(p,i){return '<button data-act="photo" data-i="'+i+'" aria-pressed="'+(i===0)+'" aria-label="Photo '+(i+1)+'"><img src="'+p+'" alt=""></button>';}).join('')+'</div>';}
+  var html='<div class="bk"><div class="bk-side"><div class="art" id="main-art">'+art(l,0)+'<span class="vbadge">'+CHECK+esc(t('verified'))+'</span></div>'+thumbs+'<h2 id="modal-title">'+esc(l.name)+'</h2><p class="loc">'+esc(l.area)+' · '+esc(ciname(l.city))+', '+esc(cname(l.country))+'</p><p>'+rateHTML(l)+'</p><ul class="facts">'+facts+'</ul>'+mapCard(l)+'<p class="fine">Visited and verified by a Betna agent'+(l.verifiedBy?' ('+esc(l.verifiedBy)+')':'')+'. Only guests who paid for a booking can review it.</p></div><div class="bk-main" id="bk-main"></div></div>';
+  openModal(html,false);
+  renderBk();
+}
+function keysFor(){
+  var ks=[],i;
+  if(M.mode==='nights'){var n=diffDays(parse(M.start),parse(M.end));for(i=0;i<n;i++)ks.push(iso(addDays(parse(M.start),i)));}
+  else if(M.mode==='day'){ks.push(M.day);}
+  else{var end=addMonths(parse(M.start),M.term),dd=diffDays(parse(M.start),end);for(i=0;i<dd;i++)ks.push(iso(addDays(parse(M.start),i)));}
+  return ks;
+}
+function startHold(){
+  var l=M.l,ks=keysFor(),i;
+  for(i=0;i<ks.length;i++){if(!freeDay(l,parse(ks[i]))){M.step='pick';M.msg='Someone just took some of those dates. Pick again.';renderBk();return;}}
+  releaseHold();
+  M.hold={id:uid('h'),lid:l.id,keys:ks,by:DB.me?DB.me.id:'anon',exp:Date.now()+10*60*1000};
+  DB.holds.push(M.hold);
+  M.step='pay';M.msg='';renderBk();
+}
+function calHTML(){
+  var l=M.l,first=new Date(M.vy,M.vm,1),lead=(first.getDay()+6)%7,dim=new Date(M.vy,M.vm+1,0).getDate(),h='',i;
+  ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(function(d){h+='<span class="dow">'+d+'</span>';});
+  for(i=0;i<lead;i++)h+='<span class="cal-empty"></span>';
+  var leaseEnd=(M.mode==='lease'&&M.start)?addMonths(parse(M.start),M.term):null;
+  for(var d=1;d<=dim;d++){
+    var date=new Date(M.vy,M.vm,d),key=iso(date),u=used(l,date),cls=['day'],small='',dis=false,label=human(date);
+    var past=date<today,full=u>=l.units,base=baseUsed(l,date);
+    if(past){cls.push('past');dis=true;}
+    else if(full){
+      if(base<l.units){cls.push('held');small='held';label+=', held by another guest';}
+      else{cls.push('full');small=l.blocked[key]?'closed':'taken';label+=', '+small;}
+      dis=true;
+    }
+    else if(u>0&&M.mode!=='lease'&&l.units>1){cls.push('few');small=(l.units-u)+' left';}
+    if(M.mode==='nights'){
+      var s=M.start?parse(M.start):null,e=M.end?parse(M.end):null;
+      if(!past){
+        if(s&&!e){ if(date>s){dis=!freeNights(l,s,diffDays(s,date));} else dis=!freeDay(l,date); }
+        else dis=!freeDay(l,date);
+      }
+      if(s&&key===M.start)cls.push('sel');
+      if(e&&key===M.end)cls.push('sel');
+      if(s&&e&&date>s&&date<e)cls.push('inrange');
+    }else if(M.mode==='day'){
+      if(!past)dis=!freeDay(l,date);
+      if(M.day===key)cls.push('sel');
+    }else if(M.mode==='lease'){
+      if(!past&&!full){ if(!leaseFree(l,date,M.term)){cls.push('short');dis=true;small='';label+=', not free for the full term';} else dis=false; }
+      if(M.start===key)cls.push('sel');
+      else if(M.start&&leaseEnd&&date>parse(M.start)&&date<leaseEnd)cls.push('inrange');
+    }
+    if(M.preview)dis=true;
+    h+='<button class="'+cls.join(' ')+'"'+(dis?' disabled':'')+' data-act="date" data-date="'+key+'" aria-label="'+esc(label)+'">'+d+(small?'<small>'+small+'</small>':'')+'</button>';
+  }
+  return h;
+}
+function summary(){
+  var l=M.l,rows='',total=0,ok=false,left='';
+  if(M.mode==='nights'&&M.start&&M.end){
+    var n=diffDays(parse(M.start),parse(M.end));total=l.price*n;ok=true;
+    rows+='<div class="row"><span>'+human(parse(M.start))+' → '+human(parse(M.end))+'</span><span>'+n+' night'+(n>1?'s':'')+'</span></div><div class="row"><span>'+esc(money(l.price))+' × '+n+'</span><span>'+esc(money(total))+'</span></div>';
+    if(l.units>1)left=minLeft(l,parse(M.start),n)+' of '+l.units+' rooms left for these nights';
+  }else if(M.mode==='day'&&M.day){
+    total=l.price;ok=true;
+    rows+='<div class="row"><span>'+human(parse(M.day))+'</span><span>1 day</span></div>';
+    if(l.units>1)left=(l.units-used(l,parse(M.day)))+' of '+l.units+' desks left that day';
+  }else if(M.mode==='lease'&&M.start){
+    total=l.price*M.term;ok=true;
+    rows+='<div class="row"><span>From '+human(parse(M.start))+' until '+human(addDays(addMonths(parse(M.start),M.term),-1))+'</span><span>'+M.term+' months</span></div><div class="row"><span>'+esc(money(l.price))+' × '+M.term+'</span><span>'+esc(money(total))+'</span></div>';
+  }
+  if(!ok)return {ok:false,html:'<div class="sumbox"><div class="row"><span>'+(M.mode==='nights'?'Pick check-in, then check-out':M.mode==='lease'?'Pick a move-in date':'Pick a date')+'</span><span></span></div></div>',total:0,rows:'',left:''};
+  return {ok:true,total:total,rows:rows,left:left,html:'<div class="sumbox">'+rows+(left?'<div class="row"><span class="fine">'+left+'</span><span></span></div>':'')+'<div class="row total"><span>Total</span><span>'+esc(money(total))+'</span></div></div>'};
+}
+function timerText(){
+  var s=M&&M.hold?Math.max(0,Math.round((M.hold.exp-Date.now())/1000)):0;
+  return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+}
+function renderBk(){
+  var el=$('#bk-main');if(!el||!M)return;
+  var l=M.l,h='';
+  if(M.step==='pick'){
+    var sm=summary();
+    h+='<h3>'+(M.mode==='nights'?'Choose your dates':M.mode==='lease'?'Choose your move-in date':'Choose a date')+'</h3>';
+    if(M.preview)h+='<p class="banner">Previewing as another guest. Dates held by the guest who is paying show as "held" for the next 10 minutes.</p>';
+    else h+='<p class="fine">Dates already paid for by other guests are crossed out.</p>';
+    if(M.mode==='lease')h+='<div class="terms" role="group" aria-label="Lease length"><button data-act="term" data-term="6" aria-pressed="'+(M.term===6)+'">6 months</button><button data-act="term" data-term="12" aria-pressed="'+(M.term===12)+'">12 months</button></div>';
+    var cur=(M.vy===today.getFullYear()&&M.vm===today.getMonth());
+    h+='<div class="cal-nav"><button data-act="cal-prev" aria-label="Previous month"'+(cur?' disabled':'')+'>‹</button><span>'+MONL[M.vm]+' '+M.vy+'</span><button data-act="cal-next" aria-label="Next month">›</button></div><div class="cal">'+calHTML()+'</div>';
+    h+='<div class="legend"><span><i style="background:var(--nobg);border:1px solid var(--no)"></i>Taken or closed</span><span><i style="background:var(--lamp)"></i>Held while someone pays</span>'+(M.mode!=='lease'&&l.units>1?'<span><i style="background:var(--surface2);border:1px solid var(--lamp)"></i>Few left</span>':'')+'<span><i style="background:var(--brand)"></i>Your pick</span></div>';
+    if(M.preview){
+      h+='<div class="actions"><button class="btn" data-act="unpreview">Back to my booking</button></div>';
+    }else{
+      h+=sm.html+'<p class="msg" id="bk-msg">'+esc(M.msg)+'</p>';
+      h+='<div class="actions"><button class="btn" data-act="next"'+(sm.ok?'':' disabled')+'>Continue</button></div>';
+    }
+  }else if(M.step==='auth'){
+    h+='<h3>Sign in to book</h3>'+authHTML()+'<div class="actions"><button class="btn alt" data-act="back">Back to dates</button></div>';
+  }else if(M.step==='pay'){
+    var s2=summary();
+    h+='<h3>Your details</h3><p class="holdbar"><span>Your dates are held for you</span><b id="hold-timer">'+timerText()+'</b></p>'+s2.html;
+    h+='<div class="form"><div class="field"><label for="p-name">Full name</label><input id="p-name" autocomplete="name" value="'+esc(DB.me?DB.me.name:'')+'"></div><div class="field"><label for="p-phone">Phone or WhatsApp</label><input id="p-phone" autocomplete="tel" value="'+esc(DB.me?DB.me.phone:'')+'"></div>';
+    h+='<div class="field"><label>Pay with</label><div class="radios">';
+    methodsFor(l.country).forEach(function(m,i){h+='<label><input type="radio" name="pm" value="'+m[0]+'"'+(i===0?' checked':'')+'>'+esc(m[1])+'</label>';});
+    h+='</div></div></div>';
+    h+='<p class="fine" style="margin-top:10px">'+esc(payNote(l.country))+'</p>';
+    h+='<p class="fine">Bookings are final. A refund is given only if the listing turns out to be fake or is not available. See the <button class="linkbtn" data-act="doc" data-doc="terms">Terms and conditions</button>.</p><p class="msg" id="bk-msg">'+esc(M.msg)+'</p>';
+    h+='<div class="actions"><button class="btn alt" data-act="back">Back</button><button class="btn alt" data-act="preview">Preview as another guest</button><button class="btn" data-act="pay">Pay '+esc(money(s2.total))+' (demo)</button></div>';
+  }else{
+    h+='<div class="done"><div class="tick"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg></div><h3>Booked, '+esc(M.who)+'.</h3><p>Reference <span class="ref">'+esc(M.ref)+'</span></p>';
+    h+='<div class="sumbox">'+M.sumRows+'</div>';
+    h+='<p class="fine" style="margin-top:12px">Confirmation sent to '+esc(M.phone)+' by WhatsApp or SMS, and by email (demo: see the admin outbox). The owner has been told too.</p>';
+    h+='<p class="fine">Those dates are now closed for every other guest. Open this place again and try the same dates to see it.</p>';
+    h+='<div class="actions"><button class="btn alt" data-act="again">Try the same dates</button><button class="btn" data-act="close">Done</button></div></div>';
+  }
+  el.innerHTML=h;
+}
+function pickDate(key){
+  var l=M.l,d=parse(key);M.msg='';
+  if(M.mode==='nights'){
+    if(!M.start||M.end){ if(freeDay(l,d)){M.start=key;M.end=null;} }
+    else{
+      var s=parse(M.start);
+      if(d<=s){ if(freeDay(l,d)){M.start=key;} }
+      else if(freeNights(l,s,diffDays(s,d))){M.end=key;}
+    }
+  }else if(M.mode==='day'){ if(freeDay(l,d))M.day=key; }
+  else if(M.mode==='lease'){ if(leaseFree(l,d,M.term))M.start=key; }
+  renderBk();
+}
+function finishBooking(name,phone){
+  var l=M.l,sm=summary(),ks=keysFor(),i,ref='BT-'+Math.random().toString(36).slice(2,8).toUpperCase();
+  for(i=0;i<ks.length;i++)addBook(l,parse(ks[i]),1);
+  var first=parse(ks[0]),desc;
+  if(M.mode==='nights')desc=human(first)+' → '+human(parse(M.end))+' ('+ks.length+' nights)';
+  else if(M.mode==='day')desc=human(first);
+  else desc=human(first)+' for '+M.term+' months';
+  DB.bookings.unshift({ref:ref,lid:l.id,who:name,phone:phone,desc:desc,total:sm.total,ts:Date.now(),uid:DB.me?DB.me.id:'anon'});
+  send('WhatsApp / SMS',phone,'Betna booking '+ref+': '+l.name+', '+desc+'. Paid '+money(sm.total)+'. Show this reference on arrival.');
+  send('Email',DB.me?DB.me.email:'guest',"Your Betna booking "+ref+" is confirmed: "+l.name+', '+desc+'.');
+  var ow=l.owner?userById(l.owner):null;
+  send('SMS',ow?ow.phone:'Betna agent','New booking '+ref+' for '+l.name+' ('+desc+') from '+name+'.');
+  releaseHold();
+  M.who=name.split(' ')[0];M.ref=ref;M.phone=phone;M.sumRows=sm.rows+'<div class="row total"><span>Paid</span><span>'+esc(money(sm.total))+'</span></div>';M.step='done';
+  renderBk();renderResults();
+}
+
+/* ---------- quote + owner form ---------- */
+function openQuote(id){
+  var l=byId(id);M={agency:l,kind:'quote'};
+  var h='<div class="pad"><h3 id="modal-title" style="font-family:var(--f-display);font-size:22px">Request a quote</h3><p class="loc">'+esc(l.name)+' · '+esc(ciname(l.city))+' · Verified by a Betna agent</p>';
+  h+='<div class="form" id="q-form"><div class="field"><label for="q-svc">What do you need?</label><select id="q-svc">'+l.extra.services.map(function(s){return opt(s,s==='Other'?'Other travel help':s,false);}).join('')+'</select></div>';
+  h+='<div class="field"><label for="q-dest">Travelling to</label><input id="q-dest" placeholder="Country or city"></div>';
+  h+='<div class="field"><label for="q-when">Earliest travel date</label><input type="date" id="q-when" min="'+iso(today)+'"></div>';
+  h+='<div class="field"><label for="q-n">Travellers</label><input type="number" id="q-n" min="1" max="12" value="1"></div>';
+  h+='<div class="field"><label for="q-name">Full name</label><input id="q-name" autocomplete="name" value="'+esc(DB.me?DB.me.name:'')+'"></div><div class="field"><label for="q-contact">Phone or WhatsApp</label><input id="q-contact" autocomplete="tel" value="'+esc(DB.me?DB.me.phone:'')+'"></div></div>';
+  h+='<p class="fine" style="margin-top:10px">Share only what the agency needs for a price. Do not type passport numbers here. The agency asks for documents directly.</p><p class="msg" id="q-msg"></p>';
+  h+='<div class="actions"><button class="btn alt" data-act="close">Cancel</button><button class="btn" data-act="send-quote">Send request</button></div></div>';
+  openModal(h,'narrow');
+}
+function openOwner(){
+  M={owner:true};
+  var h='<div class="pad"><h3 id="modal-title" style="font-family:var(--f-display);font-size:22px">List your place on Betna</h3>'+
+   '<p class="fine" style="margin-top:4px">A Betna agent visits, checks, photographs and posts your place. Owners pay one fixed fee; guests pay your price with nothing added.</p>'+
+   '<div class="form"><div class="field"><label for="o-type">What are you listing?</label><select id="o-type">'+CATS.map(function(c){return opt(c.id,t(c.k),false);}).join('')+'</select></div>'+
+   '<div class="field"><label for="o-city">City</label><select id="o-city">'+Object.keys(CITIES).map(function(k){return CITIES[k].map(function(c){return opt(c,ciname(c)+', '+cname(k),c===S.city);}).join('');}).join('')+'</select></div>'+
+   '<div class="field"><label for="o-title">Name of the place</label><input id="o-title" placeholder="For example: Bole Garden Guest House"></div>'+
+   '<div class="field"><label for="o-area">Area or neighbourhood</label><input id="o-area"></div>'+
+   (DB.me?'<p class="fine">Listing as '+esc(DB.me.name)+' ('+esc(DB.me.phone)+').</p>':'<div class="field"><label for="o-name">Your name</label><input id="o-name" autocomplete="name"></div><div class="field"><label for="o-phone">Phone or WhatsApp</label><input id="o-phone" autocomplete="tel"></div>')+
+   '<label class="agree"><input type="checkbox" id="o-agree"><span>I have read the <button class="linkbtn" data-act="doc" data-doc="owner">Owner agreement</button> and agree to it.</span></label></div>'+
+   '<p class="msg" id="o-msg"></p><div class="actions"><button class="btn alt" data-act="close">Cancel</button><button class="btn" data-act="send-owner">Send to a Betna agent</button></div></div>';
+  openModal(h,'narrow');
+}
+function submitOwner(){
+  var title=$('#o-title').value.trim(),area=$('#o-area').value.trim(),agree=$('#o-agree').checked,me=DB.me,nm,ph;
+  if(me){nm=me.name;ph=me.phone;}else{nm=$('#o-name').value.trim();ph=$('#o-phone').value.trim();}
+  if(!title||!area||!nm||!ph){$('#o-msg').textContent='Fill in the name of the place, the area, your name and a phone number.';return;}
+  if(!agree){$('#o-msg').textContent='Please agree to the Owner agreement to continue.';return;}
+  if(!me){me={id:uid('u'),name:nm,phone:ph,email:'',role:'owner'};DB.users.push(me);DB.me=me;VIEW=me.id;}
+  else if(me.role==='guest'){me.role='owner';}
+  var city=$('#o-city').value;
+  DB.pending.unshift({id:uid('p'),ownerId:me.id,ownerName:nm,phone:ph,cat:$('#o-type').value,country:countryOf(city),city:city,title:title,area:area,ts:Date.now()});
+  send('SMS','Betna agents, '+city,'New place waiting for a visit: '+title+' ('+area+', '+city+'), owner '+nm+' '+ph+'.');
+  send('SMS',ph,'Thank you. A Betna agent will call you to arrange a visit to '+title+'.');
+  renderWho();
+  $('#modal').querySelector('.pad').innerHTML=doneHTML('Thank you, '+esc(nm.split(' ')[0]),'A Betna agent will call you to arrange a visit. Your place is posted only after the visit.','<button class="btn alt" data-act="close">Done</button><button class="btn" data-act="owner-dash">Open owner dashboard</button>');
+}
+
+/* ---------- documents (drafts) ---------- */
+var DOCS={
+ terms:{title:'Terms and conditions',items:[
+  ['About Betna','Betna lists guest houses, hotels, houses to rent, workspaces, halls and travel agencies in Ethiopia, Eritrea, Kenya and Uganda. A Betna agent visits each place before it is posted. Owners and agencies are independent from Betna.'],
+  ['Prices and fees','Guests pay the price shown on the listing. Betna adds no service fee for guests. Owners pay Betna a fixed fee.'],
+  ['Booking','A booking is confirmed when payment succeeds. While you pay, your dates are held for 10 minutes. If the time runs out, the dates open again for other guests.'],
+  ['No cancellation and no refund','All bookings are final. The one exception: if the listing turns out to be fake, or the place is not available on your dates, you get a full refund.'],
+  ['Verification and reports','Agents check places in person, but Betna cannot guarantee every detail. Report a fake or misleading listing to Betna and we will act on it.'],
+  ['Travel agencies','Betna lists travel agencies only. Visa, flight and other services, and any payment for them, are between you and the agency. Betna does not take payment for them.'],
+  ['Your conduct','Give correct details, respect the place and its owner, and do not use Betna for anything illegal.'],
+  ['Responsibility','Betna is responsible for running the platform and the verification visit. It is not responsible for events inside a place, beyond what the law requires.'],
+  ['Changes and law','Betna may update these terms and will show the date of the change. These terms follow the laws of [country of registration, to be confirmed].']]},
+ privacy:{title:'Privacy policy',items:[
+  ['What we collect','Your name, phone, email, booking details, and any details you send in a quote request. Owners also give property details and photos.'],
+  ['What we do not ask for','We do not ask for passport numbers or scans on Betna. Travel agencies ask for documents directly from you.'],
+  ['Why we use it','To confirm bookings, send confirmations by WhatsApp, SMS and email, prevent fraud, and let agents verify places.'],
+  ['Who sees it','The owner or agency you deal with sees what they need to serve you. Payment providers see payment details. We do not sell your data.'],
+  ['How long we keep it','[Retention period to be set.] We keep booking records as long as the law or a dispute requires.'],
+  ['Your choices','You can ask to see, correct or delete your data by contacting Betna at [contact address to be set].'],
+  ['Security','Access to back-office screens is limited to Betna agents and staff.']]},
+ owner:{title:'Owner agreement',items:[
+  ['Right to list','You confirm you own the place or have written permission to list it, and that your details are true.'],
+  ['Verification visit','A Betna agent visits, checks your ID and the place, takes the photos, and posts the listing. Betna may refuse or remove a listing.'],
+  ['Fixed fee','You pay Betna a fixed fee: [amounts to be set]. For houses to rent, the fee covers a 6-month or 12-month agreement. Guests are never charged a service fee on top.'],
+  ['Dates and calendar','Dates close on Betna when a guest pays. Do not sell the same dates elsewhere. You may close dates yourself in your dashboard. If you double-book, the guest is refunded and your listing may be removed.'],
+  ['Payment to you','Betna pays you the booking amount after the guest checks in: [timing and method to be agreed, including for Ethiopia and Eritrea].'],
+  ['No cancellation, no refund','Guest bookings are final, except when a listing is fake or the place is not available. In that case the refund is your responsibility.'],
+  ['Guests and damage','Disputes about damage or conduct are between you and the guest. Betna helps by sharing booking details with both sides.'],
+  ['Taxes and licences','You are responsible for any licence or tax that applies to your place or income.'],
+  ['Ending the agreement','Either side can end it with notice. Betna may remove a listing at once for fake or misleading information.']]},
+ agent:{title:'Agent contract',items:[
+  ['Role','You work as an independent agent for Betna. You are not an employee, and you cannot sign for Betna or take money from owners or guests.'],
+  ['What you do','Visit each place in person, check the owner\'s ID and right to list, complete the checklist, take the required photos, and post the listing. Re-check a place when Betna asks.'],
+  ['Honesty and conflicts','Never list or verify a place you own or have a stake in. Never accept money or gifts from an owner to approve a listing.'],
+  ['Privacy','Keep owner and guest details private and use them only for Betna work.'],
+  ['If a verified listing is fake','If you knowingly approve a false listing, Betna may end this contract and hold you responsible for the loss.'],
+  ['Payment to you','[A share of the business, or another arrangement, to be agreed.]'],
+  ['Ending the contract','Either side can end it with notice. Betna may end it at once for dishonesty.'],
+  ['Law','This contract follows the laws of [country, to be confirmed].']]}
+};
+function openDoc(id){
+  var d=DOCS[id];
+  var h='<button class="x" data-act="close-doc" aria-label="Close">×</button><div class="panel doc"><h3>'+esc(d.title)+'</h3><p class="banner">Draft for discussion. Have a lawyer in each country where you operate review it before use.</p><ol>'+d.items.map(function(x){return '<li><b>'+esc(x[0])+'.</b> '+esc(x[1])+'</li>';}).join('')+'</ol><div class="actions"><button class="btn" data-act="close-doc">Close</button></div></div>';
+  $('#doc-modal').innerHTML=h;$('#doc-ov').hidden=false;document.body.classList.add('lock');
+  var x=$('#doc-modal .x');if(x)x.focus();
+}
+function closeDoc(){
+  $('#doc-ov').hidden=true;
+  if($('#overlay').hidden)document.body.classList.remove('lock');
+}
+
+/* ---------- guest: my bookings ---------- */
+function openMyBookings(){
+  M=null;
+  var mine=DB.bookings.filter(function(b){return DB.me&&b.uid===DB.me.id;});
+  var h='<h3 id="modal-title">My bookings</h3>';
+  if(!mine.length)h+='<p class="fine" style="margin-top:8px">No bookings yet. Book a place and it will show here.</p>';
+  else h+='<div class="tblwrap" style="margin-top:12px"><table class="tbl"><thead><tr><th>Reference</th><th>Place</th><th>Dates</th><th>Paid</th></tr></thead><tbody>'+mine.map(function(b){var l=byId(b.lid);return '<tr><td><span class="ref">'+esc(b.ref)+'</span></td><td>'+esc(l?l.name:'')+'</td><td>'+esc(b.desc)+'</td><td>'+esc(money(b.total))+'</td></tr>';}).join('')+'</tbody></table></div>';
+  panelModal(h);
+}
+
+/* ---------- owner dashboard ---------- */
+function openOwnerDash(){
+  M={dash:'owner'};
+  if(!DB.me){openSignin();return;}
+  var me=DB.me,mine=L.filter(function(l){return l.owner===me.id;}),pend=DB.pending.filter(function(p){return p.ownerId===me.id;});
+  var h='<h3 id="modal-title">Owner dashboard</h3><p class="fine">Signed in as '+esc(me.name)+'. Your agent posts and checks your places; you control your dates.</p>';
+  h+='<h4>Your places</h4>';
+  if(!mine.length)h+='<p class="fine">No live places yet.</p>';
+  mine.forEach(function(l){
+    var upcoming=DB.bookings.filter(function(b){return b.lid===l.id;}).length;
+    h+='<div class="pcard"><div class="art">'+art(l)+'</div><div><h5>'+esc(l.name)+'</h5><p class="loc">'+esc(l.area)+' · '+esc(l.city)+'</p><div class="row2" style="margin:6px 0"><span class="badge '+(l.status==='live'?'ok':'no')+'">'+(l.status==='live'?'Live':'Suspended')+'</span><span class="badge '+(l.fee.status==='paid'?'ok':'warn')+'">Fixed fee '+(l.fee.status==='paid'?'paid':'due')+'</span><span class="badge info">'+upcoming+' booking'+(upcoming===1?'':'s')+'</span></div>';
+    if(l.cat!=='agency'){
+      h+='<div class="row2"><div class="field" style="min-width:130px"><label for="b-from-'+l.id+'">Close from</label><input type="date" id="b-from-'+l.id+'" min="'+iso(today)+'"></div><div class="field" style="min-width:130px"><label for="b-to-'+l.id+'">Until (included)</label><input type="date" id="b-to-'+l.id+'" min="'+iso(today)+'"></div><button class="mini pri" data-act="block" data-id="'+l.id+'">Close dates</button></div>';
+      if(l.blocks.length)h+='<p class="fine" style="margin-top:8px">Closed by you: '+l.blocks.map(function(b,i){return human(parse(b.a))+' – '+human(parse(b.b))+' <button class="linkbtn" data-act="unblock" data-id="'+l.id+'" data-i="'+i+'">open again</button>';}).join(' · ')+'</p>';
+    }
+    h+='</div></div>';
+  });
+  h+='<h4>Waiting for an agent visit</h4>';
+  if(!pend.length)h+='<p class="fine">Nothing waiting.</p>';
+  else h+='<div class="tblwrap"><table class="tbl"><thead><tr><th>Place</th><th>Type</th><th>City</th><th>Status</th></tr></thead><tbody>'+pend.map(function(p){return '<tr><td>'+esc(p.title)+'</td><td>'+esc(t(catOf(p.cat).k))+'</td><td>'+esc(p.city)+'</td><td><span class="badge warn">Awaiting visit</span></td></tr>';}).join('')+'</tbody></table></div>';
+  var bk=DB.bookings.filter(function(b){var l=byId(b.lid);return l&&l.owner===me.id;});
+  h+='<h4>Bookings on your places</h4>';
+  if(!bk.length)h+='<p class="fine">No bookings yet.</p>';
+  else h+='<div class="tblwrap"><table class="tbl"><thead><tr><th>Reference</th><th>Place</th><th>Guest</th><th>Dates</th><th>Paid</th></tr></thead><tbody>'+bk.map(function(b){var l=byId(b.lid);return '<tr><td><span class="ref">'+esc(b.ref)+'</span></td><td>'+esc(l.name)+'</td><td>'+esc(b.who)+'<br><span class="fine">'+esc(b.phone)+'</span></td><td>'+esc(b.desc)+'</td><td>'+esc(money(b.total))+'</td></tr>';}).join('')+'</tbody></table></div>';
+  h+='<p class="fine" style="margin-top:12px">Fee for your type of place: '+esc(FEES[mine[0]?mine[0].cat:'stays'])+' (placeholder amounts). <button class="linkbtn" data-act="doc" data-doc="owner">Owner agreement</button></p>';
+  panelModal(h);
+}
+function blockDates(id){
+  var l=byId(id),a=$('#b-from-'+id).value,b=$('#b-to-'+id).value;
+  if(!a||!b||b<a){toast('Pick a start date and an end date after it.');return;}
+  var d=parse(a),end=parse(b);
+  while(d<=end){l.blocked[iso(d)]=true;d=addDays(d,1);}
+  l.blocks.push({a:a,b:b});
+  toast('Dates closed on '+l.name);openOwnerDash();
+}
+function unblockDates(id,i){
+  var l=byId(id),r=l.blocks[i];if(!r)return;
+  var d=parse(r.a),end=parse(r.b);
+  while(d<=end){delete l.blocked[iso(d)];d=addDays(d,1);}
+  l.blocks.splice(i,1);
+  l.blocks.forEach(function(x){var q=parse(x.a),e=parse(x.b);while(q<=e){l.blocked[iso(q)]=true;q=addDays(q,1);}});
+  toast('Dates opened again');openOwnerDash();
+}
+
+/* ---------- agent tool ---------- */
+var AG_STATE={sub:null,photos:[]};
+function openAgentTool(){
+  M={dash:'agent'};AG_STATE={sub:null,photos:[]};
+  var q=DB.pending;
+  var h='<h3 id="modal-title">Agent tool</h3><p class="fine">Places waiting for a visit. Open one, complete the checks and photos, then post it.</p>';
+  if(!q.length)h+='<p class="fine" style="margin-top:10px">No places are waiting.</p>';
+  else h+='<div class="tblwrap" style="margin-top:12px"><table class="tbl"><thead><tr><th>Place</th><th>Type</th><th>City</th><th>Owner</th><th></th></tr></thead><tbody>'+q.map(function(p){return '<tr><td>'+esc(p.title)+'<br><span class="fine">'+esc(p.area)+'</span></td><td>'+esc(t(catOf(p.cat).k))+'</td><td>'+esc(p.city)+'</td><td>'+esc(p.ownerName)+'<br><span class="fine">'+esc(p.phone)+'</span></td><td><button class="mini pri" data-act="visit" data-id="'+p.id+'">Start visit</button></td></tr>';}).join('')+'</tbody></table></div>';
+  h+='<p class="fine" style="margin-top:12px">Agents work under the <button class="linkbtn" data-act="doc" data-doc="agent">Agent contract</button>.</p>';
+  panelModal(h);
+}
+function openVisit(id){
+  var sub=null;DB.pending.forEach(function(p){if(p.id===id)sub=p;});if(!sub)return;
+  AG_STATE={sub:sub,photos:[]};
+  var slots=SLOTS[sub.cat],c=CENTER[sub.city];
+  var h='<h3 id="modal-title">Visit: '+esc(sub.title)+'</h3><p class="fine">'+esc(t(catOf(sub.cat).k))+' · '+esc(sub.area)+', '+esc(sub.city)+' · owner '+esc(sub.ownerName)+' ('+esc(sub.phone)+')</p>';
+  h+='<h4>1. Checks</h4><div class="checks"><label><input type="checkbox" class="chk"> I visited the place in person</label><label><input type="checkbox" class="chk"> I saw the owner\'s ID and it matches</label><label><input type="checkbox" class="chk"> The owner has the right to list it (title, lease or written permission)</label><label><input type="checkbox" class="chk"> The owner has paid the fixed fee ('+esc(FEES[sub.cat])+')</label></div>';
+  h+='<h4>2. Details</h4><div class="two"><div class="field"><label for="a-title">Name of the place</label><input id="a-title" value="'+esc(sub.title)+'"></div><div class="field"><label for="a-area">Area</label><input id="a-area" value="'+esc(sub.area)+'"></div>';
+  if(sub.cat!=='agency'){
+    h+='<div class="field"><label for="a-price">Price in USD ('+(sub.cat==='stays'?'per night':sub.cat==='rent'?'per month':'per day')+')</label><input id="a-price" type="number" min="1"></div>';
+    if(sub.cat!=='rent'&&sub.cat!=='halls')h+='<div class="field"><label for="a-units">'+(sub.cat==='work'?'Number of desks':'Number of rooms')+'</label><input id="a-units" type="number" min="1" value="1"></div>';
+    if(sub.cat==='halls')h+='<div class="field"><label for="a-cap">Capacity (guests)</label><input id="a-cap" type="number" min="1"></div>';
+  }else{
+    h+='<div class="field"><label for="a-svcs">Services (Visa, Flights, Other)</label><input id="a-svcs" value="Visa, Flights"></div><div class="field"><label for="a-serves">Countries served</label><input id="a-serves"></div>';
+  }
+  h+='</div><div class="field" style="margin-top:10px"><label for="a-desc">Short description</label><textarea id="a-desc"></textarea></div>';
+  h+='<h4>3. Location</h4><div class="two"><div class="field"><label for="a-lat">Latitude</label><input id="a-lat" value="'+c[0]+'"></div><div class="field"><label for="a-lng">Longitude</label><input id="a-lng" value="'+c[1]+'"></div></div><p class="fine">Start from the city centre and adjust to the real spot, for example from your phone\'s map. Guests see only the approximate area until they book.</p>';
+  h+='<h4>4. Photos (all required)</h4><div class="slots">'+slots.map(function(s,i){return '<div class="slot" id="slot-'+i+'"><strong>'+esc(s)+'</strong><input type="file" accept="image/*" id="ph-'+i+'" aria-label="Photo: '+esc(s)+'"></div>';}).join('')+'</div>';
+  h+='<p class="msg" id="v-msg"></p><div class="actions"><button class="btn alt" data-act="agent-tool">Back to queue</button><button class="btn" data-act="approve" id="approve-btn" disabled>Approve and post</button></div>';
+  panelModal(h);
+  updateApprove();
+}
+function updateApprove(){
+  var sub=AG_STATE.sub;if(!sub)return;
+  var chk=document.querySelectorAll('.chk'),all=true,i;
+  for(i=0;i<chk.length;i++)if(!chk[i].checked)all=false;
+  var need=SLOTS[sub.cat].length,have=0;
+  for(i=0;i<need;i++)if(AG_STATE.photos[i])have++;
+  var ok=all&&have===need&&$('#a-title').value.trim()&&$('#a-area').value.trim();
+  if(sub.cat!=='agency'){var p=Number($('#a-price').value);if(!(p>0))ok=false;}
+  var b=$('#approve-btn');if(b)b.disabled=!ok;
+  var m=$('#v-msg');if(m)m.textContent=ok?'':(have<need?have+' of '+need+' photos added. ':'')+(all?'':'Tick every check. ');
+}
+function readPhoto(file,cb){
+  var fr=new FileReader();
+  fr.onload=function(){var im=new Image();im.onload=function(){var mx=900,sc=Math.min(1,mx/Math.max(im.width,im.height)),cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(im.width*sc));cv.height=Math.max(1,Math.round(im.height*sc));cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);cb(cv.toDataURL('image/jpeg',0.82));};im.onerror=function(){cb(null);};im.src=fr.result;};
+  fr.onerror=function(){cb(null);};fr.readAsDataURL(file);
+}
+function approveListing(){
+  var sub=AG_STATE.sub,me=DB.me;
+  var l={id:uid('n'),cat:sub.cat,country:sub.country,city:sub.city,name:$('#a-title').value.trim(),area:$('#a-area').value.trim(),rating:0,reviews:0,price:0,units:1,extra:null,booked:{},blocked:{},blocks:[],photos:AG_STATE.photos.slice(),owner:sub.ownerId,status:'live',fee:{status:'paid'},verifiedBy:me?me.name:'Betna agent',desc:$('#a-desc').value.trim()};
+  var lat=parseFloat($('#a-lat').value),lng=parseFloat($('#a-lng').value),c=CENTER[sub.city];
+  l.lat=isNaN(lat)?c[0]:lat;l.lng=isNaN(lng)?c[1]:lng;
+  if(sub.cat==='agency'){
+    var sv=$('#a-svcs').value.split(',').map(function(s){s=s.trim();return s?s.charAt(0).toUpperCase()+s.slice(1).toLowerCase():'';}).filter(function(s){return s==='Visa'||s==='Flights'||s==='Other';});
+    l.extra={services:sv.length?sv:['Other'],serves:$('#a-serves').value.trim()||'To be added',langs:'EN'};
+  }else{
+    l.price=Number($('#a-price').value);
+    if(sub.cat==='stays'||sub.cat==='work')l.units=Math.max(1,parseInt($('#a-units').value,10)||1);
+    if(sub.cat==='halls')l.extra={cap:parseInt($('#a-cap').value,10)||100};
+  }
+  L.push(l);
+  DB.pending.splice(DB.pending.indexOf(sub),1);
+  send('SMS',sub.phone,'Good news: '+l.name+' is now live on Betna.');
+  S.country=l.country;S.city=l.city;S.cat=l.cat;
+  toast(l.name+' is live on Betna');
+  renderAll();
+  openAgentTool();
+}
+
+/* ---------- admin ---------- */
+var ADMIN_TAB='overview';
+function openAdmin(tab){
+  ADMIN_TAB=tab||ADMIN_TAB;M={dash:'admin'};
+  var tabs=[['overview','Overview'],['listings','Listings'],['bookings','Bookings'],['holds','Holds'],['fees','Fees'],['users','People'],['messages','Messages']];
+  var h='<h3 id="modal-title">Admin panel</h3><div class="ptabs" role="group" aria-label="Admin sections">'+tabs.map(function(x){return '<button data-act="admin-tab" data-tab="'+x[0]+'" aria-pressed="'+(ADMIN_TAB===x[0])+'">'+x[1]+'</button>';}).join('')+'</div>';
+  var live=L.filter(function(l){return l.status==='live';}),due=L.filter(function(l){return l.fee.status==='due';});
+  if(ADMIN_TAB==='overview'){
+    var rev=0;DB.bookings.forEach(function(b){rev+=b.total;});
+    h+='<div class="tiles"><div class="tile"><b>'+live.length+'</b><span>Live listings</span></div><div class="tile"><b>'+DB.pending.length+'</b><span>Waiting for a visit</span></div><div class="tile"><b>'+DB.bookings.length+'</b><span>Bookings</span></div><div class="tile"><b>'+DB.holds.length+'</b><span>Dates on hold now</span></div><div class="tile"><b>'+due.length+'</b><span>Owner fees due</span></div><div class="tile"><b>'+esc(money(rev))+'</b><span>Booked value</span></div></div><p class="fine">Use the tabs to review listings, bookings, fees, people and the message outbox.</p>';
+  }else if(ADMIN_TAB==='listings'){
+    h+='<div class="tblwrap"><table class="tbl"><thead><tr><th>Place</th><th>Type</th><th>City</th><th>Verified by</th><th>Status</th><th></th></tr></thead><tbody>'+L.map(function(l){return '<tr><td>'+esc(l.name)+'<br><span class="fine">'+esc(l.area)+'</span></td><td>'+esc(t(catOf(l.cat).k))+'</td><td>'+esc(l.city)+'</td><td>'+esc(l.verifiedBy||'Betna agent')+'</td><td><span class="badge '+(l.status==='live'?'ok':'no')+'">'+(l.status==='live'?'Live':'Suspended')+'</span></td><td><button class="mini" data-act="suspend" data-id="'+l.id+'">'+(l.status==='live'?'Suspend':'Reactivate')+'</button></td></tr>';}).join('')+'</tbody></table></div>';
+  }else if(ADMIN_TAB==='bookings'){
+    h+=DB.bookings.length?'<div class="tblwrap"><table class="tbl"><thead><tr><th>Reference</th><th>Place</th><th>Guest</th><th>Dates</th><th>Paid</th><th>When</th></tr></thead><tbody>'+DB.bookings.map(function(b){var l=byId(b.lid);return '<tr><td><span class="ref">'+esc(b.ref)+'</span></td><td>'+esc(l?l.name:'')+'</td><td>'+esc(b.who)+'<br><span class="fine">'+esc(b.phone)+'</span></td><td>'+esc(b.desc)+'</td><td>'+esc(money(b.total))+'</td><td>'+stamp(b.ts)+'</td></tr>';}).join('')+'</tbody></table></div>':'<p class="fine">No bookings yet.</p>';
+  }else if(ADMIN_TAB==='holds'){
+    h+='<p class="fine">A hold lasts 10 minutes while a guest pays, then dates open again.</p>';
+    h+=DB.holds.length?'<div class="tblwrap" style="margin-top:8px"><table class="tbl"><thead><tr><th>Place</th><th>Held by</th><th>Nights or days</th><th>Time left</th><th></th></tr></thead><tbody>'+DB.holds.map(function(x){var l=byId(x.lid),u=userById(x.by),s=Math.max(0,Math.round((x.exp-Date.now())/1000));return '<tr><td>'+esc(l?l.name:'')+'</td><td>'+esc(u?u.name:x.by)+'</td><td>'+x.keys.length+'</td><td>'+Math.floor(s/60)+':'+String(s%60).padStart(2,'0')+'</td><td><button class="mini" data-act="expire" data-id="'+x.id+'">Release now</button></td></tr>';}).join('')+'</tbody></table></div>':'<p class="fine" style="margin-top:8px">No dates are on hold right now. Start a booking as a guest to see one here.</p>';
+  }else if(ADMIN_TAB==='fees'){
+    h+='<p class="fine">Amounts are placeholders. Set your own.</p><div class="tblwrap" style="margin-top:8px"><table class="tbl"><thead><tr><th>Place</th><th>Plan</th><th>Status</th><th></th></tr></thead><tbody>'+live.map(function(l){return '<tr><td>'+esc(l.name)+'</td><td>'+esc(FEES[l.cat])+'</td><td><span class="badge '+(l.fee.status==='paid'?'ok':'warn')+'">'+(l.fee.status==='paid'?'Paid':'Due')+'</span></td><td>'+(l.fee.status==='due'?'<button class="mini pri" data-act="fee-paid" data-id="'+l.id+'">Mark paid</button>':'')+'</td></tr>';}).join('')+'</tbody></table></div>';
+  }else if(ADMIN_TAB==='users'){
+    h+='<p class="fine">Giving someone the Agent role means they have signed the <button class="linkbtn" data-act="doc" data-doc="agent">Agent contract</button>.</p><div class="tblwrap" style="margin-top:8px"><table class="tbl"><thead><tr><th>Name</th><th>Phone</th><th>Role</th></tr></thead><tbody>'+DB.users.map(function(u){return '<tr><td>'+esc(u.name)+'</td><td>'+esc(u.phone)+'</td><td><select data-uid="'+u.id+'" aria-label="Role for '+esc(u.name)+'">'+['guest','owner','agent','admin'].map(function(r){return opt(r,r,u.role===r);}).join('')+'</select></td></tr>';}).join('')+'</tbody></table></div>';
+  }else{
+    h+='<p class="fine">Messages the real system would send by WhatsApp, SMS and email. Nothing is actually sent in this sample.</p>';
+    h+=DB.messages.length?'<div class="tblwrap" style="margin-top:8px"><table class="tbl"><thead><tr><th>When</th><th>Channel</th><th>To</th><th>Message</th></tr></thead><tbody>'+DB.messages.map(function(m){return '<tr><td>'+stamp(m.ts)+'</td><td>'+esc(m.channel)+'</td><td>'+esc(m.to)+'</td><td>'+esc(m.text)+'</td></tr>';}).join('')+'</tbody></table></div>':'<p class="fine" style="margin-top:8px">No messages yet. Make a booking or list a place to see some.</p>';
+  }
+  panelModal(h);
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click',function(e){
+  if(e.target.id==='doc-ov'){closeDoc();return;}
+  if(e.target.id==='overlay'){closeModal();return;}
+  if(MENU&&!e.target.closest('#who')){MENU=false;renderWho();}
+  var el=e.target.closest('[data-act]');
+  if(!el)return;
+  var a=el.getAttribute('data-act'),id=el.getAttribute('data-id');
+  if(a==='cat'){
+    S.cat=id;S.maxPrice=null;S.sort='rec';S.minRating=0;S.svc='All';
+    if($('#overlay').hidden===false)closeModal();
+    renderAll();
+    var rt=$('#res-title'),top=rt.getBoundingClientRect().top;
+    if(top>window.innerHeight*0.8||top<0)rt.scrollIntoView({behavior:'auto',block:'start'});
+    toast('Showing '+t(catOf(id).k)+' in '+ciname(S.city));
+  }
+  else if(a==='lang'){S.lang=el.getAttribute('data-lang');try{localStorage.setItem('betna-lang',S.lang);}catch(x){}renderAll();}
+  else if(a==='cur'){S.cur=el.getAttribute('data-cur');renderAll();}
+  else if(a==='go'){$('#res-title').scrollIntoView({behavior:'auto',block:'start'});}
+  else if(a==='clear'){S.minRating=0;S.maxPrice=null;S.svc='All';S.sort='rec';renderAll();}
+  else if(a==='menu'){MENU=!MENU;renderWho();}
+  else if(a==='signin')openSignin();
+  else if(a==='signout'){DB.me=null;VIEW='anon';MENU=false;renderWho();toast('Signed out');}
+  else if(a==='demo-login'){login(userById(id));}
+  else if(a==='create-account'){
+    var nm=$('#a-name').value.trim(),ph=$('#a-phone').value.trim(),em=$('#a-email').value.trim();
+    if(!nm||!ph||em.indexOf('@')<1){$('#a-msg').textContent='Enter your name, a phone number and a valid email.';return;}
+    if(!$('#a-agree').checked){$('#a-msg').textContent='Please agree to the Terms of use and Privacy policy.';return;}
+    var u={id:uid('u'),name:nm,phone:ph,email:em,role:'guest'};DB.users.push(u);login(u);
+  }
+  else if(a==='open')openBooking(id);
+  else if(a==='quote')openQuote(id);
+  else if(a==='owner')openOwner();
+  else if(a==='doc')openDoc(el.getAttribute('data-doc'));
+  else if(a==='my-bookings'){MENU=false;renderWho();openMyBookings();}
+  else if(a==='owner-dash'){MENU=false;renderWho();openOwnerDash();}
+  else if(a==='agent-tool'){MENU=false;renderWho();openAgentTool();}
+  else if(a==='admin-panel'){MENU=false;renderWho();openAdmin('overview');}
+  else if(a==='close')closeModal();
+  else if(a==='close-doc')closeDoc();
+  else if(a==='admin-tab')openAdmin(el.getAttribute('data-tab'));
+  else if(a==='suspend'){var sl=byId(id);sl.status=sl.status==='live'?'suspended':'live';openAdmin();}
+  else if(a==='fee-paid'){byId(id).fee.status='paid';openAdmin();}
+  else if(a==='expire'){var hi=-1;DB.holds.forEach(function(h,i){if(h.id===id)hi=i;});if(hi>-1)DB.holds[hi].exp=0;tick();openAdmin();}
+  else if(a==='block')blockDates(id);
+  else if(a==='unblock')unblockDates(id,Number(el.getAttribute('data-i')));
+  else if(a==='visit')openVisit(id);
+  else if(a==='approve')approveListing();
+  else if(a==='send-owner'){submitOwner();}
+  else if(a==='send-quote'){
+    var qn=$('#q-name').value.trim(),qc=$('#q-contact').value.trim();
+    if(!qn||!qc){$('#q-msg').textContent='Enter your name and a phone number so the agency can reply.';return;}
+    var ag=M.agency;
+    send('WhatsApp / SMS',qc,'Your request to '+ag.name+' was sent. They will reply with a price.');
+    send('SMS',ag.name,'New quote request from '+qn+' ('+qc+') for '+$('#q-svc').value+'.');
+    $('#modal').querySelector('.pad').innerHTML=doneHTML('Request sent',esc(ag.name)+' will contact '+esc(qn.split(' ')[0])+' with a price. Nothing is paid on Betna for this.','<button class="btn" data-act="close">Done</button>');
+  }
+  else if(!M||!M.l)return;
+  else if(a==='photo'){var pi=Number(el.getAttribute('data-i'));$('#main-art').firstElementChild.outerHTML=art(M.l,pi);document.querySelectorAll('.thumbs button').forEach(function(b){b.setAttribute('aria-pressed',String(Number(b.getAttribute('data-i'))===pi));});}
+  else if(a==='cal-prev'){M.vm--;if(M.vm<0){M.vm=11;M.vy--;}renderBk();}
+  else if(a==='cal-next'){M.vm++;if(M.vm>11){M.vm=0;M.vy++;}renderBk();}
+  else if(a==='date')pickDate(el.getAttribute('data-date'));
+  else if(a==='term'){M.term=Number(el.getAttribute('data-term'));if(M.start&&!leaseFree(M.l,parse(M.start),M.term)){M.start=null;M.msg='That move-in date is not free for '+M.term+' months. Pick another.';}else M.msg='';renderBk();}
+  else if(a==='next'){if(!DB.me){M.step='auth';M.msg='';renderBk();}else startHold();}
+  else if(a==='back'){releaseHold();M.step='pick';M.msg='';renderBk();}
+  else if(a==='preview'){M.preview=true;VIEW='other';M.step='pick';renderBk();}
+  else if(a==='unpreview'){M.preview=false;VIEW=DB.me?DB.me.id:'anon';M.step='pay';renderBk();}
+  else if(a==='pay'){
+    var pn=$('#p-name').value.trim(),pp=$('#p-phone').value.trim();
+    if(!pn||!pp){M.msg='Enter your name and a phone number to continue.';renderBk();return;}
+    if(!M.hold){M.step='pick';M.msg='Your hold ended. Pick your dates again.';renderBk();return;}
+    finishBooking(pn,pp);
+  }
+  else if(a==='again'){M.step='pick';M.start=null;M.end=null;M.day=null;M.msg='';renderBk();}
+});
+document.addEventListener('change',function(e){
+  var id=e.target.id;
+  if(id==='s-country'){S.country=e.target.value;S.city=CITIES[S.country][0];renderSearch();renderResults();}
+  else if(id==='s-city'){S.city=e.target.value;renderSearch();renderResults();}
+  else if(id==='s-cin'){S.cin=e.target.value;if(S.cout&&S.cout<=S.cin)S.cout='';renderSearch();renderResults();}
+  else if(id==='s-cout'){S.cout=e.target.value;renderResults();}
+  else if(id==='s-day'){S.day=e.target.value;renderResults();}
+  else if(id==='s-svc'){S.svc=e.target.value;renderResults();}
+  else if(id==='f-rating'){S.minRating=Number(e.target.value);renderResults();}
+  else if(id==='f-sort'){S.sort=e.target.value;renderResults();}
+  else if(e.target.getAttribute&&e.target.getAttribute('data-uid')){var u=userById(e.target.getAttribute('data-uid'));if(u){u.role=e.target.value;toast(u.name+' is now '+u.role);renderWho();}}
+  else if(id&&id.indexOf('ph-')===0){
+    var i=Number(id.slice(3)),f=e.target.files&&e.target.files[0];if(!f)return;
+    readPhoto(f,function(data){
+      var slot=$('#slot-'+i);
+      if(!data){if(slot)slot.querySelector('input').insertAdjacentHTML('afterend','<span class="fine">Could not read that image. Try another.</span>');return;}
+      AG_STATE.photos[i]=data;
+      if(slot){slot.className='slot done';var im=slot.querySelector('img');if(im)im.src=data;else slot.insertAdjacentHTML('beforeend','<img src="'+data+'" alt="Chosen photo">');}
+      updateApprove();
+    });
+  }
+  else if(e.target.classList&&e.target.classList.contains('chk'))updateApprove();
+});
+document.addEventListener('input',function(e){
+  if(e.target.id==='f-price'){
+    var pm=priceMax(),v=Number(e.target.value);S.maxPrice=v>=pm?null:v;
+    $('#f-price-out').textContent=v>=pm?t('anyprice'):money(v);renderResults();
+  }else if(AG_STATE.sub&&e.target.closest&&e.target.closest('.panel')&&(e.target.id==='a-title'||e.target.id==='a-area'||e.target.id==='a-price'))updateApprove();
+});
+document.addEventListener('keydown',function(e){if(e.key!=='Escape')return;if(!$('#doc-ov').hidden){closeDoc();return;}if(!$('#overlay').hidden)closeModal();});
+
+/* ---------- hold timer ---------- */
+function tick(){
+  var nowt=Date.now(),before=DB.holds.length;
+  DB.holds=DB.holds.filter(function(h){return h.exp>nowt;});
+  if(M&&M.hold&&DB.holds.indexOf(M.hold)<0){
+    M.hold=null;M.preview=false;VIEW=DB.me?DB.me.id:'anon';
+    if(M.step==='pay'||M.step==='pick'){M.step='pick';M.msg='Your 10-minute hold ended. Pick your dates again.';renderBk();}
+  }
+  var el=document.getElementById('hold-timer');if(el&&M&&M.hold)el.textContent=timerText();
+  if(DB.holds.length!==before)renderResults();
+}
+setInterval(tick,1000);
+
+/* ---------- start ---------- */
+(function(){
+  var w=$('#windows'),lit=[1,4,8,10,13,16],h='';
+  for(var i=0;i<18;i++)h+='<i'+(lit.indexOf(i)>-1?' class="on"':'')+'></i>';
+  w.innerHTML=h;
+  try{var sv=localStorage.getItem('betna-lang');if(sv&&I18N[sv])S.lang=sv;}catch(x){}
+  renderAll();
+})();
+})();
+</script>
+</body>
+</html>
