@@ -41,19 +41,26 @@ export class TaxonomyService {
   list(): TaxonomyCategory[] {
     return TAXONOMY.map((entry) => ({
       ...entry,
-      subcategories: entry.subcategories.map((subcategory) => ({ ...subcategory })),
+      subcategories: entry.subcategories.map((subcategory) => ({
+        ...subcategory,
+      })),
     }));
   }
 
   isManaged(category: string, subcategory?: string): boolean {
     const group = TAXONOMY.find((entry) => entry.category === category);
     if (!group) return false;
-    return !subcategory || group.subcategories.some((item) => item.value === subcategory);
+    return (
+      Boolean(subcategory) &&
+      group.subcategories.some((item) => item.value === subcategory)
+    );
   }
 
   assertManaged(category: string, subcategory?: string): void {
     if (!this.isManaged(category, subcategory)) {
-      throw new Error(`Unsupported property taxonomy: ${category}/${subcategory ?? ""}`);
+      throw new Error(
+        `Unsupported property taxonomy: ${category}/${subcategory ?? ""}`,
+      );
     }
   }
 }

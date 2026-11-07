@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PropertiesService } from "./properties.service";
 
 const owner = {
@@ -60,14 +61,20 @@ function makePrisma() {
         properties.push(created);
         return created;
       }),
-      findFirst: vi.fn(async ({ where }: any) =>
-        properties.find((property) =>
-          Object.entries(where).every(([key, value]) => property[key] === value),
-        ) ?? null,
-      ),
+      findFirst: vi.fn(async ({ where, include }: any) => {
+        const property =
+          properties.find((entry) =>
+            Object.entries(where).every(([key, value]) => entry[key] === value),
+          ) ?? null;
+        if (!property || include?.country) return property;
+        const { country: _country, ...withoutCountry } = property;
+        return withoutCountry;
+      }),
       findMany: vi.fn(async ({ where }: any = {}) =>
         properties.filter((property) =>
-          Object.entries(where).every(([key, value]) => property[key] === value),
+          Object.entries(where).every(
+            ([key, value]) => property[key] === value,
+          ),
         ),
       ),
       update: vi.fn(async ({ where, data }: any) => {
@@ -81,10 +88,16 @@ function makePrisma() {
     },
     country: {
       findUnique: vi.fn(async ({ where }: any) =>
-        where.code === "KE" ? { id: "country-ke", code: "KE", currency: "KES" } : null,
+        where.code === "KE" || where.id === "country-ke"
+          ? { id: "country-ke", code: "KE", currency: "KES" }
+          : where.code === "UG" || where.id === "country-ug"
+            ? { id: "country-ug", code: "UG", currency: "UGX" }
+            : null,
       ),
     },
-    $transaction: vi.fn(async (callback: (tx: any) => unknown) => callback(prisma)),
+    $transaction: vi.fn(async (callback: (tx: any) => unknown) =>
+      callback(prisma),
+    ),
   };
   return { prisma, properties };
 }
@@ -131,12 +144,86 @@ describe("PropertiesService", () => {
     await expect(
       service.createDraft(owner.id, {
         ...baseInput,
-        offerings: [
-          { ...baseInput.offerings[0], currency: "UGX" as const },
-        ],
+        offerings: [{ ...baseInput.offerings[0], currency: "UGX" as const }],
       }),
     ).rejects.toThrow(/KES/i);
     expect(prisma.property.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects unsupported rental modes before persistence", async () => {
+    const { prisma } = makePrisma();
+    const service = new PropertiesService(prisma);
+
+    await expect(
+      service.createDraft(owner.id, {
+        ...baseInput,
+        offerings: [{ ...baseInput.offerings[0], mode: "WEEKLY" as never }],
+      }),
+    ).rejects.toThrow(/rental mode/i);
+    expect(prisma.property.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a country id that does not match the submitted country code", async () => {
+    const { prisma } = makePrisma();
+    const service = new PropertiesService(prisma);
+
+    await expect(
+      service.createDraft(owner.id, {
+        ...baseInput,
+        countryId: "country-ug",
+      }),
+    ).rejects.toThrow(/country.*KE|KE.*country/i);
+    expect(prisma.property.create).not.toHaveBeenCalled();
+  });
+
+  it("requires a managed subcategory for every property draft", async () => {
+    const { prisma } = makePrisma();
+    const service = new PropertiesService(prisma);
+
+    await expect(
+      service.createDraft(owner.id, {
+        ...baseInput,
+        subcategory: undefined,
+      }),
+    ).rejects.toThrow(/taxonomy|subcategory/i);
+    expect(prisma.property.create).not.toHaveBeenCalled();
+  });
+
+  it("accepts Prisma decimal prices when updating an existing draft", async () => {
+    const { prisma } = makePrisma();
+    const service = new PropertiesService(prisma);
+    const draft = await service.createDraft(owner.id, baseInput);
+    draft.offerings = draft.offerings.map((offering: any) => ({
+      ...offering,
+      basePrice: new Prisma.Decimal(offering.basePrice),
+    }));
+
+    await expect(
+      service.updateDraft(draft.id, owner.id, {
+        title: "Updated garden apartment",
+      }),
+    ).resolves.toMatchObject({ title: "Updated garden apartment" });
+  });
+
+  it("preserves an Uganda draft country when updating without a country patch", async () => {
+    const { prisma } = makePrisma();
+    const service = new PropertiesService(prisma);
+    const draft = await service.createDraft(owner.id, {
+      ...baseInput,
+      countryCode: "UG",
+      countryId: "country-ug",
+      offerings: baseInput.offerings.map((offering) => ({
+        ...offering,
+        currency: "UGX" as const,
+      })),
+    });
+    draft.country = { code: "UG", currency: "UGX" };
+
+    await expect(
+      service.updateDraft(draft.id, owner.id, {
+        title: "Updated Kampala home",
+      }),
+    ).resolves.toMatchObject({ title: "Updated Kampala home" });
   });
 
   it("keeps exact location private and requires attestation to submit", async () => {
@@ -167,8 +254,8 @@ describe("PropertiesService", () => {
     });
     const service = new PropertiesService(prisma);
 
-    await expect(service.createDraft("agent-1", baseInput)).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(
+      service.createDraft("agent-1", baseInput),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

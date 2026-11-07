@@ -6,7 +6,12 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import { COUNTRY_CURRENCY, type CountryCode, type CurrencyCode, type RentalMode } from "@betna/contracts";
+import {
+  COUNTRY_CURRENCY,
+  type CountryCode,
+  type CurrencyCode,
+  type RentalMode,
+} from "@betna/contracts";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreatePropertyInput, OfferingInput, UpdatePropertyInput } from "./dto";
 import { TaxonomyService } from "./taxonomy.service";
@@ -20,10 +25,16 @@ export class PropertiesService {
     private readonly taxonomy: TaxonomyService = new TaxonomyService(),
   ) {}
 
-  async createDraft(ownerId: string, input: CreatePropertyInput): Promise<PropertyRecord> {
+  async createDraft(
+    ownerId: string,
+    input: CreatePropertyInput,
+  ): Promise<PropertyRecord> {
     await this.assertIndividualOwner(ownerId);
     const normalized = await this.normalizeAndValidate(input);
-    const countryId = await this.resolveCountryId(input.countryCode, input.countryId);
+    const countryId = await this.resolveCountryId(
+      input.countryCode,
+      input.countryId,
+    );
 
     return this.prisma.$transaction(async (tx) =>
       tx.property.create({
@@ -53,7 +64,9 @@ export class PropertiesService {
               basePrice: offering.basePrice,
               negotiable: offering.negotiable ?? false,
               minimumNights: offering.minimumNights,
-              moveInDate: offering.moveInDate ? new Date(offering.moveInDate) : undefined,
+              moveInDate: offering.moveInDate
+                ? new Date(offering.moveInDate)
+                : undefined,
               leaseDurationMonths: offering.leaseDurationMonths,
             })),
           },
@@ -76,7 +89,10 @@ export class PropertiesService {
 
     const merged = this.mergeInput(existing, patch);
     const normalized = await this.normalizeAndValidate(merged);
-    const countryId = await this.resolveCountryId(merged.countryCode, merged.countryId);
+    const countryId = await this.resolveCountryId(
+      merged.countryCode,
+      merged.countryId,
+    );
     return this.prisma.property.update({
       where: { id: propertyId },
       data: {
@@ -103,7 +119,9 @@ export class PropertiesService {
             basePrice: offering.basePrice,
             negotiable: offering.negotiable ?? false,
             minimumNights: offering.minimumNights,
-            moveInDate: offering.moveInDate ? new Date(offering.moveInDate) : undefined,
+            moveInDate: offering.moveInDate
+              ? new Date(offering.moveInDate)
+              : undefined,
             leaseDurationMonths: offering.leaseDurationMonths,
           })),
         },
@@ -119,10 +137,14 @@ export class PropertiesService {
       throw new ConflictException("Only drafts can be submitted");
     }
     if (!property.authorizationAttested) {
-      throw new BadRequestException("Owner authorization attestation is required");
+      throw new BadRequestException(
+        "Owner authorization attestation is required",
+      );
     }
     if (!Array.isArray(property.offerings) || property.offerings.length === 0) {
-      throw new BadRequestException("At least one public-priced offering is required");
+      throw new BadRequestException(
+        "At least one public-priced offering is required",
+      );
     }
     return this.prisma.property.update({
       where: { id: propertyId },
@@ -181,40 +203,73 @@ export class PropertiesService {
       include: { roles: { include: { role: true } } },
     });
     const roles = (user?.roles ?? []).map((entry: any) =>
-      (typeof entry === "string" ? entry : entry.role?.name ?? entry.name)?.toUpperCase(),
+      (typeof entry === "string"
+        ? entry
+        : (entry.role?.name ?? entry.name)
+      )?.toUpperCase(),
     );
-    if (!user || !roles.includes("OWNER") || roles.includes("AGENT") || roles.includes("BUSINESS")) {
-      throw new ForbiddenException("Only individual owners can manage properties");
+    if (
+      !user ||
+      !roles.includes("OWNER") ||
+      roles.includes("AGENT") ||
+      roles.includes("BUSINESS")
+    ) {
+      throw new ForbiddenException(
+        "Only individual owners can manage properties",
+      );
     }
   }
 
-  private async findOwnedProperty(propertyId: string, ownerId: string): Promise<PropertyRecord> {
+  private async findOwnedProperty(
+    propertyId: string,
+    ownerId: string,
+  ): Promise<PropertyRecord> {
     const property = await this.prisma.property.findFirst({
       where: { id: propertyId, ownerId },
-      include: { offerings: true },
+      include: { offerings: true, country: true },
     });
     if (!property) throw new NotFoundException("Property not found");
     return property;
   }
 
-  private async resolveCountryId(countryCode: CountryCode, countryId?: string): Promise<string> {
-    if (countryId) return countryId;
-    const country = await this.prisma.country?.findUnique?.({ where: { code: countryCode } });
+  private async resolveCountryId(
+    countryCode: CountryCode,
+    countryId?: string,
+  ): Promise<string> {
+    const country = await this.prisma.country?.findUnique?.({
+      where: countryId ? { id: countryId } : { code: countryCode },
+    });
     if (!country?.id) {
-      throw new BadRequestException(`Managed country ${countryCode} was not found`);
+      throw new BadRequestException(
+        `Managed country ${countryCode} was not found`,
+      );
+    }
+    if (
+      country.code !== countryCode ||
+      country.currency !== COUNTRY_CURRENCY[countryCode]
+    ) {
+      throw new BadRequestException(
+        `Country id does not match country code ${countryCode}`,
+      );
     }
     return country.id;
   }
 
-  private async normalizeAndValidate(input: CreatePropertyInput): Promise<OfferingInput[]> {
+  private async normalizeAndValidate(
+    input: CreatePropertyInput,
+  ): Promise<OfferingInput[]> {
     if (!input.title?.trim() || !input.description?.trim()) {
       throw new BadRequestException("Title and description are required");
     }
     if (!input.cityId || !input.exactLocation?.address?.trim()) {
       throw new BadRequestException("City and exact address are required");
     }
-    if (!Object.prototype.hasOwnProperty.call(COUNTRY_CURRENCY, input.countryCode)) {
-      throw new BadRequestException("Only Kenya and Uganda properties are supported");
+    if (
+      !Object.prototype.hasOwnProperty.call(COUNTRY_CURRENCY, input.countryCode)
+    ) {
+      throw new BadRequestException(
+        "Only Kenya and Uganda properties are supported",
+      );
     }
     try {
       this.taxonomy.assertManaged(input.category, input.subcategory);
@@ -224,14 +279,22 @@ export class PropertiesService {
     this.assertCoordinates(input.publicLocation, "public location");
     this.assertCoordinates(input.exactLocation, "exact location");
     if (!Array.isArray(input.offerings) || input.offerings.length === 0) {
-      throw new BadRequestException("At least one public-priced offering is required");
+      throw new BadRequestException(
+        "At least one public-priced offering is required",
+      );
     }
 
     const expected = COUNTRY_CURRENCY[input.countryCode];
     const modes = new Set<RentalMode>();
+    const normalized: OfferingInput[] = [];
     for (const offering of input.offerings) {
+      if (offering.mode !== "SHORT_STAY" && offering.mode !== "LONG_TERM") {
+        throw new BadRequestException("Unsupported rental mode");
+      }
       if (modes.has(offering.mode)) {
-        throw new BadRequestException(`Only one ${offering.mode} offering is allowed`);
+        throw new BadRequestException(
+          `Only one ${offering.mode} offering is allowed`,
+        );
       }
       modes.add(offering.mode);
       if (offering.currency !== expected) {
@@ -239,38 +302,63 @@ export class PropertiesService {
           `${input.countryCode} properties must use ${expected} public prices`,
         );
       }
-      if (!Number.isFinite(offering.basePrice) || offering.basePrice <= 0) {
+      const basePrice = Number(offering.basePrice);
+      if (!Number.isFinite(basePrice) || basePrice <= 0) {
         throw new BadRequestException("Public price must be greater than zero");
       }
-      if (offering.mode === "SHORT_STAY" && offering.minimumNights !== undefined && offering.minimumNights < 1) {
+      if (
+        offering.mode === "SHORT_STAY" &&
+        offering.minimumNights !== undefined &&
+        offering.minimumNights < 1
+      ) {
         throw new BadRequestException("Minimum nights must be at least one");
       }
-      if (offering.mode === "LONG_TERM" && offering.leaseDurationMonths !== undefined && offering.leaseDurationMonths < 1) {
-        throw new BadRequestException("Lease duration must be at least one month");
+      if (
+        offering.mode === "LONG_TERM" &&
+        offering.leaseDurationMonths !== undefined &&
+        offering.leaseDurationMonths < 1
+      ) {
+        throw new BadRequestException(
+          "Lease duration must be at least one month",
+        );
       }
+      normalized.push({ ...offering, basePrice });
     }
-    return input.offerings;
+    return normalized;
   }
 
-  private assertCoordinates(location: { latitude: number; longitude: number }, label: string): void {
+  private assertCoordinates(
+    location: { latitude: number; longitude: number },
+    label: string,
+  ): void {
     if (
       !Number.isFinite(location?.latitude) ||
       !Number.isFinite(location?.longitude) ||
-      location.latitude < -90 || location.latitude > 90 ||
-      location.longitude < -180 || location.longitude > 180
+      location.latitude < -90 ||
+      location.latitude > 90 ||
+      location.longitude < -180 ||
+      location.longitude > 180
     ) {
       throw new BadRequestException(`${label} coordinates are invalid`);
     }
   }
 
-  private mergeInput(existing: PropertyRecord, patch: UpdatePropertyInput): CreatePropertyInput {
+  private mergeInput(
+    existing: PropertyRecord,
+    patch: UpdatePropertyInput,
+  ): CreatePropertyInput {
     return {
       title: patch.title ?? existing.title,
       description: patch.description ?? existing.description,
-      countryCode: patch.countryCode ?? existing.countryCode ?? "KE",
+      countryCode:
+        patch.countryCode ??
+        existing.countryCode ??
+        existing.country?.code ??
+        "KE",
       countryId: patch.countryId ?? existing.countryId,
       cityId: patch.cityId ?? existing.cityId,
-      neighborhoodId: patch.neighborhoodId ?? existing.neighborhoodId ?? undefined,
+      neighborhoodId:
+        patch.neighborhoodId ?? existing.neighborhoodId ?? undefined,
       category: patch.category ?? existing.category,
       subcategory: patch.subcategory ?? existing.subcategory ?? undefined,
       amenities: patch.amenities ?? existing.amenities ?? [],
@@ -284,13 +372,18 @@ export class PropertiesService {
         latitude: Number(existing.exactLatitude),
         longitude: Number(existing.exactLongitude),
       },
-      authorizationAttested: patch.authorizationAttested ?? existing.authorizationAttested,
+      authorizationAttested:
+        patch.authorizationAttested ?? existing.authorizationAttested,
       offerings: patch.offerings ?? existing.offerings,
     };
   }
 
   private slugFor(title: string): string {
-    const slug = title.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const slug = title
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
     return `${slug || "property"}-${randomUUID().slice(0, 8)}`;
   }
 }
