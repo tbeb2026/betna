@@ -8,11 +8,15 @@ const owner = {
   roles: [{ role: { name: "OWNER" } }],
 };
 
+const CITY_KE_NAIROBI_ID = "11111111-1111-4111-8111-111111111111";
+const CITY_UG_KAMPALA_ID = "22222222-2222-4222-8222-222222222222";
+const CITY_UNKNOWN_ID = "33333333-3333-4333-8333-333333333333";
+
 const baseInput = {
   title: "Kilimani garden apartment",
   description: "A bright place near the market.",
   countryCode: "KE" as const,
-  cityId: "city-ke-nairobi",
+  cityId: CITY_KE_NAIROBI_ID,
   neighborhoodId: "neighborhood-kilimani",
   category: "residential",
   subcategory: "apartment",
@@ -97,9 +101,9 @@ function makePrisma() {
     },
     city: {
       findUnique: vi.fn(async ({ where }: any) =>
-        where.id === "city-ke-nairobi"
+        where.id === CITY_KE_NAIROBI_ID
           ? { id: where.id, countryId: "country-ke" }
-          : where.id === "city-ug-kampala"
+          : where.id === CITY_UG_KAMPALA_ID
             ? { id: where.id, countryId: "country-ug" }
             : null,
       ),
@@ -120,7 +124,7 @@ describe("PropertiesService", () => {
     const second = await service.createDraft(owner.id, {
       ...baseInput,
       title: "Karen guesthouse",
-      cityId: "city-ke-nairobi",
+      cityId: CITY_KE_NAIROBI_ID,
       offerings: [baseInput.offerings[0]],
     });
 
@@ -212,7 +216,7 @@ describe("PropertiesService", () => {
     await expect(
       service.createDraft(owner.id, {
         ...baseInput,
-        cityId: "city-ug-kampala",
+        cityId: CITY_UG_KAMPALA_ID,
       }),
     ).rejects.toThrow(/city.*country|country.*city/i);
     expect(prisma.property.create).not.toHaveBeenCalled();
@@ -225,9 +229,24 @@ describe("PropertiesService", () => {
     await expect(
       service.createDraft(owner.id, {
         ...baseInput,
-        cityId: "city-unknown",
+        cityId: CITY_UNKNOWN_ID,
       }),
     ).rejects.toThrow(/city.*country|country.*city/i);
+    expect(prisma.property.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed city id as a bad request before Prisma lookup", async () => {
+    const { prisma } = makePrisma();
+    prisma.city.findUnique.mockRejectedValueOnce(new Error("invalid UUID"));
+    const service = new PropertiesService(prisma);
+
+    await expect(
+      service.createDraft(owner.id, {
+        ...baseInput,
+        cityId: "not-a-uuid",
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.city.findUnique).not.toHaveBeenCalled();
     expect(prisma.property.create).not.toHaveBeenCalled();
   });
 
@@ -280,7 +299,7 @@ describe("PropertiesService", () => {
       ...baseInput,
       countryCode: "UG",
       countryId: "country-ug",
-      cityId: "city-ug-kampala",
+      cityId: CITY_UG_KAMPALA_ID,
       offerings: baseInput.offerings.map((offering) => ({
         ...offering,
         currency: "UGX" as const,

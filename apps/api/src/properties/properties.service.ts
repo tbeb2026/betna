@@ -19,6 +19,8 @@ import { TaxonomyService } from "./taxonomy.service";
 type PropertyRecord = any;
 
 const MIN_PUBLIC_EXACT_COORDINATE_SEPARATION = 0.001;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 @Injectable()
 export class PropertiesService {
@@ -286,6 +288,9 @@ export class PropertiesService {
     cityId: string,
     countryId: string,
   ): Promise<void> {
+    if (typeof cityId !== "string" || !UUID_PATTERN.test(cityId)) {
+      throw new BadRequestException("City id must be a valid UUID");
+    }
     const city = await this.prisma.city?.findUnique?.({
       where: { id: cityId },
       select: { countryId: true },
