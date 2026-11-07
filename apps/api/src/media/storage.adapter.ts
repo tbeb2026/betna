@@ -58,9 +58,10 @@ export class StorageAdapter {
     const signingSecret =
       options.signingSecret ?? process.env.MEDIA_SIGNING_SECRET;
     const safeEnvironment =
-      process.env.NODE_ENV === "development" ||
-      process.env.NODE_ENV === "test" ||
-      process.env.BETNA_TEST_AUTH === "1";
+      process.env.NODE_ENV !== "production" &&
+      (process.env.NODE_ENV === "development" ||
+        process.env.NODE_ENV === "test" ||
+        process.env.BETNA_TEST_AUTH === "1");
     if (!signingSecret && !safeEnvironment) {
       throw new Error(
         "MEDIA_SIGNING_SECRET is required outside explicit development/test mode",
@@ -267,9 +268,11 @@ export class StorageAdapter {
   }
 }
 
-function normalizeImageType(contentType: string): string {
+export function normalizeImageType(contentType: string): string {
   const normalized = contentType.toLowerCase().split(";", 1)[0];
-  return normalized === "image/jpg" ? "image/jpeg" : normalized;
+  if (normalized === "image/jpg") return "image/jpeg";
+  if (normalized === "image/heic") return "image/heif";
+  return normalized;
 }
 
 function detectImageType(body: Uint8Array): string | null {

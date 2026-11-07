@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
-import { StorageAdapter } from "./storage.adapter";
+import { normalizeImageType, StorageAdapter } from "./storage.adapter";
 
 async function makeJpeg() {
   return sharp({
@@ -79,7 +79,9 @@ describe("StorageAdapter", () => {
   it("requires an explicit signing secret outside development and test safety modes", () => {
     const previousNodeEnv = process.env.NODE_ENV;
     const previousSecret = process.env.MEDIA_SIGNING_SECRET;
+    const previousTestAuth = process.env.BETNA_TEST_AUTH;
     process.env.NODE_ENV = "production";
+    process.env.BETNA_TEST_AUTH = "1";
     delete process.env.MEDIA_SIGNING_SECRET;
 
     expect(() => new StorageAdapter()).toThrow(/MEDIA_SIGNING_SECRET/);
@@ -87,5 +89,12 @@ describe("StorageAdapter", () => {
     process.env.NODE_ENV = previousNodeEnv;
     if (previousSecret === undefined) delete process.env.MEDIA_SIGNING_SECRET;
     else process.env.MEDIA_SIGNING_SECRET = previousSecret;
+    if (previousTestAuth === undefined) delete process.env.BETNA_TEST_AUTH;
+    else process.env.BETNA_TEST_AUTH = previousTestAuth;
+  });
+
+  it("treats HEIC and HEIF declarations as one detected image family", () => {
+    expect(normalizeImageType("image/heic")).toBe("image/heif");
+    expect(normalizeImageType("image/heif; charset=binary")).toBe("image/heif");
   });
 });
