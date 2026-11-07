@@ -43,7 +43,7 @@ added regression coverage and fixes in `d2a87da`:
 - Missing subcategories and unsupported rental modes now fail with a 400-level
   validation exception before persistence.
 
-The hardening cycle followed red-green verification: the four regression cases
+The hardening cycle followed red-green verification: the five regression cases
 failed against the baseline, then passed after the minimal fixes. The final
 properties suite has 10 passing tests.
 
