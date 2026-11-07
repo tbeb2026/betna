@@ -18,7 +18,7 @@
 
 ## Verification
 
-- `pnpm --filter @betna/api test properties` — PASS (16 tests: 15 service, 1 controller)
+- `pnpm --filter @betna/api test properties` — PASS (17 tests: 16 service, 1 controller)
 - `pnpm --filter @betna/api test -- src/auth/auth.service.spec.ts src/main.test.ts` — PASS (11 tests)
 - `pnpm --filter @betna/api test:e2e -- auth` — PASS (3 tests)
 - `pnpm --filter @betna/api typecheck` — PASS
@@ -46,7 +46,7 @@ added regression coverage and fixes in `d2a87da`:
 
 The hardening cycle followed red-green verification: the five regression cases
 failed against the baseline, then passed after the minimal fixes. The final
-properties suite has 16 passing tests (15 service tests and one controller
+properties suite has 17 passing tests (16 service tests and one controller
 test).
 
 ## Round 1 recovery
@@ -90,9 +90,22 @@ Commit `a266bad` closes the remaining geography and location privacy gaps:
   the final API properties suite passes 16 tests, with the web unit suite at 8
   tests and owner Playwright coverage at 2 tests.
 
+## Round 3 review fix
+
+Commit `3f2c66e` closes the malformed city identifier path:
+
+- `cityId` is checked against the UUID format before any Prisma city lookup.
+  Malformed identifiers now return `BadRequestException` instead of allowing a
+  database UUID parsing error to surface as a 500 response.
+- Added a regression with the real malformed value `not-a-uuid`; the red test
+  mocked the Prisma lookup’s invalid-UUID failure and verified the lookup was
+  not reached. The green API properties suite now passes 17 tests.
+- API service fixtures now use valid UUID-shaped city identifiers, while the
+  web fallback IDs remain isolated to the no-API browser fixture path.
+
 ## Self-review and known repository-wide blockers
 
-Self-review of the Task 5 range (`b8f0840..a266bad`) found no remaining
+Self-review of the Task 5 range (`b8f0840..3f2c66e`) found no remaining
 critical or important issues within the task scope. `git diff --check` and the
 changed-file Prettier check pass. The repository-wide `pnpm test` was also run;
 30 tests passed, but collection fails on pre-existing infrastructure boundaries:
