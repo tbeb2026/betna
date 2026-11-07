@@ -18,7 +18,7 @@
 
 ## Verification
 
-- `pnpm --filter @betna/api test properties` — PASS (13 tests: 12 service, 1 controller)
+- `pnpm --filter @betna/api test properties` — PASS (16 tests: 15 service, 1 controller)
 - `pnpm --filter @betna/api test -- src/auth/auth.service.spec.ts src/main.test.ts` — PASS (11 tests)
 - `pnpm --filter @betna/api test:e2e -- auth` — PASS (3 tests)
 - `pnpm --filter @betna/api typecheck` — PASS
@@ -46,7 +46,7 @@ added regression coverage and fixes in `d2a87da`:
 
 The hardening cycle followed red-green verification: the five regression cases
 failed against the baseline, then passed after the minimal fixes. The final
-properties suite has 13 passing tests (12 service tests and one controller
+properties suite has 16 passing tests (15 service tests and one controller
 test).
 
 ## Round 1 recovery
@@ -73,9 +73,26 @@ initial UI implementation:
   choices. The API controller/service suite and web unit suite are now included
   in the verification counts above.
 
+## Round 2 review fixes
+
+Commit `a266bad` closes the remaining geography and location privacy gaps:
+
+- `createDraft` and `updateDraft` now resolve the submitted city and reject
+  missing cities or city IDs whose persisted country differs from the resolved
+  property country. Regression tests cover both unknown and cross-country city
+  IDs before persistence.
+- Public and exact coordinates must be at least `0.001` degrees apart using a
+  Euclidean coordinate-distance check. This prevents a pin from being merely
+  microscopically different while preserving an explicit approximate-area
+  workflow. Form-generated starter exact coordinates and payload fixtures now
+  satisfy that minimum.
+- Red evidence showed both new API cases resolving against the pre-fix service;
+  the final API properties suite passes 16 tests, with the web unit suite at 8
+  tests and owner Playwright coverage at 2 tests.
+
 ## Self-review and known repository-wide blockers
 
-Self-review of the Task 5 range (`b8f0840..eeb40e3`) found no remaining
+Self-review of the Task 5 range (`b8f0840..a266bad`) found no remaining
 critical or important issues within the task scope. `git diff --check` and the
 changed-file Prettier check pass. The repository-wide `pnpm test` was also run;
 30 tests passed, but collection fails on pre-existing infrastructure boundaries:
