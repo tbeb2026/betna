@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
 import { AuthSessionGuard, Roles, RolesGuard } from "../auth/guards";
 import { CreatePropertyInput, UpdatePropertyInput } from "./dto";
 import { PropertiesService } from "./properties.service";
@@ -18,13 +27,21 @@ export class PropertiesController {
     return this.taxonomy.list();
   }
 
+  @Get("geography")
+  geographyOptions() {
+    return this.properties.listGeography();
+  }
+
   @Get()
   list(@Req() request: { user: { id: string } }) {
     return this.properties.listForOwner(request.user.id);
   }
 
   @Post()
-  create(@Req() request: { user: { id: string } }, @Body() body: CreatePropertyInput) {
+  create(
+    @Req() request: { user: { id: string } },
+    @Body() body: CreatePropertyInput,
+  ) {
     return this.properties.createDraft(request.user.id, body);
   }
 

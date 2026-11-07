@@ -162,6 +162,29 @@ export class PropertiesService {
     });
   }
 
+  async listGeography() {
+    const countries = await this.prisma.country.findMany({
+      where: { code: { in: ["KE", "UG"] } },
+      include: {
+        cities: {
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, slug: true },
+        },
+      },
+      orderBy: { code: "asc" },
+    });
+    return countries.map((country: any) => ({
+      code: country.code,
+      name: country.name,
+      currency: country.currency,
+      cities: country.cities.map((city: any) => ({
+        id: city.id,
+        name: city.name,
+        slug: city.slug,
+      })),
+    }));
+  }
+
   async getDraft(propertyId: string, ownerId: string): Promise<PropertyRecord> {
     await this.assertIndividualOwner(ownerId);
     return this.findOwnedProperty(propertyId, ownerId);
@@ -278,6 +301,14 @@ export class PropertiesService {
     }
     this.assertCoordinates(input.publicLocation, "public location");
     this.assertCoordinates(input.exactLocation, "exact location");
+    if (
+      input.publicLocation.latitude === input.exactLocation.latitude &&
+      input.publicLocation.longitude === input.exactLocation.longitude
+    ) {
+      throw new BadRequestException(
+        "Public location must remain approximate and differ from the exact location",
+      );
+    }
     if (!Array.isArray(input.offerings) || input.offerings.length === 0) {
       throw new BadRequestException(
         "At least one public-priced offering is required",

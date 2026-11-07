@@ -163,6 +163,22 @@ describe("PropertiesService", () => {
     expect(prisma.property.create).not.toHaveBeenCalled();
   });
 
+  it("rejects a public pin that exposes the exact location", async () => {
+    const { prisma } = makePrisma();
+    const service = new PropertiesService(prisma);
+
+    await expect(
+      service.createDraft(owner.id, {
+        ...baseInput,
+        publicLocation: {
+          ...baseInput.exactLocation,
+          label: "Kilimani, Nairobi",
+        },
+      }),
+    ).rejects.toThrow(/approximate|exact|location/i);
+    expect(prisma.property.create).not.toHaveBeenCalled();
+  });
+
   it("rejects a country id that does not match the submitted country code", async () => {
     const { prisma } = makePrisma();
     const service = new PropertiesService(prisma);
@@ -224,6 +240,28 @@ describe("PropertiesService", () => {
         title: "Updated Kampala home",
       }),
     ).resolves.toMatchObject({ title: "Updated Kampala home" });
+  });
+
+  it("returns managed launch geography with stable city ids for owner forms", async () => {
+    const { prisma } = makePrisma();
+    prisma.country.findMany = vi.fn(async () => [
+      {
+        code: "KE",
+        name: "Kenya",
+        currency: "KES",
+        cities: [{ id: "city-ke-nairobi", name: "Nairobi", slug: "nairobi" }],
+      },
+    ]);
+    const service = new PropertiesService(prisma);
+
+    await expect(service.listGeography()).resolves.toEqual([
+      {
+        code: "KE",
+        name: "Kenya",
+        currency: "KES",
+        cities: [{ id: "city-ke-nairobi", name: "Nairobi", slug: "nairobi" }],
+      },
+    ]);
   });
 
   it("keeps exact location private and requires attestation to submit", async () => {

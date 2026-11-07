@@ -7,8 +7,29 @@ describe("API URL resolution", () => {
   });
 
   it("uses the explicit server URL when configured", () => {
-    expect(
-      getApiBaseUrl({ API_INTERNAL_URL: "http://localhost:4400" }),
-    ).toBe("http://localhost:4400");
+    expect(getApiBaseUrl({ API_INTERNAL_URL: "http://localhost:4400" })).toBe(
+      "http://localhost:4400",
+    );
+  });
+
+  it("sends authenticated patch requests for draft edits", async () => {
+    let request: Request | undefined;
+    const client = new (await import("./api-client")).ApiClient({
+      baseUrl: "http://api.test",
+      token: "session-token",
+      fetch: async (input, init) => {
+        request = new Request(input, init);
+        return new Response(JSON.stringify({ id: "property-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    });
+
+    await client.patch("/owner/properties/property-1", { title: "Updated" });
+
+    expect(request?.method).toBe("PATCH");
+    expect(request?.headers.get("Authorization")).toBe("Bearer session-token");
+    expect(await request?.json()).toEqual({ title: "Updated" });
   });
 });

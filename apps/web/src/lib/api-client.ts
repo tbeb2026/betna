@@ -46,12 +46,16 @@ export class ApiClient {
   async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers);
     headers.set("Accept", "application/json");
-    if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+    if (init.body && !headers.has("Content-Type"))
+      headers.set("Content-Type", "application/json");
     if (this.token) headers.set("Authorization", `Bearer ${this.token}`);
-    const response = await this.fetcher(`${this.baseUrl}${path.startsWith("/") ? path : `/${path}`}`, {
-      ...init,
-      headers,
-    });
+    const response = await this.fetcher(
+      `${this.baseUrl}${path.startsWith("/") ? path : `/${path}`}`,
+      {
+        ...init,
+        headers,
+      },
+    );
     const text = await response.text();
     let body: unknown;
     try {
@@ -60,7 +64,10 @@ export class ApiClient {
       body = text;
     }
     if (!response.ok) {
-      const message = typeof body === "object" && body && "message" in body ? String(body.message) : `API request failed (${response.status})`;
+      const message =
+        typeof body === "object" && body && "message" in body
+          ? String(body.message)
+          : `API request failed (${response.status})`;
       throw new ApiError(message, response.status, body);
     }
     return body as T;
@@ -71,7 +78,19 @@ export class ApiClient {
   }
 
   post<T>(path: string, body: unknown, init?: RequestInit) {
-    return this.request<T>(path, { ...init, method: "POST", body: JSON.stringify(body) });
+    return this.request<T>(path, {
+      ...init,
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
+  patch<T>(path: string, body: unknown, init?: RequestInit) {
+    return this.request<T>(path, {
+      ...init,
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
   }
 }
 
