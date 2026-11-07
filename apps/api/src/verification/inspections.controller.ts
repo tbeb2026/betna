@@ -31,6 +31,16 @@ export class InspectionsController {
     );
   }
 
+  @Post("inspections/:id/assign")
+  @Roles("ADMIN")
+  assign(
+    @Req() request: { user: { id: string; roles: string[] } },
+    @Param("id") id: string,
+    @Body() body: { verifierId: string },
+  ) {
+    return this.inspections.assign(id, body.verifierId, request.user);
+  }
+
   @Post("inspections/:id/submit")
   @Roles("VERIFIER")
   submit(
