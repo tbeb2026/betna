@@ -1,4 +1,5 @@
 import { PropertyForm } from "../../../../../../features/properties/property-form";
+import { MediaUploader } from "../../../../../../features/media/uploader";
 import {
   getOwnerProperty,
   getOwnerPropertyOptions,
@@ -23,6 +24,7 @@ export default async function EditOwnerPropertyPage({
         options={options}
         initialProperty={property}
       />
+      <MediaUploader propertyId={id} />
     </div>
   );
 }
