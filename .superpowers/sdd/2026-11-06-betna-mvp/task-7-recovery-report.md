@@ -93,3 +93,9 @@ Re-review regressions were fixed:
 - Queue deduplication preserves the entire submitted payload and media progress when a later save-draft entry for the same inspection arrives; it cannot downgrade or overwrite the submitted operation.
 
 Regression tests added cover all three cases. Focused API tests pass (13 inspection-service tests); focused offline queue tests pass (3 tests); API and web typechecks pass. Generated `apps/web/tsconfig.tsbuildinfo` was removed before commit.
+
+## Review correction pass 3
+
+The queue now distinguishes user draft deduplication from trusted uploader progress. `enqueue()` preserves a submitted payload against later save-draft writes, while the explicit internal `updateProgress()` API persists completed media IDs and upload progress during an active flush. A regression test simulates the first evidence upload succeeding, the second failing, then confirms the completed media ID remains queued for retry without duplication.
+
+Verification: API focused suites pass (15 tests), web unit suites pass (12 tests), API/web typechecks pass, and `git diff --check` passes. No generated `tsconfig.tsbuildinfo` remains.
