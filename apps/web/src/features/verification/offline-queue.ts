@@ -107,6 +107,29 @@ export class OfflineInspectionQueue {
     storage?.removeItem(QUEUE_KEY);
   }
 
+  /** Persist progress from the trusted uploader without applying draft-save protection. */
+  async updateProgress(draft: OfflineInspectionDraft) {
+    const storage = storageOrDefault(this.storage);
+    if (!storage) return;
+    const key = await encryptionKey(storage);
+    const queue: EncryptedEntry[] = [];
+    let replaced = false;
+    for (const item of this.readEncrypted(storage)) {
+      try {
+        const existing = await this.decrypt(item, key);
+        if (existing.inspectionId === draft.inspectionId) {
+          queue.push(await this.encrypt({ ...draft, submitted: true }, key));
+          replaced = true;
+        } else {
+          queue.push(item);
+        }
+      } catch {
+        // Drop corrupt entries while compacting progress.
+      }
+    }
+    if (replaced) storage.setItem(QUEUE_KEY, JSON.stringify(queue));
+  }
+
   async flush(
     upload: (
       draft: OfflineInspectionDraft,
@@ -120,7 +143,7 @@ export class OfflineInspectionQueue {
       // Updates made after each media upload are encrypted before the queue
       // entry is removed, so a later failure resumes without re-uploading.
       await upload(draft, async (updated) => {
-        await this.enqueue({ ...updated, submitted: true });
+        await this.updateProgress(updated);
       });
       await this.remove(draft.inspectionId);
     }

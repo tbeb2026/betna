@@ -88,4 +88,36 @@ describe("OfflineInspectionQueue", () => {
 
     await expect(queue.list()).resolves.toEqual([second]);
   });
+
+  it("persists completed media progress when a later media upload fails", async () => {
+    const storage = new MemoryStorage();
+    const queue = new OfflineInspectionQueue(storage);
+    const submitted: OfflineInspectionDraft = {
+      ...draft("inspection-1"),
+      evidence: [
+        { file: "blob-1", fileName: "one.jpg", contentType: "image/jpeg" },
+        { file: "blob-2", fileName: "two.jpg", contentType: "image/jpeg" },
+      ],
+      submitted: true,
+    };
+    await queue.enqueue(submitted);
+
+    await expect(
+      queue.flush(async (entry, update) => {
+        const evidence = [...entry.evidence];
+        evidence[0] = { ...evidence[0], mediaId: "media-1" };
+        await update({ ...entry, evidence });
+        throw new Error("offline after first upload");
+      }),
+    ).rejects.toThrow("offline after first upload");
+    await expect(queue.list()).resolves.toEqual([
+      expect.objectContaining({
+        submitted: true,
+        evidence: [
+          expect.objectContaining({ mediaId: "media-1" }),
+          expect.not.objectContaining({ mediaId: expect.any(String) }),
+        ],
+      }),
+    ]);
+  });
 });
