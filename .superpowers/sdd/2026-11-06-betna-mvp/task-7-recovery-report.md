@@ -56,3 +56,30 @@ Blocked/environment-limited checks:
 
 - Spec compliance: **PASS for the Task 7 API lifecycle and encrypted offline queue**, with the E2E/database limitations above and the documented durable-checklist/UI follow-ups.
 - Quality: **PASS for focused behavior and type safety**; API security boundaries and partial retry semantics are covered by regression tests. Full integration confidence remains conditional on database and browser-server access.
+
+## Review correction pass (P1/P2)
+
+The follow-up review identified five P1 gaps and a coupled checklist-versioning follow-up. The correction pass preserves the prior commits and addresses them as follows:
+
+- Offline evidence now stores actual encrypted data URLs plus filename/content type/size metadata, obtains a media upload target, PUTs the evidence blob, completes media processing, submits the persisted media IDs, and calls each evidence sync endpoint. The queue is removed only after every upload, submit, and sync succeeds.
+- Queue entries are deduplicated/replaced by inspection ID. Unsubmitted drafts remain local and are not flushed; a later draft save cannot downgrade an already-submitted operation. Partial media progress is encrypted back into the queue before continuing, so retry does not re-upload completed evidence.
+- `Inspection.submissionRequestKey` is persisted and uniquely indexed. Repeated submission requests with the same key return the persisted inspection result instead of replacing evidence or creating a duplicate operation. Evidence sync remains restart-safe through persisted `InspectionEvidence` upserts and returns the existing READY/APPROVED result for repeated sync calls.
+- Review transitions now require `READY_FOR_REVIEW` for both approval and rejection. Rejected inspections may be resubmitted; pending-upload inspections cannot be directly rejected or approved.
+- Verifier inspection detail/list pages now load authenticated, territory-filtered API data. The admin page loads the READY_FOR_REVIEW queue and exposes authenticated approve/reject controls. A verifier detail endpoint supplies the property ID needed for evidence upload.
+- `Inspection.checklistVersion` is persisted with each submission, using the active baseline/category checklist definition version.
+- Service mocks now persist `InspectionEvidence` rows and media records, covering media-purpose/status/property validation and restart-like sync state. Controller tests verify the authenticated verifier identity is passed to sync.
+
+Additional verification:
+
+- `pnpm --filter @betna/api test src/verification/inspections.service.spec.ts src/verification/inspections.controller.spec.ts` — PASS, 2 files / 13 tests.
+- `pnpm --filter @betna/web test` — PASS, 4 files / 11 tests.
+- `pnpm --filter @betna/api typecheck` — PASS.
+- `pnpm --filter @betna/web typecheck` — PASS.
+- `pnpm --filter @betna/web build` — PASS; production Next build compiled, typechecked, and generated all routes.
+- Updated `apps/web/e2e/offline-inspection.spec.ts` now exercises file selection and mocked upload/complete/submit/sync success through `Upload synced`; execution remains blocked by the sandbox’s server-bind restriction described above.
+
+Correction-pass commits:
+
+- `4c18572` — persisted idempotency, real offline evidence sync, functional queues/pages, checklist version, and review-transition fixes.
+
+Updated self-verdict: **P1 review findings addressed in code and focused tests; integration E2E/database execution remains environment-blocked.**
