@@ -1,4 +1,5 @@
 import { InspectionForm } from "../../../../../features/verification/inspection-form";
+import { getVerifierInspection } from "../../../../../features/verification/verification-data";
 import { getSession } from "../../../../../lib/auth";
 
 export default async function VerifierInspectionPage({
@@ -8,5 +9,12 @@ export default async function VerifierInspectionPage({
 }) {
   const { id } = await params;
   const session = await getSession();
-  return <InspectionForm inspectionId={id} authToken={session?.token} />;
+  const inspection = await getVerifierInspection(id);
+  return (
+    <InspectionForm
+      inspectionId={id}
+      propertyId={inspection?.propertyId}
+      authToken={session?.token}
+    />
+  );
 }

@@ -41,6 +41,21 @@ export class InspectionsController {
     return this.inspections.assign(id, body.verifierId, request.user);
   }
 
+  @Get("inspections/review")
+  @Roles("ADMIN")
+  reviewQueue() {
+    return this.inspections.listForAdmin();
+  }
+
+  @Get("inspections/:id")
+  @Roles("VERIFIER")
+  get(
+    @Req() request: { user: { id: string } },
+    @Param("id") id: string,
+  ) {
+    return this.inspections.getForVerifier(id, request.user.id);
+  }
+
   @Post("inspections/:id/submit")
   @Roles("VERIFIER")
   submit(
@@ -51,6 +66,7 @@ export class InspectionsController {
       checklist: Record<string, unknown>;
       evidence: Array<{ mediaId: string }>;
       notes?: string;
+      requestKey?: string;
     },
   ) {
     return this.inspections.submitPendingUpload(id, request.user.id, body);

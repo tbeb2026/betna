@@ -19,6 +19,7 @@ type Submission = {
   checklist: ChecklistAnswers;
   evidence?: Array<{ mediaId: string }>;
   notes?: string;
+  requestKey?: string;
 };
 
 @Injectable()
@@ -58,6 +59,20 @@ export class InspectionsService {
     return this.assignments.listForVerifier(verifierId, territoryIds);
   }
 
+  async getForVerifier(inspectionId: string, verifierId: string) {
+    const inspection = await this.findInspection(inspectionId);
+    await this.assertVerifierAccess(inspection, verifierId);
+    return inspection;
+  }
+
+  listForAdmin() {
+    return this.prisma.inspection.findMany({
+      where: { status: "READY_FOR_REVIEW" },
+      include: { property: true, evidence: true },
+      orderBy: { updatedAt: "desc" },
+    });
+  }
+
   getChecklist(category: string) {
     return this.checklist.get(category);
   }
@@ -69,7 +84,12 @@ export class InspectionsService {
   ) {
     const inspection = await this.findInspection(inspectionId);
     await this.assertVerifierAccess(inspection, verifierId);
+    const requestKey = input.requestKey?.trim() || undefined;
+    if (requestKey && inspection.submissionRequestKey === requestKey) {
+      return inspection;
+    }
     const category = String(inspection.property?.category ?? "residential");
+    const definition = this.checklist.get(category);
     this.checklist.assertComplete(category, input.checklist);
     if (!input.evidence?.length) {
       throw new BadRequestException(
@@ -88,6 +108,8 @@ export class InspectionsService {
         notes: input.notes?.trim() || null,
         inspectedAt: new Date(),
         requiredEvidenceSynced: false,
+        checklistVersion: definition.version,
+        submissionRequestKey: requestKey,
       },
       include: { evidence: true, property: true },
     });
@@ -105,13 +127,21 @@ export class InspectionsService {
       );
     }
     const inspection = await this.findInspection(inspectionId);
+    const requiredEvidence = await this.currentEvidence(inspection);
+    if (
+      (inspection.status === "READY_FOR_REVIEW" ||
+        inspection.status === "APPROVED") &&
+      inspection.requiredEvidenceSynced &&
+      requiredEvidence.some((entry: any) => entry.mediaId === mediaId)
+    ) {
+      return inspection;
+    }
     if (inspection.status !== "PENDING_UPLOAD") {
       throw new ConflictException(
         "Inspection is not waiting for evidence uploads",
       );
     }
     if (verifierId) await this.assertVerifierAccess(inspection, verifierId);
-    const requiredEvidence = await this.currentEvidence(inspection);
     if (!requiredEvidence.some((entry: any) => entry.mediaId === mediaId)) {
       throw new BadRequestException(
         "Evidence item is not part of the required evidence for this inspection",
@@ -201,6 +231,11 @@ export class InspectionsService {
     ) {
       throw new ConflictException(
         "Only synced, validated reports are ready for approval",
+      );
+    }
+    if (inspection.status !== "READY_FOR_REVIEW") {
+      throw new ConflictException(
+        "Only reports ready for review can be approved or rejected",
       );
     }
     const updated = await this.prisma.inspection.update({

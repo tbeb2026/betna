@@ -1,13 +1,21 @@
 export type OfflineInspectionDraft = {
   inspectionId: string;
   checklist: Record<string, unknown>;
-  evidence: Array<{ mediaId: string; file?: string }>;
+  evidence: Array<{
+    mediaId?: string;
+    file?: string;
+    fileName?: string;
+    contentType?: string;
+    sizeBytes?: number;
+  }>;
+  requestKey?: string;
   notes?: string;
   submitted?: boolean;
   updatedAt: string;
 };
 
 type QueueStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+type EncryptedEntry = { iv: string; data: string };
 
 const QUEUE_KEY = "betna:verification:offline-queue";
 const KEY_KEY = "betna:verification:offline-key";
@@ -61,18 +69,21 @@ export class OfflineInspectionQueue {
     const storage = storageOrDefault(this.storage);
     if (!storage) return;
     const key = await encryptionKey(storage);
-    const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
-    const plaintext = new TextEncoder().encode(JSON.stringify(draft));
-    const ciphertext = await globalThis.crypto.subtle.encrypt(
-      { name: "AES-GCM", iv },
-      key,
-      plaintext,
-    );
-    const queue = this.readEncrypted(storage);
-    queue.push({
-      iv: bytesToBase64(iv),
-      data: bytesToBase64(new Uint8Array(ciphertext)),
-    });
+    const queue: EncryptedEntry[] = [];
+    let replacement = draft;
+    for (const item of this.readEncrypted(storage)) {
+      try {
+        const existing = await this.decrypt(item, key);
+        if (existing.inspectionId !== draft.inspectionId) {
+          queue.push(item);
+        } else if (existing.submitted) {
+          replacement = { ...draft, submitted: true };
+        }
+      } catch {
+        // Corrupt entries cannot be retried and should not block this draft.
+      }
+    }
+    queue.push(await this.encrypt(replacement, key));
     storage.setItem(QUEUE_KEY, JSON.stringify(queue));
   }
 
@@ -96,37 +107,29 @@ export class OfflineInspectionQueue {
     storage?.removeItem(QUEUE_KEY);
   }
 
-  async flush(upload: (draft: OfflineInspectionDraft) => Promise<void>) {
+  async flush(
+    upload: (
+      draft: OfflineInspectionDraft,
+      update: (draft: OfflineInspectionDraft) => Promise<void>,
+    ) => Promise<void>,
+  ) {
     const storage = storageOrDefault(this.storage);
     if (!storage) return 0;
-    const key = await encryptionKey(storage);
-    let uploaded = 0;
-    while (true) {
-      const queue = this.readEncrypted(storage);
-      if (!queue.length) return uploaded;
-
-      let draft: OfflineInspectionDraft;
-      try {
-        draft = await this.decrypt(queue[0], key);
-      } catch {
-        // Drop corrupt entries so they cannot block valid drafts behind them.
-        queue.shift();
-        storage.setItem(QUEUE_KEY, JSON.stringify(queue));
-        continue;
-      }
-
-      // Remove an entry only after its upload succeeds. A failed upload leaves
-      // it at the head of the queue for the next online retry.
-      await upload(draft);
-      queue.shift();
-      storage.setItem(QUEUE_KEY, JSON.stringify(queue));
-      uploaded += 1;
+    const submitted = (await this.list()).filter((draft) => draft.submitted);
+    for (const draft of submitted) {
+      // Updates made after each media upload are encrypted before the queue
+      // entry is removed, so a later failure resumes without re-uploading.
+      await upload(draft, async (updated) => {
+        await this.enqueue({ ...updated, submitted: true });
+      });
+      await this.remove(draft.inspectionId);
     }
+    return submitted.length;
   }
 
   private readEncrypted(
     storage: QueueStorage,
-  ): Array<{ iv: string; data: string }> {
+  ): EncryptedEntry[] {
     try {
       const parsed = JSON.parse(storage.getItem(QUEUE_KEY) ?? "[]");
       return Array.isArray(parsed) ? parsed : [];
@@ -136,7 +139,7 @@ export class OfflineInspectionQueue {
   }
 
   private async decrypt(
-    item: { iv: string; data: string },
+    item: EncryptedEntry,
     key: CryptoKey,
   ): Promise<OfflineInspectionDraft> {
     const plaintext = await globalThis.crypto.subtle.decrypt(
@@ -145,5 +148,38 @@ export class OfflineInspectionQueue {
       base64ToBytes(item.data),
     );
     return JSON.parse(new TextDecoder().decode(plaintext));
+  }
+
+  private async encrypt(
+    draft: OfflineInspectionDraft,
+    key: CryptoKey,
+  ): Promise<EncryptedEntry> {
+    const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
+    const plaintext = new TextEncoder().encode(JSON.stringify(draft));
+    const ciphertext = await globalThis.crypto.subtle.encrypt(
+      { name: "AES-GCM", iv },
+      key,
+      plaintext,
+    );
+    return {
+      iv: bytesToBase64(iv),
+      data: bytesToBase64(new Uint8Array(ciphertext)),
+    };
+  }
+
+  private async remove(inspectionId: string) {
+    const storage = storageOrDefault(this.storage);
+    if (!storage) return;
+    const key = await encryptionKey(storage);
+    const retained: EncryptedEntry[] = [];
+    for (const item of this.readEncrypted(storage)) {
+      try {
+        const draft = await this.decrypt(item, key);
+        if (draft.inspectionId !== inspectionId) retained.push(item);
+      } catch {
+        // Drop corrupt entries while compacting the queue.
+      }
+    }
+    storage.setItem(QUEUE_KEY, JSON.stringify(retained));
   }
 }

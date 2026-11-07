@@ -40,6 +40,27 @@ function makePrisma() {
     string,
     any
   >;
+  const evidenceRows = new Map<string, any[]>();
+  const mediaRows = new Map<string, any>([
+    [
+      "media-1",
+      {
+        id: "media-1",
+        purpose: "INSPECTION_EVIDENCE",
+        status: "CLEAN",
+        propertyId: "property-1",
+      },
+    ],
+    [
+      "media-2",
+      {
+        id: "media-2",
+        purpose: "INSPECTION_EVIDENCE",
+        status: "CLEAN",
+        propertyId: "property-1",
+      },
+    ],
+  ]);
   const prisma: any = {
     inspection: {
       findUnique: vi.fn(async ({ where }: any) => rows.get(where.id) ?? null),
@@ -66,6 +87,26 @@ function makePrisma() {
         return row;
       }),
     },
+    inspectionEvidence: {
+      deleteMany: vi.fn(async ({ where }: any) => {
+        evidenceRows.delete(where.inspectionId);
+      }),
+      createMany: vi.fn(async ({ data }: any) => {
+        const inspectionId = data[0]?.inspectionId;
+        evidenceRows.set(inspectionId, data.map((entry: any) => ({ ...entry })));
+      }),
+      findMany: vi.fn(async ({ where }: any) => evidenceRows.get(where.inspectionId) ?? []),
+      upsert: vi.fn(async ({ where, create, update }: any) => {
+        const inspectionId = where.inspectionId_mediaId.inspectionId;
+        const mediaId = where.inspectionId_mediaId.mediaId;
+        const entries = evidenceRows.get(inspectionId) ?? [];
+        const index = entries.findIndex((entry) => entry.mediaId === mediaId);
+        if (index >= 0) entries[index] = { ...entries[index], ...update };
+        else entries.push({ ...create });
+        evidenceRows.set(inspectionId, entries);
+        return entries[index >= 0 ? index : entries.length - 1];
+      }),
+    },
     user: {
       findUnique: vi.fn(
         async ({ where, include }: any) => users.get(where.id) ?? null,
@@ -80,9 +121,10 @@ function makePrisma() {
     },
     media: {
       findMany: vi.fn(async () => []),
+      findUnique: vi.fn(async ({ where }: any) => mediaRows.get(where.id) ?? null),
     },
   };
-  return { prisma, rows };
+  return { prisma, rows, evidenceRows };
 }
 
 const completeChecklist = {
@@ -136,9 +178,11 @@ describe("InspectionsService", () => {
         checklist: completeChecklist,
         evidence: [{ mediaId: "media-1" }],
         notes: "Visited in person",
+        requestKey: "submission-1",
       },
     );
     expect(pending.status).toBe("PENDING_UPLOAD");
+    expect(pending.checklistVersion).toBe(1);
   });
 
   it("rejects admin approval while evidence is pending upload", async () => {
@@ -162,6 +206,34 @@ describe("InspectionsService", () => {
     ).rejects.toThrow(/sync|ready/i);
   });
 
+  it("returns the persisted result for a repeated submission request", async () => {
+    const { prisma } = makePrisma();
+    const service = new InspectionsService(prisma);
+    await service.assign("inspection-1", "verifier-1", {
+      id: "admin-1",
+      roles: ["ADMIN"],
+    });
+    const input = {
+      checklist: completeChecklist,
+      evidence: [{ mediaId: "media-1" }],
+      requestKey: "submission-idempotent",
+    };
+
+    const first = await service.submitPendingUpload(
+      "inspection-1",
+      "verifier-1",
+      input,
+    );
+    const second = await service.submitPendingUpload(
+      "inspection-1",
+      "verifier-1",
+      input,
+    );
+
+    expect(second).toEqual(first);
+    expect(prisma.inspectionEvidence.createMany).toHaveBeenCalledTimes(1);
+  });
+
   it("retries an offline evidence upload and becomes ready after synchronization", async () => {
     const { prisma } = makePrisma();
     const service = new InspectionsService(prisma);
@@ -182,6 +254,33 @@ describe("InspectionsService", () => {
     });
     expect(ready.status).toBe("READY_FOR_REVIEW");
     expect(ready.requiredEvidenceSynced).toBe(true);
+    const repeated = await service.markEvidenceSynced(
+      "inspection-1",
+      "media-1",
+      { ok: true },
+    );
+    expect(repeated).toEqual(ready);
+  });
+
+  it("only allows review decisions from READY_FOR_REVIEW", async () => {
+    const { prisma } = makePrisma();
+    const service = new InspectionsService(prisma);
+    await service.assign("inspection-1", "verifier-1", {
+      id: "admin-1",
+      roles: ["ADMIN"],
+    });
+    await service.submitPendingUpload("inspection-1", "verifier-1", {
+      checklist: completeChecklist,
+      evidence: [{ mediaId: "media-1" }],
+    });
+
+    await expect(
+      service.adminReview(
+        "inspection-1",
+        { id: "admin-1", roles: ["ADMIN"] },
+        "REJECTED",
+      ),
+    ).rejects.toThrow(/ready/i);
   });
 
   it("keeps verifier listings restricted when no territory context is available", async () => {

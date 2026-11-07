@@ -21,4 +21,25 @@ describe("InspectionsController", () => {
       { id: "admin-1", roles: ["ADMIN"] },
     );
   });
+
+  it("passes the authenticated verifier identity to evidence synchronization", async () => {
+    const inspections = {
+      markEvidenceSynced: vi.fn().mockResolvedValue({ status: "READY_FOR_REVIEW" }),
+    };
+    const controller = new InspectionsController(inspections as any);
+
+    await controller.sync(
+      { user: { id: "verifier-1" } },
+      "inspection-1",
+      "media-1",
+      { ok: true, validated: true },
+    );
+
+    expect(inspections.markEvidenceSynced).toHaveBeenCalledWith(
+      "inspection-1",
+      "media-1",
+      { ok: true, validated: true },
+      "verifier-1",
+    );
+  });
 });
