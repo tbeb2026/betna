@@ -22,8 +22,8 @@ function validForm() {
   form.set("publicLatitude", "-1.2921");
   form.set("publicLongitude", "36.7875");
   form.set("exactAddress", "12 Example Lane, Kilimani, Nairobi");
-  form.set("exactLatitude", "-1.292112");
-  form.set("exactLongitude", "36.787511");
+  form.set("exactLatitude", "-1.2941");
+  form.set("exactLongitude", "36.7895");
   form.set("shortStayPrice", "6500");
   form.set("shortStayMinimumNights", "2");
   form.set("longTermPrice", "120000");
@@ -48,8 +48,8 @@ describe("owner property form payload", () => {
       },
       exactLocation: {
         address: "12 Example Lane, Kilimani, Nairobi",
-        latitude: -1.292112,
-        longitude: 36.787511,
+        latitude: -1.2941,
+        longitude: 36.7895,
       },
       authorizationAttested: true,
       offerings: [

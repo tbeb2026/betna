@@ -21,7 +21,7 @@ function value(input: unknown): string {
 }
 
 function offsetCoordinate(value: number): number {
-  return Number((value + 0.0001).toFixed(6));
+  return Number((value + 0.002).toFixed(6));
 }
 
 export function PropertyForm({

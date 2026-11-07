@@ -18,6 +18,8 @@ import { TaxonomyService } from "./taxonomy.service";
 
 type PropertyRecord = any;
 
+const MIN_PUBLIC_EXACT_COORDINATE_SEPARATION = 0.001;
+
 @Injectable()
 export class PropertiesService {
   constructor(
@@ -35,6 +37,7 @@ export class PropertiesService {
       input.countryCode,
       input.countryId,
     );
+    await this.assertManagedCity(input.cityId, countryId);
 
     return this.prisma.$transaction(async (tx) =>
       tx.property.create({
@@ -93,6 +96,7 @@ export class PropertiesService {
       merged.countryCode,
       merged.countryId,
     );
+    await this.assertManagedCity(merged.cityId, countryId);
     return this.prisma.property.update({
       where: { id: propertyId },
       data: {
@@ -278,6 +282,21 @@ export class PropertiesService {
     return country.id;
   }
 
+  private async assertManagedCity(
+    cityId: string,
+    countryId: string,
+  ): Promise<void> {
+    const city = await this.prisma.city?.findUnique?.({
+      where: { id: cityId },
+      select: { countryId: true },
+    });
+    if (!city?.countryId || city.countryId !== countryId) {
+      throw new BadRequestException(
+        "City does not exist or does not belong to the selected country",
+      );
+    }
+  }
+
   private async normalizeAndValidate(
     input: CreatePropertyInput,
   ): Promise<OfferingInput[]> {
@@ -301,12 +320,13 @@ export class PropertiesService {
     }
     this.assertCoordinates(input.publicLocation, "public location");
     this.assertCoordinates(input.exactLocation, "exact location");
-    if (
-      input.publicLocation.latitude === input.exactLocation.latitude &&
-      input.publicLocation.longitude === input.exactLocation.longitude
-    ) {
+    const coordinateSeparation = Math.hypot(
+      input.publicLocation.latitude - input.exactLocation.latitude,
+      input.publicLocation.longitude - input.exactLocation.longitude,
+    );
+    if (coordinateSeparation < MIN_PUBLIC_EXACT_COORDINATE_SEPARATION) {
       throw new BadRequestException(
-        "Public location must remain approximate and differ from the exact location",
+        `Public location must be meaningfully approximate and at least ${MIN_PUBLIC_EXACT_COORDINATE_SEPARATION} degrees from the exact location`,
       );
     }
     if (!Array.isArray(input.offerings) || input.offerings.length === 0) {

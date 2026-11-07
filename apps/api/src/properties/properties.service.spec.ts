@@ -24,8 +24,8 @@ const baseInput = {
   },
   exactLocation: {
     address: "12 Example Lane, Kilimani, Nairobi",
-    latitude: -1.292112,
-    longitude: 36.787511,
+    latitude: -1.2941,
+    longitude: 36.7895,
   },
   authorizationAttested: true,
   offerings: [
@@ -92,6 +92,15 @@ function makePrisma() {
           ? { id: "country-ke", code: "KE", currency: "KES" }
           : where.code === "UG" || where.id === "country-ug"
             ? { id: "country-ug", code: "UG", currency: "UGX" }
+            : null,
+      ),
+    },
+    city: {
+      findUnique: vi.fn(async ({ where }: any) =>
+        where.id === "city-ke-nairobi"
+          ? { id: where.id, countryId: "country-ke" }
+          : where.id === "city-ug-kampala"
+            ? { id: where.id, countryId: "country-ug" }
             : null,
       ),
     },
@@ -179,6 +188,49 @@ describe("PropertiesService", () => {
     expect(prisma.property.create).not.toHaveBeenCalled();
   });
 
+  it("rejects a public pin that is only trivially separated from the exact location", async () => {
+    const { prisma } = makePrisma();
+    const service = new PropertiesService(prisma);
+
+    await expect(
+      service.createDraft(owner.id, {
+        ...baseInput,
+        publicLocation: {
+          ...baseInput.publicLocation,
+          latitude: baseInput.exactLocation.latitude - 0.0001,
+          longitude: baseInput.exactLocation.longitude,
+        },
+      }),
+    ).rejects.toThrow(/meaningfully approximate|separation|0\.001/i);
+    expect(prisma.property.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a city that belongs to a different country", async () => {
+    const { prisma } = makePrisma();
+    const service = new PropertiesService(prisma);
+
+    await expect(
+      service.createDraft(owner.id, {
+        ...baseInput,
+        cityId: "city-ug-kampala",
+      }),
+    ).rejects.toThrow(/city.*country|country.*city/i);
+    expect(prisma.property.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unknown city id before persistence", async () => {
+    const { prisma } = makePrisma();
+    const service = new PropertiesService(prisma);
+
+    await expect(
+      service.createDraft(owner.id, {
+        ...baseInput,
+        cityId: "city-unknown",
+      }),
+    ).rejects.toThrow(/city.*country|country.*city/i);
+    expect(prisma.property.create).not.toHaveBeenCalled();
+  });
+
   it("rejects a country id that does not match the submitted country code", async () => {
     const { prisma } = makePrisma();
     const service = new PropertiesService(prisma);
@@ -228,6 +280,7 @@ describe("PropertiesService", () => {
       ...baseInput,
       countryCode: "UG",
       countryId: "country-ug",
+      cityId: "city-ug-kampala",
       offerings: baseInput.offerings.map((offering) => ({
         ...offering,
         currency: "UGX" as const,

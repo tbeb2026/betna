@@ -43,10 +43,10 @@ test("owner can open a submission form with taxonomy, private address, and both 
   await expect(page.getByLabel("Approximate latitude")).toHaveValue("-1.2921");
   await expect(page.getByLabel("Approximate longitude")).toHaveValue("36.7875");
   await expect(page.getByLabel("Exact latitude (private)")).toHaveValue(
-    "-1.292",
+    "-1.2901",
   );
   await expect(page.getByLabel("Exact longitude (private)")).toHaveValue(
-    "36.7876",
+    "36.7895",
   );
   await expect(page.getByLabel("Exact address (private)")).toBeVisible();
   await expect(page.getByLabel("Short-stay public price (KES)")).toBeVisible();
