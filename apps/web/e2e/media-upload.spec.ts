@@ -34,3 +34,61 @@ test("owner sees a validated direct-to-storage media uploader on a draft", async
     page.getByRole("button", { name: "Upload photos" }),
   ).toBeDisabled();
 });
+
+test("owner upload sends the session bearer to the API and completes a direct upload", async ({
+  context,
+  page,
+}) => {
+  const session = testSessionCookie(["OWNER"]);
+  await context.addCookies([
+    {
+      name: "betna_session",
+      value: session,
+      url: "http://127.0.0.1:3100",
+    },
+  ]);
+
+  let targetAuthorization = "";
+  let completeAuthorization = "";
+  await page.route(
+    "http://localhost:4000/media/upload-target",
+    async (route) => {
+      targetAuthorization = route.request().headers().authorization ?? "";
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          mediaId: "media-e2e",
+          uploadUrl: "http://storage.local/upload/media-e2e",
+          headers: { "Content-Type": "image/jpeg" },
+          maxBytes: 10 * 1024 * 1024,
+        }),
+      });
+    },
+  );
+  await page.route("http://storage.local/upload/media-e2e", async (route) => {
+    await route.fulfill({ status: 200 });
+  });
+  await page.route(
+    "http://localhost:4000/media/media-e2e/complete",
+    async (route) => {
+      completeAuthorization = route.request().headers().authorization ?? "";
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: "{}",
+      });
+    },
+  );
+
+  await page.goto("/en/owner/properties/property-1/edit");
+  await page.getByLabel("Choose images").setInputFiles({
+    name: "house.jpg",
+    mimeType: "image/jpeg",
+    buffer: Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
+  });
+  await page.getByRole("button", { name: "Upload photos" }).click();
+  await expect(page.getByRole("status")).toHaveText(/Upload complete/);
+  expect(targetAuthorization).toBe(`Bearer ${session}`);
+  expect(completeAuthorization).toBe(`Bearer ${session}`);
+});

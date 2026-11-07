@@ -1,5 +1,6 @@
 import { PropertyForm } from "../../../../../../features/properties/property-form";
 import { MediaUploader } from "../../../../../../features/media/uploader";
+import { getSession } from "../../../../../../lib/auth";
 import {
   getOwnerProperty,
   getOwnerPropertyOptions,
@@ -8,12 +9,13 @@ import {
 export default async function EditOwnerPropertyPage({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{ locale: string; id: string }>;
 }) {
   const { id } = await params;
-  const [options, property] = await Promise.all([
+  const [options, property, session] = await Promise.all([
     getOwnerPropertyOptions(),
     getOwnerProperty(id),
+    getSession(),
   ]);
   return (
     <div className="portal-card property-card">
@@ -24,7 +26,7 @@ export default async function EditOwnerPropertyPage({
         options={options}
         initialProperty={property}
       />
-      <MediaUploader propertyId={id} />
+      <MediaUploader propertyId={id} authToken={session?.token} />
     </div>
   );
 }

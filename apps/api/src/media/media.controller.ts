@@ -36,8 +36,8 @@ export class MediaController {
   @Post(":id/complete")
   @UseGuards(AuthSessionGuard, RolesGuard)
   @Roles("OWNER", "VERIFIER", "ADMIN")
-  complete(@Param("id") id: string) {
-    return this.media.completeUpload(id);
+  complete(@Req() request: RequestWithUser, @Param("id") id: string) {
+    return this.media.completeUpload(id, request.user);
   }
 
   @Get(":id/variants")

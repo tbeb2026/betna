@@ -94,7 +94,7 @@ describe("MediaService", () => {
     const prisma = makePrisma();
     const service = new MediaService(prisma, storage as any);
 
-    const completed = await service.completeUpload("media-1");
+    const completed = await service.completeUpload("media-1", owner);
     const variants = await service.getPublicVariants("media-1");
 
     expect(completed.status).toBe("CLEAN");
@@ -120,7 +120,7 @@ describe("MediaService", () => {
     const prisma = makePrisma();
     const service = new MediaService(prisma, storage as any);
 
-    await expect(service.completeUpload("media-1")).rejects.toThrow(
+    await expect(service.completeUpload("media-1", owner)).rejects.toThrow(
       "image processor unavailable",
     );
     expect(prisma.media.update).not.toHaveBeenCalled();
@@ -141,6 +141,36 @@ describe("MediaService", () => {
 
     await expect(service.getPublicVariants("media-1")).rejects.toThrow(
       /publicly available|prefix/i,
+    );
+  });
+
+  it("does not let an unrelated owner complete another owner's upload", async () => {
+    const prisma = makePrisma();
+    prisma.property.findFirst.mockResolvedValueOnce(null);
+    const service = new MediaService(prisma, makeStorage() as any);
+
+    await expect(
+      service.completeUpload("media-1", {
+        id: "other-owner",
+        roles: ["OWNER"],
+      }),
+    ).rejects.toThrow(/property access denied|not authorized/i);
+  });
+
+  it("passes the claimed byte limit and content type into the scan boundary", async () => {
+    const storage = makeStorage();
+    const prisma = makePrisma();
+    const service = new MediaService(prisma, storage as any);
+
+    await service.completeUpload("media-1", owner);
+
+    expect(storage.scan).toHaveBeenCalledWith(
+      "public/listings/property-1/media-1/original.jpg",
+      {
+        contentType: "image/jpeg",
+        maxBytes: 1200,
+        expectedBytes: 1200,
+      },
     );
   });
 });

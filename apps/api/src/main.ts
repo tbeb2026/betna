@@ -1,10 +1,17 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
-import { getApiPort } from "./runtime";
+import { getApiCorsOrigins, getApiPort } from "./runtime";
 
 export async function createApiApp() {
-  return NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule);
+  app.enableCors({
+    origin: getApiCorsOrigins(),
+    credentials: true,
+    methods: ["GET", "HEAD", "POST", "PUT", "OPTIONS"],
+    allowedHeaders: ["Accept", "Authorization", "Content-Type"],
+  });
+  return app;
 }
 
 async function bootstrap(): Promise<void> {

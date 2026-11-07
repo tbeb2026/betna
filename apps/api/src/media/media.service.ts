@@ -134,17 +134,13 @@ export class MediaService {
     };
   }
 
-  async completeUpload(mediaId: string) {
-    try {
-      const media = await this.prisma.media.findUnique({
-        where: { id: mediaId },
-      });
-      if (!media) throw new NotFoundException("Media not found");
-      return await this.scanJob.process(mediaId);
-    } catch (error) {
-      if (error instanceof NotFoundException) throw error;
-      throw error;
+  async completeUpload(mediaId: string, actor: MediaActor | string) {
+    const media = await this.findMedia(mediaId);
+    await this.assertMediaCompletionAccess(this.normalizeActor(actor), media);
+    if (media.status !== "PENDING") {
+      throw new BadRequestException("Media has already been processed");
     }
+    return this.scanJob.process(mediaId);
   }
 
   async getPublicVariants(mediaId: string) {
@@ -244,6 +240,16 @@ export class MediaService {
       select: { id: true, ownerId: true },
     });
     if (!property) throw new ForbiddenException("Property access denied");
+  }
+
+  private async assertMediaCompletionAccess(actor: MediaActor, media: any) {
+    const roles = this.roles(actor);
+    if (roles.includes("ADMIN") || roles.includes("VERIFIER")) return;
+    if (media.purpose === "LISTING" && roles.includes("OWNER")) {
+      await this.assertPropertyAccess(actor, media.propertyId, "LISTING");
+      return;
+    }
+    throw new ForbiddenException("Media completion is not authorized");
   }
 
   private assertUploadType(contentType: string, fileName: string) {

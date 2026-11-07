@@ -16,6 +16,7 @@ type MediaUploaderProps = {
   purpose?: MediaPurpose;
   apiBaseUrl?: string;
   maxBytes?: number;
+  authToken?: string;
 };
 
 const DEFAULT_MAX_BYTES = 10 * 1024 * 1024;
@@ -26,6 +27,7 @@ export function MediaUploader({
   purpose = "LISTING",
   apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000",
   maxBytes = DEFAULT_MAX_BYTES,
+  authToken,
 }: MediaUploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [selected, setSelected] = useState<File[]>([]);
@@ -62,6 +64,7 @@ export function MediaUploader({
             headers: {
               "Content-Type": "application/json",
               Accept: "application/json",
+              ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
             },
             credentials: "include",
             body: JSON.stringify({
@@ -86,7 +89,10 @@ export function MediaUploader({
           `${apiBaseUrl.replace(/\/$/, "")}/media/${target.mediaId}/complete`,
           {
             method: "POST",
-            headers: { Accept: "application/json" },
+            headers: {
+              Accept: "application/json",
+              ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+            },
             credentials: "include",
           },
         );

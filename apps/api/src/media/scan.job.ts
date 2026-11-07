@@ -8,6 +8,8 @@ export type MediaScanRecord = {
   objectKey: string;
   status: "PENDING" | "CLEAN" | "REJECTED";
   isPublic: boolean;
+  contentType: string;
+  sizeBytes: bigint | number | string;
   [key: string]: unknown;
 };
 
@@ -24,7 +26,11 @@ export class MediaScanJob {
     })) as MediaScanRecord | null;
     if (!media) throw new Error("Media not found");
 
-    const result = await this.storage.scan(media.objectKey);
+    const result = await this.storage.scan(media.objectKey, {
+      contentType: media.contentType,
+      maxBytes: Number(media.sizeBytes),
+      expectedBytes: Number(media.sizeBytes),
+    });
     const status = result.clean ? "CLEAN" : "REJECTED";
     const isPublic = result.clean && media.purpose === "LISTING";
     // Generate listing derivatives before publishing the database row. If the
