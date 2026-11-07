@@ -77,7 +77,7 @@ export class OfflineInspectionQueue {
         if (existing.inspectionId !== draft.inspectionId) {
           queue.push(item);
         } else if (existing.submitted) {
-          replacement = { ...draft, submitted: true };
+          replacement = existing;
         }
       } catch {
         // Corrupt entries cannot be retried and should not block this draft.

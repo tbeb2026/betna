@@ -283,6 +283,65 @@ describe("InspectionsService", () => {
     ).rejects.toThrow(/ready/i);
   });
 
+  it("allows a rejected inspection to resubmit with its same stable request key", async () => {
+    const { prisma } = makePrisma();
+    const service = new InspectionsService(prisma);
+    await service.assign("inspection-1", "verifier-1", {
+      id: "admin-1",
+      roles: ["ADMIN"],
+    });
+    const input = {
+      checklist: completeChecklist,
+      evidence: [{ mediaId: "media-1" }],
+      requestKey: "stable-submission-key",
+    };
+    await service.submitPendingUpload("inspection-1", "verifier-1", input);
+    await service.markEvidenceSynced("inspection-1", "media-1", {
+      ok: true,
+    });
+    await service.adminReview(
+      "inspection-1",
+      { id: "admin-1", roles: ["ADMIN"] },
+      "REJECTED",
+    );
+
+    const resubmitted = await service.submitPendingUpload(
+      "inspection-1",
+      "verifier-1",
+      input,
+    );
+
+    expect(resubmitted.status).toBe("PENDING_UPLOAD");
+  });
+
+  it("checks assigned verifier access before an idempotent sync replay", async () => {
+    const { prisma } = makePrisma();
+    const service = new InspectionsService(prisma);
+    await service.assign("inspection-1", "verifier-1", {
+      id: "admin-1",
+      roles: ["ADMIN"],
+    });
+    await service.submitPendingUpload("inspection-1", "verifier-1", {
+      checklist: completeChecklist,
+      evidence: [{ mediaId: "media-1" }],
+    });
+    await service.markEvidenceSynced(
+      "inspection-1",
+      "media-1",
+      { ok: true },
+      "verifier-1",
+    );
+
+    await expect(
+      service.markEvidenceSynced(
+        "inspection-1",
+        "media-1",
+        { ok: true },
+        "verifier-2",
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it("keeps verifier listings restricted when no territory context is available", async () => {
     const { prisma } = makePrisma();
     prisma.inspection.findMany.mockImplementation(async ({ where }: any) => {

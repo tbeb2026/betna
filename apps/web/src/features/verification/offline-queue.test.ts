@@ -59,15 +59,17 @@ describe("OfflineInspectionQueue", () => {
   it("does not downgrade a submitted operation when a later draft save arrives", async () => {
     const storage = new MemoryStorage();
     const queue = new OfflineInspectionQueue(storage);
-    await queue.enqueue({ ...draft("inspection-1"), submitted: true });
-    await queue.enqueue(draft("inspection-1"));
+    const submitted = { ...draft("inspection-1"), notes: "submitted", submitted: true };
+    await queue.enqueue(submitted);
+    await queue.enqueue({ ...draft("inspection-1"), notes: "later draft" });
     const uploaded: string[] = [];
 
     await queue.flush(async (entry) => {
-      uploaded.push(entry.inspectionId);
+      uploaded.push(`${entry.inspectionId}:${entry.notes}`);
     });
 
-    expect(uploaded).toEqual(["inspection-1"]);
+    expect(uploaded).toEqual(["inspection-1:submitted"]);
+    await expect(queue.list()).resolves.toEqual([]);
   });
 
   it("removes only successfully uploaded drafts when a later retry fails", async () => {

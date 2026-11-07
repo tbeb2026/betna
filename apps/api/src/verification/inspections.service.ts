@@ -85,7 +85,11 @@ export class InspectionsService {
     const inspection = await this.findInspection(inspectionId);
     await this.assertVerifierAccess(inspection, verifierId);
     const requestKey = input.requestKey?.trim() || undefined;
-    if (requestKey && inspection.submissionRequestKey === requestKey) {
+    if (
+      requestKey &&
+      inspection.submissionRequestKey === requestKey &&
+      inspection.status !== "REJECTED"
+    ) {
       return inspection;
     }
     const category = String(inspection.property?.category ?? "residential");
@@ -128,6 +132,7 @@ export class InspectionsService {
     }
     const inspection = await this.findInspection(inspectionId);
     const requiredEvidence = await this.currentEvidence(inspection);
+    if (verifierId) await this.assertVerifierAccess(inspection, verifierId);
     if (
       (inspection.status === "READY_FOR_REVIEW" ||
         inspection.status === "APPROVED") &&
@@ -141,7 +146,6 @@ export class InspectionsService {
         "Inspection is not waiting for evidence uploads",
       );
     }
-    if (verifierId) await this.assertVerifierAccess(inspection, verifierId);
     if (!requiredEvidence.some((entry: any) => entry.mediaId === mediaId)) {
       throw new BadRequestException(
         "Evidence item is not part of the required evidence for this inspection",
