@@ -83,3 +83,13 @@ Correction-pass commits:
 - `4c18572` — persisted idempotency, real offline evidence sync, functional queues/pages, checklist version, and review-transition fixes.
 
 Updated self-verdict: **P1 review findings addressed in code and focused tests; integration E2E/database execution remains environment-blocked.**
+
+## Review correction pass 2
+
+Re-review regressions were fixed:
+
+- A rejected inspection with the same stable request key now starts a new `PENDING_UPLOAD` submission; active/replayed submissions in DRAFT/PENDING_UPLOAD/READY/APPROVED retain idempotent identical-result behavior.
+- Evidence-sync idempotent replay now performs assigned-verifier authorization before returning an existing READY/APPROVED result, preventing cross-verifier retrieval.
+- Queue deduplication preserves the entire submitted payload and media progress when a later save-draft entry for the same inspection arrives; it cannot downgrade or overwrite the submitted operation.
+
+Regression tests added cover all three cases. Focused API tests pass (13 inspection-service tests); focused offline queue tests pass (3 tests); API and web typechecks pass. Generated `apps/web/tsconfig.tsbuildinfo` was removed before commit.
