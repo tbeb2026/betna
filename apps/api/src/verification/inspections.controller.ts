@@ -49,11 +49,17 @@ export class InspectionsController {
   @Post("inspections/:id/evidence/:mediaId/sync")
   @Roles("VERIFIER")
   sync(
+    @Req() request: { user: { id: string } },
     @Param("id") id: string,
     @Param("mediaId") mediaId: string,
     @Body() body: { ok?: boolean; validated?: boolean },
   ) {
-    return this.inspections.markEvidenceSynced(id, mediaId, body);
+    return this.inspections.markEvidenceSynced(
+      id,
+      mediaId,
+      body,
+      request.user.id,
+    );
   }
 
   @Patch("inspections/:id/review")

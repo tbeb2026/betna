@@ -83,12 +83,7 @@ export class OfflineInspectionQueue {
     const drafts: OfflineInspectionDraft[] = [];
     for (const item of this.readEncrypted(storage)) {
       try {
-        const plaintext = await globalThis.crypto.subtle.decrypt(
-          { name: "AES-GCM", iv: base64ToBytes(item.iv) },
-          key,
-          base64ToBytes(item.data),
-        );
-        drafts.push(JSON.parse(new TextDecoder().decode(plaintext)));
+        drafts.push(await this.decrypt(item, key));
       } catch {
         // A corrupt entry is never returned to the form.
       }
@@ -102,12 +97,31 @@ export class OfflineInspectionQueue {
   }
 
   async flush(upload: (draft: OfflineInspectionDraft) => Promise<void>) {
-    const drafts = await this.list();
-    for (const draft of drafts) {
+    const storage = storageOrDefault(this.storage);
+    if (!storage) return 0;
+    const key = await encryptionKey(storage);
+    let uploaded = 0;
+    while (true) {
+      const queue = this.readEncrypted(storage);
+      if (!queue.length) return uploaded;
+
+      let draft: OfflineInspectionDraft;
+      try {
+        draft = await this.decrypt(queue[0], key);
+      } catch {
+        // Drop corrupt entries so they cannot block valid drafts behind them.
+        queue.shift();
+        storage.setItem(QUEUE_KEY, JSON.stringify(queue));
+        continue;
+      }
+
+      // Remove an entry only after its upload succeeds. A failed upload leaves
+      // it at the head of the queue for the next online retry.
       await upload(draft);
+      queue.shift();
+      storage.setItem(QUEUE_KEY, JSON.stringify(queue));
+      uploaded += 1;
     }
-    if (drafts.length) await this.clear();
-    return drafts.length;
   }
 
   private readEncrypted(
@@ -119,5 +133,17 @@ export class OfflineInspectionQueue {
     } catch {
       return [];
     }
+  }
+
+  private async decrypt(
+    item: { iv: string; data: string },
+    key: CryptoKey,
+  ): Promise<OfflineInspectionDraft> {
+    const plaintext = await globalThis.crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: base64ToBytes(item.iv) },
+      key,
+      base64ToBytes(item.data),
+    );
+    return JSON.parse(new TextDecoder().decode(plaintext));
   }
 }

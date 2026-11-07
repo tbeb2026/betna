@@ -49,8 +49,18 @@ export class AssignmentsService {
   }
 
   async listForVerifier(verifierId: string, territoryIds?: string[]) {
-    const where: Record<string, unknown> = { verifierId };
-    if (territoryIds?.length) where.territoryId = { in: territoryIds };
+    let allowedTerritories = territoryIds;
+    if (!allowedTerritories) {
+      const verifier = await this.prisma.user.findUnique({
+        where: { id: verifierId },
+        include: { territoryAssignments: true },
+      });
+      allowedTerritories = this.territories(verifier);
+    }
+    const where: Record<string, unknown> = {
+      verifierId,
+      territoryId: { in: allowedTerritories },
+    };
     return this.prisma.inspection.findMany({
       where,
       include: { property: true, evidence: true },

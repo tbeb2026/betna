@@ -183,4 +183,102 @@ describe("InspectionsService", () => {
     expect(ready.status).toBe("READY_FOR_REVIEW");
     expect(ready.requiredEvidenceSynced).toBe(true);
   });
+
+  it("keeps verifier listings restricted when no territory context is available", async () => {
+    const { prisma } = makePrisma();
+    prisma.inspection.findMany.mockImplementation(async ({ where }: any) => {
+      if (where.territoryId?.in) {
+        return where.territoryId.in.includes("territory-1")
+          ? [{ ...inspection, verifierId: "verifier-1" }]
+          : [];
+      }
+      return [{ ...inspection, verifierId: "verifier-1" }];
+    });
+    const service = new InspectionsService(prisma);
+
+    const visible = await service.listForVerifier("verifier-1", []);
+
+    expect(visible).toEqual([]);
+    expect(prisma.inspection.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ territoryId: { in: [] } }),
+      }),
+    );
+  });
+
+  it("does not allow an unrelated evidence item to complete synchronization", async () => {
+    const { prisma } = makePrisma();
+    const service = new InspectionsService(prisma);
+    await service.assign("inspection-1", "verifier-1", {
+      id: "admin-1",
+      roles: ["ADMIN"],
+    });
+    await service.submitPendingUpload("inspection-1", "verifier-1", {
+      checklist: completeChecklist,
+      evidence: [{ mediaId: "media-1" }],
+    });
+
+    await expect(
+      service.markEvidenceSynced("inspection-1", "media-2", { ok: true }),
+    ).rejects.toThrow(/required evidence/i);
+  });
+
+  it("rejects synchronization for evidence media that does not exist", async () => {
+    const { prisma } = makePrisma();
+    prisma.media.findUnique = vi.fn(async () => null);
+    const service = new InspectionsService(prisma);
+    await service.assign("inspection-1", "verifier-1", {
+      id: "admin-1",
+      roles: ["ADMIN"],
+    });
+    await service.submitPendingUpload("inspection-1", "verifier-1", {
+      checklist: completeChecklist,
+      evidence: [{ mediaId: "media-1" }],
+    });
+
+    await expect(
+      service.markEvidenceSynced("inspection-1", "media-1", { ok: true }),
+    ).rejects.toThrow(/media.*not found/i);
+  });
+
+  it("restricts evidence synchronization to the assigned verifier", async () => {
+    const { prisma } = makePrisma();
+    prisma.media.findUnique = vi.fn(async () => ({
+      id: "media-1",
+      purpose: "INSPECTION_EVIDENCE",
+      status: "CLEAN",
+      propertyId: "property-1",
+    }));
+    const service = new InspectionsService(prisma);
+    await service.assign("inspection-1", "verifier-1", {
+      id: "admin-1",
+      roles: ["ADMIN"],
+    });
+    await service.submitPendingUpload("inspection-1", "verifier-1", {
+      checklist: completeChecklist,
+      evidence: [{ mediaId: "media-1" }],
+    });
+
+    await expect(
+      service.markEvidenceSynced(
+        "inspection-1",
+        "media-1",
+        { ok: true },
+        "verifier-2",
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("rejects an invalid admin review decision", async () => {
+    const { prisma } = makePrisma();
+    const service = new InspectionsService(prisma);
+
+    await expect(
+      service.adminReview(
+        "inspection-1",
+        { id: "admin-1", roles: ["ADMIN"] },
+        "ARCHIVED" as any,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
 });

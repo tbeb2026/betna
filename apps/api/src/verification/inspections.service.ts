@@ -97,6 +97,7 @@ export class InspectionsService {
     inspectionId: string,
     mediaId: string,
     result: { ok?: boolean; validated?: boolean } = {},
+    verifierId?: string,
   ) {
     if (result.ok === false) {
       throw new BadRequestException(
@@ -109,13 +110,24 @@ export class InspectionsService {
         "Inspection is not waiting for evidence uploads",
       );
     }
+    if (verifierId) await this.assertVerifierAccess(inspection, verifierId);
+    const requiredEvidence = await this.currentEvidence(inspection);
+    if (!requiredEvidence.some((entry: any) => entry.mediaId === mediaId)) {
+      throw new BadRequestException(
+        "Evidence item is not part of the required evidence for this inspection",
+      );
+    }
     if (this.prisma.media?.findUnique) {
       const media = await this.prisma.media.findUnique({
         where: { id: mediaId },
       });
+      if (!media) {
+        throw new NotFoundException("Evidence media not found");
+      }
       if (
-        media &&
-        (media.purpose !== "INSPECTION_EVIDENCE" || media.status !== "CLEAN")
+        media.purpose !== "INSPECTION_EVIDENCE" ||
+        media.status !== "CLEAN" ||
+        (media.propertyId && media.propertyId !== inspection.propertyId)
       ) {
         throw new BadRequestException(
           "Evidence must be a clean inspection upload",
@@ -145,8 +157,7 @@ export class InspectionsService {
         },
       });
     }
-    const evidence = await this.currentEvidence(inspection);
-    const requiredEntries = evidence.filter((entry: any) => entry.mediaId);
+    const requiredEntries = requiredEvidence.filter((entry: any) => entry.mediaId);
     const allSynced =
       requiredEntries.length > 0 &&
       requiredEntries.every(
@@ -176,6 +187,11 @@ export class InspectionsService {
   ) {
     if (!this.roles(actor).includes("ADMIN")) {
       throw new ForbiddenException("Admin access is required");
+    }
+    if (decision !== "APPROVED" && decision !== "REJECTED") {
+      throw new BadRequestException(
+        "Review decision must be APPROVED or REJECTED",
+      );
     }
     const inspection = await this.findInspection(inspectionId);
     if (
