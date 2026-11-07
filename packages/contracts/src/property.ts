@@ -31,6 +31,7 @@ export interface PropertySummary {
   slug: string;
   title: string;
   category: string;
+  subcategory?: string;
   status: ListingStatus;
   location: PublicLocation;
   offerings: PropertyOffering[];

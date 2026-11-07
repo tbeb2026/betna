@@ -20,6 +20,22 @@ h1 { font-size: clamp(2.4rem, 8vw, 5.5rem); letter-spacing: -.05em; line-height:
 .button.secondary { color: var(--brand); }
 .portal { padding-top: 4rem; }
 .portal-card { background: var(--surface); border: 1px solid var(--line); border-radius: 1rem; margin-top: 2rem; max-width: 42rem; padding: 1.5rem; }
+.portal-card.property-card { max-width: 58rem; }
+.section-heading { align-items: center; display: flex; gap: 1rem; justify-content: space-between; }
+.section-heading h2, .property-card h2 { margin: .2rem 0 1rem; }
+.property-form { display: grid; gap: 1.25rem; margin-top: 1.75rem; }
+.form-section { border: 1px solid var(--line); border-radius: .75rem; display: grid; gap: .6rem; padding: 1rem; }
+.form-section legend { font-weight: 700; padding: 0 .35rem; }
+.form-section input, .form-section select, .form-section textarea { border: 1px solid var(--line); border-radius: .45rem; font: inherit; padding: .7rem; width: 100%; }
+.form-section textarea { resize: vertical; }
+.form-help { color: var(--muted); line-height: 1.5; }
+.offering-grid { display: grid; gap: 1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.offering-card { background: var(--paper); border-radius: .65rem; display: grid; gap: .5rem; padding: 1rem; }
+.offering-card h3 { margin: 0 0 .3rem; }
+.check-label { align-items: flex-start; display: flex; gap: .6rem; line-height: 1.45; }
+.check-label input { margin-top: .25rem; width: auto; }
+.form-success { background: #e8f6ef; border-radius: .5rem; color: #145d42; padding: .75rem; }
+@media (max-width: 700px) { .section-heading, .offering-grid { align-items: stretch; display: grid; grid-template-columns: 1fr; } }
 .auth-page { display: grid; min-height: 60vh; place-items: center; padding: clamp(2rem, 8vw, 6rem) 1rem; }
 .auth-card { background: var(--surface); border: 1px solid var(--line); border-radius: 1rem; max-width: 32rem; padding: clamp(1.5rem, 5vw, 3rem); width: 100%; }
 .auth-card h1 { font-size: clamp(2rem, 5vw, 3.5rem); }
