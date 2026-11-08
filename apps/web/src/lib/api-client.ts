@@ -27,10 +27,15 @@ export function getApiBaseUrl(environment: ApiEnvironment = process.env) {
   } catch {
     throw new Error("API URL must be an absolute URL");
   }
-  if (environment.NODE_ENV === "production" && !internal && parsed.protocol !== "https:") {
+  if (
+    environment.NODE_ENV === "production" &&
+    !internal &&
+    parsed.protocol !== "https:"
+  ) {
     throw new Error("NEXT_PUBLIC_API_URL must use HTTPS in production");
   }
-  if (parsed.search || parsed.hash) throw new Error("API URL must not contain a query or fragment");
+  if (parsed.search || parsed.hash)
+    throw new Error("API URL must not contain a query or fragment");
   return parsed.toString().replace(/\/$/, "");
 }
 
@@ -54,6 +59,7 @@ export class ApiClient {
     this.baseUrl = getApiBaseUrl({
       API_INTERNAL_URL: options.baseUrl,
       NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+      NODE_ENV: process.env.NODE_ENV,
     });
     this.token = options.token;
     this.fetcher = options.fetch ?? globalThis.fetch;

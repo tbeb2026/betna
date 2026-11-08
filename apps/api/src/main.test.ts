@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  API_CORS_METHODS,
   getApiCorsOrigins,
   getApiPort,
   validateRuntimeEnvironment,
@@ -13,6 +14,10 @@ describe("API port resolution", () => {
 });
 
 describe("API CORS policy", () => {
+  it("allows browser clients to submit PATCH requests", () => {
+    expect(API_CORS_METHODS).toContain("PATCH");
+  });
+
   it("allows the configured web origins and rejects an absent production policy", () => {
     expect(
       getApiCorsOrigins({

@@ -4,6 +4,7 @@ import { AppModule } from "./app.module";
 import { StructuredExceptionFilter } from "./observability/structured-exception.filter";
 import { StructuredLogger } from "./observability/structured-logger";
 import {
+  API_CORS_METHODS,
   getApiCorsOrigins,
   getApiPort,
   validateRuntimeEnvironment,
@@ -17,7 +18,7 @@ export async function createApiApp() {
   app.enableCors({
     origin: getApiCorsOrigins(),
     credentials: true,
-    methods: ["GET", "HEAD", "POST", "PUT", "OPTIONS"],
+    methods: [...API_CORS_METHODS],
     allowedHeaders: ["Accept", "Authorization", "Content-Type"],
   });
   return app;

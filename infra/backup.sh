@@ -32,7 +32,7 @@ workdir="$(mktemp -d "$BACKUP_DIR/.betna-backup.XXXXXX")"
 trap 'rm -rf "$workdir"' EXIT
 
 pg_dump --format=custom --no-owner --file="$workdir/betna.dump" "$DATABASE_URL"
-pg_dumpall --globals-only --file="$workdir/globals.sql" "$DATABASE_URL"
+pg_dumpall --globals-only --dbname="$DATABASE_URL" --file="$workdir/globals.sql"
 age --encrypt --recipient="$BACKUP_AGE_RECIPIENT" --output="$BACKUP_DIR/betna-$stamp.dump.age" "$workdir/betna.dump"
 age --encrypt --recipient="$BACKUP_AGE_RECIPIENT" --output="$BACKUP_DIR/globals-$stamp.sql.age" "$workdir/globals.sql"
 mc mirror --preserve --overwrite --enc-c "$MC_ENCRYPTION_KEY" "$S3_SOURCE" "$S3_DEST/betna-$stamp"

@@ -41,19 +41,25 @@ test("critical inquiry-to-commission flow stays observable end to end", async ({
   const offeringId = propertyBody.offerings?.[0]?.id;
   expect(propertyId).toBeTruthy();
 
-  const inquiryResponse = await request.post(`${api}/public/inquiries`, {
-    data: {
-      propertyId,
-      offeringId,
-      mode: "LONG_TERM",
-      name: "Critical Flow Guest",
-      email: `critical-${Date.now()}@example.test`,
-      phone: "+254711111111",
-      message: "Please confirm this place is available.",
-    },
-  });
+  const inquiryResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/public/inquiries") &&
+      response.request().method() === "POST",
+  );
+  await page.getByLabel("Name").fill("Critical Flow Guest");
+  await page.getByLabel("Email").fill(`critical-${Date.now()}@example.test`);
+  await page.getByLabel("Phone or WhatsApp").fill("+254711111111");
+  await page.getByLabel("Rental mode").selectOption("LONG_TERM");
+  await page
+    .getByLabel("Message")
+    .fill("Please confirm this place is available.");
+  await page.getByRole("button", { name: "Send inquiry" }).click();
+  const inquiryResponse = await inquiryResponsePromise;
   expect(inquiryResponse.ok()).toBeTruthy();
   const inquiry = await inquiryResponse.json();
+  await expect(page.getByRole("status")).toContainText(
+    /business hours|Reference/i,
+  );
   const inquiryId = inquiry.inquiry?.id ?? inquiry.id;
   expect(inquiryId).toBeTruthy();
 

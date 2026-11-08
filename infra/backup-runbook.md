@@ -22,7 +22,7 @@ Back up PostgreSQL (system of record), Redis (rebuildable queues/session state),
 
    ```sh
    pg_dump --format=custom --no-owner --file="$BACKUP_DIR/betna-$(date -u +%Y%m%dT%H%M%SZ).dump" "$DATABASE_URL"
-   pg_dumpall --globals-only --file="$BACKUP_DIR/globals-$(date -u +%Y%m%dT%H%M%SZ).sql" "$DATABASE_URL"
+   pg_dumpall --globals-only --dbname="$DATABASE_URL" --file="$BACKUP_DIR/globals-$(date -u +%Y%m%dT%H%M%SZ).sql"
    ```
 
 3. Sync MinIO buckets with client/server-side encryption and object versioning enabled. Record the source bucket, destination, object count, and checksum manifest.
@@ -32,11 +32,15 @@ Back up PostgreSQL (system of record), Redis (rebuildable queues/session state),
 ## Restore rehearsal
 
 1. Announce a recovery exercise and create an isolated PostgreSQL/MinIO/Redis environment. Never restore over production first.
-2. Restore globals, then the custom PostgreSQL dump:
+2. Decrypt the age-wrapped artifacts into a private temporary directory, then restore globals and the custom PostgreSQL dump:
 
    ```sh
-   psql "$RECOVERY_DATABASE_URL" < globals.sql
-   pg_restore --clean --if-exists --no-owner --dbname="$RECOVERY_DATABASE_URL" betna.dump
+   restore_dir="$(mktemp -d)"
+   trap 'rm -rf "$restore_dir"' EXIT
+   age --decrypt --identity="$BACKUP_AGE_IDENTITY" --output="$restore_dir/globals.sql" globals-YYYYMMDDTHHMMSSZ.sql.age
+   age --decrypt --identity="$BACKUP_AGE_IDENTITY" --output="$restore_dir/betna.dump" betna-YYYYMMDDTHHMMSSZ.dump.age
+   psql "$RECOVERY_DATABASE_URL" < "$restore_dir/globals.sql"
+   pg_restore --clean --if-exists --no-owner --dbname="$RECOVERY_DATABASE_URL" "$restore_dir/betna.dump"
    ```
 
 3. Restore object versions and verify the checksum manifest. Recreate Redis, then run pending migrations with `prisma migrate deploy`.

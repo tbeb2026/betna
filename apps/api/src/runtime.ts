@@ -11,6 +11,15 @@ export type ApiRuntimeEnvironment = {
   MEDIA_SIGNING_SECRET?: string;
 };
 
+export const API_CORS_METHODS = [
+  "GET",
+  "HEAD",
+  "POST",
+  "PUT",
+  "PATCH",
+  "OPTIONS",
+] as const;
+
 const productionRequiredEnvironment = [
   "DATABASE_URL",
   "REDIS_URL",
@@ -68,7 +77,9 @@ export function getApiCorsOrigins(
   if (configured?.length) {
     const origins = configured.map((origin) => {
       if (origin === "*") {
-        throw new Error("Wildcard CORS origins are not allowed with credentials");
+        throw new Error(
+          "Wildcard CORS origins are not allowed with credentials",
+        );
       }
       let parsed: URL;
       try {
@@ -76,10 +87,18 @@ export function getApiCorsOrigins(
       } catch {
         throw new Error(`Invalid CORS origin: ${origin}`);
       }
-      if (parsed.origin !== origin || parsed.pathname !== "/" || parsed.search || parsed.hash) {
+      if (
+        parsed.origin !== origin ||
+        parsed.pathname !== "/" ||
+        parsed.search ||
+        parsed.hash
+      ) {
         throw new Error(`Invalid CORS origin: ${origin}`);
       }
-      if (environment.NODE_ENV === "production" && parsed.protocol !== "https:") {
+      if (
+        environment.NODE_ENV === "production" &&
+        parsed.protocol !== "https:"
+      ) {
         throw new Error("Production CORS origins must use HTTPS");
       }
       if (!parsed.hostname) throw new Error(`Invalid CORS origin: ${origin}`);

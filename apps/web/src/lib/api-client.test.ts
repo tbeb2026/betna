@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getApiBaseUrl } from "./api-client";
+import { ApiClient, getApiBaseUrl } from "./api-client";
 
 describe("API URL resolution", () => {
   it("defaults to the documented local API port", () => {
@@ -10,6 +10,23 @@ describe("API URL resolution", () => {
     expect(getApiBaseUrl({ API_INTERNAL_URL: "http://localhost:4400" })).toBe(
       "http://localhost:4400",
     );
+  });
+
+  it("applies production URL validation when created without an explicit base URL", async () => {
+    const mutableEnv = process.env as Record<string, string | undefined>;
+    const previousNodeEnv = process.env.NODE_ENV;
+    const previousPublicUrl = process.env.NEXT_PUBLIC_API_URL;
+    mutableEnv.NODE_ENV = "production";
+    delete mutableEnv.NEXT_PUBLIC_API_URL;
+    try {
+      expect(() => new ApiClient()).toThrow(/NEXT_PUBLIC_API_URL/);
+    } finally {
+      if (previousNodeEnv === undefined) delete mutableEnv.NODE_ENV;
+      else mutableEnv.NODE_ENV = previousNodeEnv;
+      if (previousPublicUrl === undefined)
+        delete mutableEnv.NEXT_PUBLIC_API_URL;
+      else mutableEnv.NEXT_PUBLIC_API_URL = previousPublicUrl;
+    }
   });
 
   it("requires an explicit HTTPS public API URL in production", () => {
