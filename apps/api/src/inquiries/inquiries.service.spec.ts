@@ -20,6 +20,11 @@ const property = {
   offerings: [{ id: "offering-1", mode: "SHORT_STAY" }],
 };
 
+const shortStayDates = {
+  startDate: "2026-12-10",
+  endDate: "2026-12-12",
+};
+
 function makePrisma() {
   const inquiries: any[] = [];
   const auditEvent = { create: vi.fn().mockResolvedValue({ id: "audit-1" }) };
@@ -72,6 +77,7 @@ describe("InquiriesService", () => {
       phone: "+254711111111",
       message: "Can I visit this weekend?",
       guests: 2,
+      ...shortStayDates,
     });
 
     expect(result.inquiry).toMatchObject({
@@ -102,6 +108,7 @@ describe("InquiriesService", () => {
       email: "second@example.com",
       phone: "+254711111112",
       message: "I would like more details.",
+      ...shortStayDates,
     });
 
     expect(created.location).not.toHaveProperty("exactAddress");
@@ -154,6 +161,7 @@ describe("InquiriesService", () => {
       email: "owner-response@example.com",
       phone: "+254711111113",
       message: "Please confirm availability.",
+      ...shortStayDates,
     });
 
     await expect(service.ownerRespond(created.inquiry.id, "owner-1", { decision: "CONFIRMED" })).resolves.toMatchObject({
@@ -192,9 +200,41 @@ describe("InquiriesService", () => {
     expect(availability.confirmInquiryAndBlockDates).toHaveBeenCalledWith(created.inquiry.id, "owner-1");
   });
 
+  it("routes every short-stay owner confirmation through availability", async () => {
+    const { prisma, inquiries } = makePrisma();
+    const availability = {
+      confirmInquiryAndBlockDates: vi.fn().mockRejectedValue(new ConflictException("Dates are required")),
+    };
+    prisma.inquiry.findUnique.mockImplementation(async ({ where, include }: any) => {
+      const inquiry = inquiries.find((row) => row.id === where.id);
+      return include?.offering ? { ...inquiry, offering: { mode: "SHORT_STAY" } } : inquiry;
+    });
+    const service = new InquiriesService(prisma, { enqueue: vi.fn() } as any, undefined, undefined, availability as any);
+    const created = await service.createGuestInquiry({
+      propertyId: "property-1",
+      mode: "SHORT_STAY",
+      name: "Missing Dates Guest",
+      email: "missing-dates-owner-response@example.com",
+      phone: "+254711111133",
+      message: "Please confirm after location review.",
+      startDate: "2026-12-10",
+      endDate: "2026-12-12",
+    });
+    inquiries[0].status = "LOCATION_APPROVED";
+    inquiries[0].startDate = undefined;
+    inquiries[0].endDate = undefined;
+
+    await expect(service.ownerRespond(created.inquiry.id, "owner-1", { decision: "CONFIRMED" }))
+      .rejects.toThrow("Dates are required");
+    expect(availability.confirmInquiryAndBlockDates).toHaveBeenCalledWith(created.inquiry.id, "owner-1");
+  });
+
   it("requires both dates and a non-empty interval for short-stay inquiries", async () => {
     const { prisma } = makePrisma();
     const service = new InquiriesService(prisma, { enqueue: vi.fn() } as any);
+    await expect(service.createGuestInquiry({
+      propertyId: "property-1", mode: "SHORT_STAY", name: "Date Guest", email: "date-none@example.com", phone: "+254711111134", message: "Dates",
+    })).rejects.toThrow(/both.*date|startDate/i);
     await expect(service.createGuestInquiry({
       propertyId: "property-1", mode: "SHORT_STAY", name: "Date Guest", email: "date-one@example.com", phone: "+254711111131", message: "Dates", startDate: "2026-12-10",
     })).rejects.toThrow(/both.*date|endDate/i);
@@ -223,6 +263,7 @@ describe("InquiriesService", () => {
       email: "location-release@example.com",
       phone: "+254711111114",
       message: "Please release the address.",
+      ...shortStayDates,
     });
     const actor = { id: "admin-1", roles: ["ADMIN"] };
     const first = await service.adminReleaseLocation(created.inquiry.id, actor, "Verified inquiry");
@@ -251,6 +292,7 @@ describe("InquiriesService", () => {
       email: "concurrent-release@example.com",
       phone: "+254711111115",
       message: "Please release the address.",
+      ...shortStayDates,
     });
     const actor = { id: "admin-1", roles: ["ADMIN"] };
 
@@ -272,6 +314,7 @@ describe("InquiriesService", () => {
       email: "legacy-release@example.com",
       phone: "+254711111116",
       message: "Please release the address.",
+      ...shortStayDates,
     });
     inquiries[0].status = "LOCATION_APPROVED";
     inquiries[0].locationReleaseExpiresAt = null;
@@ -291,6 +334,7 @@ describe("InquiriesService", () => {
       email: "renewal-release@example.com",
       phone: "+254711111117",
       message: "Please release the address.",
+      ...shortStayDates,
     });
     const actor = { id: "admin-1", roles: ["ADMIN"] };
     await service.adminReleaseLocation(created.inquiry.id, actor);
@@ -346,6 +390,7 @@ describe("InquiriesService", () => {
       email: "atomic-rate-limit@example.com",
       phone: "+254711111119",
       message: "hello",
+      ...shortStayDates,
     };
     const results = await Promise.allSettled(Array.from({ length: 7 }, () => service.createGuestInquiry(input)));
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(5);
@@ -370,6 +415,7 @@ describe("InquiriesService", () => {
       email: "raw-sql-rate@example.com",
       phone: "+254711111120",
       message: "hello",
+      ...shortStayDates,
     });
 
     expect(prisma.$queryRaw).toHaveBeenCalled();
@@ -391,6 +437,7 @@ describe("InquiriesService", () => {
       email: "release-recovery@example.com",
       phone: "+254711111121",
       message: "Please release the address.",
+      ...shortStayDates,
     });
     const actor = { id: "admin-1", roles: ["ADMIN"] };
 

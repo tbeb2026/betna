@@ -209,7 +209,7 @@ export class InquiriesService {
   private async findInquiry(id: string) {
     const inquiry = await (this.prisma as any).inquiry.findUnique({
       where: { id },
-      include: { property: { include: { owner: true } } },
+      include: { property: { include: { owner: true } }, offering: true },
     });
     if (!inquiry) throw new NotFoundException("Inquiry not found");
     return inquiry;
@@ -245,6 +245,7 @@ export class InquiriesService {
     if (input.guests != null && (!Number.isInteger(input.guests) || input.guests < 1 || input.guests > 100)) throw new BadRequestException("Guests must be between 1 and 100");
     const start = this.optionalDate(input.startDate, "startDate");
     const end = this.optionalDate(input.endDate, "endDate");
+    if (input.mode === "SHORT_STAY" && (!start || !end)) throw new BadRequestException("Short-stay inquiries require both startDate and endDate");
     if (Boolean(start) !== Boolean(end)) throw new BadRequestException("Short-stay inquiries require both startDate and endDate");
     if (start && end && end.getTime() <= start.getTime()) throw new BadRequestException("endDate must be after startDate");
   }
