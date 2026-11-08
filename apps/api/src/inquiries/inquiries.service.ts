@@ -14,6 +14,7 @@ import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { NotificationEvent, NotificationService } from "../notifications/notifications.service";
 import { InquiryActor, LocationReleaseService } from "./location-release.service";
+import { AvailabilityService } from "../availability/availability.service";
 
 export type GuestInquiryRequest = GuestInquiryInput & {
   honeypot?: string;
@@ -39,6 +40,7 @@ export class InquiriesService {
     private readonly notifications: NotificationService,
     @Optional() audit?: AuditService,
     @Optional() @Inject(LocationReleaseService) locationRelease?: LocationReleaseService,
+    @Optional() @Inject(AvailabilityService) private readonly availability?: AvailabilityService,
   ) {
     this.audit = audit;
     this.locationRelease = locationRelease ?? new LocationReleaseService(prisma, audit);
@@ -108,6 +110,19 @@ export class InquiriesService {
     }
     if (!["NEW", "CONTACTED"].includes(inquiry.status)) {
       throw new ConflictException("Inquiry has already been decided");
+    }
+    if (decision === "CONFIRMED" && this.availability && (inquiry.offering?.mode === "SHORT_STAY" || inquiry.startDate || inquiry.endDate)) {
+      const blocked = await this.availability.confirmInquiryAndBlockDates(inquiryId, ownerId);
+      await this.notifications.enqueue({
+        type: "INQUIRY_OWNER_CONFIRMED",
+        idempotencyKey: `inquiry-owner:${inquiryId}:CONFIRMED`,
+        inquiryId,
+        reference: inquiry.reference,
+        recipients: [{ email: inquiry.guestEmail, phone: inquiry.guestPhone }],
+        body: `The owner has confirmed inquiry ${inquiry.reference}.`,
+        payload: { status: "OWNER_CONFIRMED" },
+      });
+      return this.publicInquiry(blocked.inquiry);
     }
     const status = decision === "CONFIRMED" ? "OWNER_CONFIRMED" : "OWNER_DECLINED";
     const updated = await (this.prisma as any).inquiry.update({

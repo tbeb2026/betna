@@ -11,9 +11,10 @@ import {
 } from "./inquiries.controller";
 import { InquiriesService } from "./inquiries.service";
 import { LocationReleaseService } from "./location-release.service";
+import { AvailabilityModule } from "../availability/availability.module";
 
 @Module({
-  imports: [PrismaModule, AuditModule, AuthModule, NotificationsModule],
+  imports: [PrismaModule, AuditModule, AuthModule, NotificationsModule, AvailabilityModule],
   controllers: [PublicInquiriesController, PublicContactController, OwnerInquiriesController, AdminInquiriesController],
   providers: [InquiriesService, LocationReleaseService],
   exports: [InquiriesService, LocationReleaseService],

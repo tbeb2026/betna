@@ -250,6 +250,7 @@ model Property {
   media                  Media[]
   inspections            Inspection[]
   inquiries              Inquiry[]
+  availabilityBlocks     AvailabilityBlock[]
   conversions            Conversion[]
   versions               PropertyVersion[]
   translations           PropertyTranslation[]
@@ -390,9 +391,23 @@ model Inquiry {
   property           Property      @relation(fields: [propertyId], references: [id])
   offering           Offering?     @relation(fields: [offeringId], references: [id])
   conversion         Conversion?
+  availabilityBlock  AvailabilityBlock?
 
   @@index([propertyId, status])
   @@index([status, locationReleaseExpiresAt])
+}
+
+model AvailabilityBlock {
+  id         String   @id @default(uuid()) @db.Uuid
+  propertyId String   @db.Uuid
+  inquiryId  String   @unique @db.Uuid
+  startDate  DateTime
+  endDate    DateTime
+  createdAt  DateTime @default(now())
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  inquiry    Inquiry  @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId, startDate, endDate])
 }
 
 /// Queued deliveries are persisted so notification attempts can be retried
@@ -467,6 +482,7 @@ model Conversion {
   reportedAt           DateTime         @default(now())
   verifiedAt           DateTime?
   paymentEvidence      String?
+  verifiedBy           String?          @db.Uuid
   inquiry              Inquiry          @relation(fields: [inquiryId], references: [id])
   property             Property         @relation(fields: [propertyId], references: [id])
   owner                User             @relation(fields: [ownerId], references: [id])
