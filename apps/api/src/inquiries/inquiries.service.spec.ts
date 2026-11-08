@@ -190,7 +190,7 @@ describe("InquiriesService", () => {
     const second = await service.adminReleaseLocation(created.inquiry.id, actor, "Duplicate request");
     expect(first).toMatchObject({ inquiry: { status: "LOCATION_APPROVED" } });
     expect(second).toMatchObject({ inquiry: { status: "LOCATION_APPROVED" }, idempotent: true });
-    expect(enqueue.mock.calls.filter(([event]) => event.type === "INQUIRY_LOCATION_APPROVED")).toHaveLength(1);
+    expect(enqueue.mock.calls.filter(([event]) => event.type === "INQUIRY_LOCATION_APPROVED")).toHaveLength(2);
 
     inquiries[0].locationReleaseExpiresAt = new Date(Date.now() - 1);
     await expect(service.getReleasedLocation(created.inquiry.id, actor)).resolves.toBeNull();
@@ -220,7 +220,7 @@ describe("InquiriesService", () => {
       service.adminReleaseLocation(created.inquiry.id, actor),
     ]);
 
-    expect(enqueue.mock.calls.filter(([event]) => event.type === "INQUIRY_LOCATION_APPROVED")).toHaveLength(1);
+    expect(enqueue.mock.calls.filter(([event]) => event.type === "INQUIRY_LOCATION_APPROVED")).toHaveLength(2);
   });
 
   it("does not disclose a legacy approved release with no expiry", async () => {
@@ -311,5 +311,57 @@ describe("InquiriesService", () => {
     const results = await Promise.allSettled(Array.from({ length: 7 }, () => service.createGuestInquiry(input)));
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(5);
     expect(results.filter((result) => result.status === "rejected" && result.reason instanceof ConflictException)).toHaveLength(2);
+  });
+
+  it("uses a database atomic upsert for rate-limit creation and window reset", async () => {
+    const { prisma } = makePrisma();
+    const attempts = new Map<string, number>();
+    prisma.inquiryAbuseAttempt = undefined;
+    prisma.$queryRaw = vi.fn(async (query: any) => {
+      const key = String(query?.values?.[0] ?? "unknown");
+      const next = (attempts.get(key) ?? 0) + 1;
+      attempts.set(key, next);
+      return [{ attempts: next }];
+    });
+    const service = new InquiriesService(prisma, { enqueue: vi.fn() } as any);
+    await service.createGuestInquiry({
+      propertyId: "property-1",
+      mode: "SHORT_STAY",
+      name: "Raw SQL Guest",
+      email: "raw-sql-rate@example.com",
+      phone: "+254711111120",
+      message: "hello",
+    });
+
+    expect(prisma.$queryRaw).toHaveBeenCalled();
+    expect(prisma.$queryRaw.mock.calls[0][0].strings?.join(" ")).toContain("ON CONFLICT");
+    expect(prisma.$queryRaw.mock.calls[0][0].strings?.join(" ")).toContain("RETURNING");
+  });
+
+  it("recovers a failed release notification on a later idempotent release call", async () => {
+    const { prisma } = makePrisma();
+    const enqueue = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("provider unavailable"))
+      .mockResolvedValueOnce(undefined);
+    const service = new InquiriesService(prisma, { enqueue } as any);
+    const created = await service.createGuestInquiry({
+      propertyId: "property-1",
+      mode: "SHORT_STAY",
+      name: "Recovery Guest",
+      email: "release-recovery@example.com",
+      phone: "+254711111121",
+      message: "Please release the address.",
+    });
+    const actor = { id: "admin-1", roles: ["ADMIN"] };
+
+    await expect(service.adminReleaseLocation(created.inquiry.id, actor)).rejects.toThrow("provider unavailable");
+    await service.adminReleaseLocation(created.inquiry.id, actor);
+
+    const releaseEvents = enqueue.mock.calls
+      .map(([event]) => event)
+      .filter((event) => event.type === "INQUIRY_LOCATION_APPROVED");
+    expect(releaseEvents).toHaveLength(2);
+    expect(releaseEvents[0].idempotencyKey).toBe(releaseEvents[1].idempotencyKey);
   });
 });

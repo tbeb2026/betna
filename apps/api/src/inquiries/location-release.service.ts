@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException, Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -39,6 +40,7 @@ export class LocationReleaseService {
 
   private async releaseOnce(inquiryId: string, actor: InquiryActor, reason?: string) {
     const result = await this.withTransaction(async (tx: any) => {
+      await this.lockInquiry(tx, inquiryId);
       let inquiry = await this.findInquiry(tx, inquiryId);
       if (!inquiry) throw new NotFoundException("Inquiry not found");
       if (!inquiry.property?.exactAddress) throw new NotFoundException("Exact location is not available");
@@ -97,15 +99,12 @@ export class LocationReleaseService {
         throw new ConflictException("Inquiry is not eligible for location release");
       }
       const updated = await this.findInquiry(tx, inquiryId);
+      await this.recordAudit(tx, actor, "EXACT_LOCATION_RELEASED", inquiryId, {
+        reason: reason?.trim() || "admin-approved inquiry",
+        releaseId,
+      });
       return { inquiry: updated, location: this.location(updated.property), idempotent: false, releaseId };
     });
-    if (!result.idempotent) {
-      await this.audit?.record(actor, "EXACT_LOCATION_RELEASED", {
-        type: "Inquiry",
-        id: inquiryId,
-        metadata: { reason: reason?.trim() || "admin-approved inquiry", releaseId: result.releaseId },
-      });
-    }
     return result;
   }
 
@@ -113,6 +112,7 @@ export class LocationReleaseService {
     if (!isAdmin(actor)) throw new ForbiddenException("Only admins can revoke exact location");
     if (typeof reason !== "string") throw new BadRequestException("Release reason must be text");
     return this.withTransaction(async (tx: any) => {
+      await this.lockInquiry(tx, inquiryId);
       const inquiry = await this.findInquiry(tx, inquiryId);
       if (!inquiry) throw new NotFoundException("Inquiry not found");
       if (inquiry.status !== "LOCATION_APPROVED") return { inquiry, revoked: false };
@@ -147,8 +147,22 @@ export class LocationReleaseService {
       await tx.inquiry.update({ where: { id: inquiry.id }, data });
     }
     const updated = await this.findInquiry(tx, inquiry.id);
-    await this.audit?.record(actor, "EXACT_LOCATION_REVOKED", { type: "Inquiry", id: inquiry.id, metadata: { reason } });
+    await this.recordAudit(tx, actor, "EXACT_LOCATION_REVOKED", inquiry.id, { reason });
     return { inquiry: updated, revoked: true };
+  }
+
+  private async lockInquiry(tx: any, inquiryId: string) {
+    if (typeof tx.$queryRaw === "function") {
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Inquiry" WHERE "id" = ${inquiryId} FOR UPDATE`);
+    }
+  }
+
+  private async recordAudit(tx: any, actor: InquiryActor, action: string, inquiryId: string, metadata: Record<string, unknown>) {
+    if (typeof tx.auditEvent?.create === "function") {
+      await tx.auditEvent.create({ data: { actorId: actor.id, action, entityType: "Inquiry", entityId: inquiryId, metadata: metadata as Prisma.InputJsonValue } });
+      return;
+    }
+    await this.audit?.record(actor, action, { type: "Inquiry", id: inquiryId, metadata: metadata as Prisma.InputJsonValue });
   }
 
   private async findInquiry(tx: any, inquiryId: string) {

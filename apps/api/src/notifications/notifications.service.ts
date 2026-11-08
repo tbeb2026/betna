@@ -22,12 +22,37 @@ export interface NotificationEvent {
   idempotencyKey?: string;
 }
 
-type NotificationStore = {
-  id?: string;
-  create?: (args: { data: Record<string, unknown> }) => Promise<any>;
-  update?: (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<any>;
-  findUnique?: (args: { where: { idempotencyKey: string } }) => Promise<any>;
+type NotificationRow = {
+  id: string;
+  idempotencyKey: string;
+  event: string;
+  channel: string;
+  status: string;
+  attempts?: number;
+  processingToken?: string | null;
+  processingAt?: Date | null;
+  nextAttemptAt?: Date | null;
+  recipientId?: string | null;
+  recipientEmail?: string | null;
+  recipientPhone?: string | null;
+  inquiryId?: string | null;
+  reference?: string | null;
+  subject?: string | null;
+  body?: string | null;
+  payload?: Record<string, unknown>;
 };
+
+type NotificationStore = {
+  create?: (args: { data: Record<string, unknown> }) => Promise<NotificationRow>;
+  update?: (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<any>;
+  updateMany?: (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => Promise<{ count: number }>;
+  findUnique?: (args: { where: { idempotencyKey: string } }) => Promise<NotificationRow | null>;
+  findMany?: (args: { where: Record<string, unknown>; take: number }) => Promise<NotificationRow[]>;
+};
+
+const RETRY_LEASE_MS = 5 * 60 * 1000;
+const RETRY_BASE_MS = 30 * 1000;
+const RETRY_MAX_MS = 60 * 60 * 1000;
 
 @Injectable()
 export class NotificationService {
@@ -42,7 +67,7 @@ export class NotificationService {
     this.adapters = new Map(adapters.map((adapter) => [adapter.channel, adapter]));
   }
 
-  /** Queue and deliver critical events through in-app, email and WhatsApp/SMS channels. */
+  /** Queue a durable delivery. Only the process that claims the row may call the provider. */
   async enqueue(event: NotificationEvent): Promise<any[]> {
     const channels = event.channels ?? ["IN_APP", "EMAIL", "WHATSAPP", "SMS"];
     const deliveries: any[] = [];
@@ -50,8 +75,7 @@ export class NotificationService {
       for (const channel of channels) {
         if (!this.hasAddress(recipient, channel)) continue;
         const idempotencyKey = this.keyFor(event, recipient, channel);
-        const store = (this.prisma as any).notification as NotificationStore | undefined;
-        const delivery = this.inFlight.get(idempotencyKey) ?? this.deliver(event, recipient, channel, idempotencyKey, store);
+        const delivery = this.inFlight.get(idempotencyKey) ?? this.deliver(event, recipient, channel, idempotencyKey);
         this.inFlight.set(idempotencyKey, delivery);
         deliveries.push(await delivery);
       }
@@ -59,70 +83,129 @@ export class NotificationService {
     return deliveries;
   }
 
-  private deliver(
-    event: NotificationEvent,
-    recipient: NotificationRecipient,
-    channel: NotificationChannel,
-    idempotencyKey: string,
-    store?: NotificationStore,
-  ): Promise<any> {
-    const work = (async () => {
-      const existing = store?.findUnique
-        ? await store.findUnique({ where: { idempotencyKey } })
-        : undefined;
-      if (existing?.status === "SENT" || (!store && this.seenKeys.has(idempotencyKey))) return existing;
+  /** Retry rows left FAILED by a provider outage from any API instance/worker. */
+  async retryFailed(limit = 100, now = new Date()): Promise<number> {
+    const store = this.store();
+    if (!store?.findMany) return 0;
+    const rows = await store.findMany({
+      where: { status: "FAILED", OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }] },
+      take: limit,
+    });
+    let retried = 0;
+    for (const row of rows) {
+      const claimed = await this.claimExisting(row, store, now);
+      if (!claimed) continue;
+      await this.sendClaimed(claimed, store);
+      retried += 1;
+    }
+    return retried;
+  }
 
-      const message: NotificationMessage = {
-        event: event.type,
-        channel,
-        recipient,
-        subject: event.subject,
-        body: event.body ?? `Betna update${event.reference ? ` for ${event.reference}` : ""}.`,
-        payload: event.payload,
-      };
-      let queued = existing;
-      const id = existing?.id ?? randomUUID();
-      if (!queued) {
-        try {
-          queued = store?.create
-            ? await store.create({ data: {
-              id,
-              idempotencyKey,
-              event: event.type,
-              channel,
-              status: "QUEUED",
-              recipientId: recipient.userId,
-              recipientEmail: recipient.email ?? undefined,
-              recipientPhone: recipient.phone ?? undefined,
-              inquiryId: event.inquiryId,
-              payload: event.payload ?? {},
-            } })
-            : { id, idempotencyKey, event: event.type, channel, status: "QUEUED", recipient };
-        } catch (error) {
-          const duplicate = store?.findUnique ? await store.findUnique({ where: { idempotencyKey } }) : undefined;
-          if (duplicate) queued = duplicate;
-          else throw error;
-        }
-      }
-      try {
+  private deliver(event: NotificationEvent, recipient: NotificationRecipient, channel: NotificationChannel, idempotencyKey: string): Promise<any> {
+    const work = (async () => {
+      const store = this.store();
+      if (!store?.create) {
+        if (this.seenKeys.has(idempotencyKey)) return undefined;
         const adapter = this.adapters.get(channel);
         if (!adapter) throw new Error(`No adapter configured for ${channel}`);
-        await adapter.send(message);
+        await adapter.send(this.message(event, recipient, channel));
         this.seenKeys.add(idempotencyKey);
-        if (store?.update) return store.update({ where: { id }, data: { status: "SENT", sentAt: new Date(), error: null } });
-        return queued;
-      } catch (error) {
-        this.seenKeys.delete(idempotencyKey);
-        if (store?.update) return store.update({ where: { id }, data: { status: "FAILED", error: error instanceof Error ? error.message : String(error) } });
-        return queued;
+        return undefined;
       }
+
+      const existing = await store.findUnique?.({ where: { idempotencyKey } });
+      let row: NotificationRow | null = existing ?? null;
+      let owned = false;
+      const now = new Date();
+      if (!row) {
+        const token = randomUUID();
+        try {
+          row = await store.create({ data: this.rowData(event, recipient, channel, idempotencyKey, token, now) });
+          owned = true;
+        } catch (error) {
+          // A concurrent process may have won the unique insert. Never send
+          // as the loser; claim only a failed or stale processing row.
+          row = await store.findUnique?.({ where: { idempotencyKey } }) ?? null;
+          if (!row) throw error;
+        }
+      }
+      if (!owned) row = await this.claimExisting(row, store, now);
+      if (!row) return existing;
+      return this.sendClaimed(row, store);
     })();
-    void work.then(
-      () => this.inFlight.delete(idempotencyKey),
-      () => this.inFlight.delete(idempotencyKey),
-    );
+    void work.then(() => this.inFlight.delete(idempotencyKey), () => this.inFlight.delete(idempotencyKey));
     return work;
   }
+
+  private async claimExisting(row: NotificationRow, store: NotificationStore, now: Date): Promise<NotificationRow | null> {
+    if (row.status === "SENT" || !store.updateMany) return null;
+    const token = randomUUID();
+    const staleBefore = new Date(now.getTime() - RETRY_LEASE_MS);
+    const result = await store.updateMany({
+      where: {
+        id: row.id,
+        OR: [
+          { status: { in: ["FAILED", "QUEUED"] } },
+          { status: "PROCESSING", processingAt: { lt: staleBefore } },
+        ],
+      },
+      data: { status: "PROCESSING", processingToken: token, processingAt: now, attempts: { increment: 1 } },
+    });
+    if (result.count !== 1) return null;
+    return { ...row, status: "PROCESSING", processingToken: token, processingAt: now, attempts: (row.attempts ?? 0) + 1 };
+  }
+
+  private async sendClaimed(row: NotificationRow, store: NotificationStore): Promise<any> {
+    const channel = row.channel as NotificationChannel;
+    const recipient: NotificationRecipient = {
+      userId: row.recipientId ?? undefined,
+      email: row.recipientEmail ?? undefined,
+      phone: row.recipientPhone ?? undefined,
+    };
+    const adapter = this.adapters.get(channel);
+    if (!adapter) {
+      await this.markFailed(row, store, `No adapter configured for ${channel}`);
+      return row;
+    }
+    try {
+      await adapter.send({
+        event: row.event,
+        channel,
+        recipient,
+        subject: row.subject ?? undefined,
+        body: row.body ?? `Betna update${row.reference ? ` for ${row.reference}` : ""}.`,
+        payload: row.payload,
+      });
+      if (store.update) return store.update({ where: { id: row.id }, data: { status: "SENT", sentAt: new Date(), error: null, processingToken: null, processingAt: null, nextAttemptAt: null } });
+      return { ...row, status: "SENT" };
+    } catch (error) {
+      await this.markFailed(row, store, error instanceof Error ? error.message : String(error));
+      return row;
+    }
+  }
+
+  private async markFailed(row: NotificationRow, store: NotificationStore, error: string) {
+    if (!store.update) return;
+    const attempts = row.attempts ?? 1;
+    const delay = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** Math.max(0, attempts - 1));
+    await store.update({ where: { id: row.id }, data: { status: "FAILED", error, processingToken: null, processingAt: null, nextAttemptAt: new Date(Date.now() + delay) } });
+  }
+
+  private rowData(event: NotificationEvent, recipient: NotificationRecipient, channel: NotificationChannel, idempotencyKey: string, token: string, now: Date) {
+    return {
+      id: randomUUID(), idempotencyKey, event: event.type, channel, status: "PROCESSING", attempts: 1,
+      processingToken: token, processingAt: now, recipientId: recipient.userId,
+      recipientEmail: recipient.email ?? undefined, recipientPhone: recipient.phone ?? undefined,
+      inquiryId: event.inquiryId, reference: event.reference, subject: event.subject, body: event.body,
+      payload: event.payload ?? {},
+    };
+  }
+
+  private message(event: NotificationEvent, recipient: NotificationRecipient, channel: NotificationChannel): NotificationMessage {
+    return { event: event.type, channel, recipient, subject: event.subject, body: event.body ?? `Betna update${event.reference ? ` for ${event.reference}` : ""}.`, payload: event.payload };
+  }
+
+  private store() { return (this.prisma as any).notification as NotificationStore | undefined; }
 
   private keyFor(event: NotificationEvent, recipient: NotificationRecipient, channel: NotificationChannel) {
     if (event.idempotencyKey?.trim()) return `${event.idempotencyKey.trim()}:${channel}:${recipient.userId ?? recipient.email ?? recipient.phone ?? "unknown"}`;

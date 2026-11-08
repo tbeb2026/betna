@@ -8,6 +8,7 @@ import {
 } from "@nestjs/common";
 import { Inject } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import type { GuestInquiryInput } from "@betna/contracts";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -54,22 +55,19 @@ export class InquiriesService {
     if (!property || (property.status && property.status !== "PUBLISHED")) {
       throw new NotFoundException("Published property not found");
     }
-    await this.assertRateLimit(input);
     const offering = this.resolveOffering(property.offerings, input);
-    const inquiry = await (this.prisma as any).inquiry.create({
-      data: {
-        reference: this.reference(),
-        propertyId: input.propertyId,
-        offeringId: input.offeringId ?? offering?.id,
-        status: "NEW",
-        guestName: input.name.trim(),
-        guestEmail: input.email.trim().toLowerCase(),
-        guestPhone: input.phone.trim(),
-        message: input.message.trim(),
-        startDate: this.optionalDate(input.startDate, "startDate"),
-        endDate: this.optionalDate(input.endDate, "endDate"),
-        guests: input.guests,
-      },
+    const inquiry = await this.withTransaction(async (tx: any) => {
+      await this.assertRateLimit(input, tx);
+      return tx.inquiry.create({
+        data: {
+          reference: this.reference(), propertyId: input.propertyId,
+          offeringId: input.offeringId ?? offering?.id, status: "NEW",
+          guestName: input.name.trim(), guestEmail: input.email.trim().toLowerCase(),
+          guestPhone: input.phone.trim(), message: input.message.trim(),
+          startDate: this.optionalDate(input.startDate, "startDate"),
+          endDate: this.optionalDate(input.endDate, "endDate"), guests: input.guests,
+        },
+      });
     });
 
     const owner = property.owner ?? (property.ownerId ? await this.findUser(property.ownerId) : null);
@@ -135,19 +133,18 @@ export class InquiriesService {
 
   async adminReleaseLocation(inquiryId: string, actor: InquiryActor, reason?: string) {
     const released = await this.locationRelease.release(inquiryId, actor, reason);
-    if (!released.idempotent) {
-      await this.notifications.enqueue({
-        type: "INQUIRY_LOCATION_APPROVED",
-        // Every approval window has its own durable id, so a renewal after
-        // expiry is delivered even though it belongs to the same inquiry.
-        idempotencyKey: `inquiry-location-approved:${inquiryId}:${released.releaseId}`,
-        inquiryId,
-        reference: released.inquiry.reference,
-        recipients: [{ email: released.inquiry.guestEmail, phone: released.inquiry.guestPhone }],
-        body: `Betna approved the protected location for inquiry ${released.inquiry.reference}.`,
-        payload: { status: released.inquiry.status },
-      });
-    }
+    // Re-enqueue even for an idempotent release. If a provider or process died
+    // after the DB commit, the persisted notification row can then be claimed
+    // and completed without creating a duplicate message.
+    await this.notifications.enqueue({
+      type: "INQUIRY_LOCATION_APPROVED",
+      idempotencyKey: `inquiry-location-approved:${inquiryId}:${released.releaseId}`,
+      inquiryId,
+      reference: released.inquiry.reference,
+      recipients: [{ email: released.inquiry.guestEmail, phone: released.inquiry.guestPhone }],
+      body: `Betna approved the protected location for inquiry ${released.inquiry.reference}.`,
+      payload: { status: released.inquiry.status },
+    });
     return released;
   }
 
@@ -236,12 +233,33 @@ export class InquiriesService {
     if (start && end && end.getTime() < start.getTime()) throw new BadRequestException("endDate cannot be before startDate");
   }
 
-  private async assertRateLimit(input: GuestInquiryRequest) {
+  private async assertRateLimit(input: GuestInquiryRequest, db: any = this.prisma) {
     const normalizedEmail = input.email.trim().toLowerCase();
     const normalizedPhone = this.normalizePhone(input.phone);
     const fingerprint = this.normalizeFingerprint(input.fingerprint);
     const now = Date.now();
-    const abuseStore = (this.prisma as any).inquiryAbuseAttempt;
+    if (typeof db.$queryRaw === "function") {
+      const cutoff = new Date(now - WINDOW_MS);
+      const keys = [`email:${normalizedEmail}`, `phone:${normalizedPhone}`, ...(fingerprint ? [`fingerprint:${fingerprint}`] : [])];
+      for (const key of keys) {
+        const rows = await db.$queryRaw(Prisma.sql`
+          INSERT INTO "InquiryAbuseAttempt"
+            ("id", "key", "normalizedEmail", "normalizedPhone", "fingerprint", "attempts", "windowStartedAt", "lastAttemptAt", "createdAt")
+          VALUES (${randomUUID()}, ${key}, ${normalizedEmail}, ${normalizedPhone}, ${fingerprint ?? null}, 1, ${new Date(now)}, ${new Date(now)}, ${new Date(now)})
+          ON CONFLICT ("key") DO UPDATE SET
+            "attempts" = CASE WHEN "lastAttemptAt" < ${cutoff} THEN 1 ELSE "attempts" + 1 END,
+            "windowStartedAt" = CASE WHEN "lastAttemptAt" < ${cutoff} THEN EXCLUDED."windowStartedAt" ELSE "windowStartedAt" END,
+            "lastAttemptAt" = EXCLUDED."lastAttemptAt",
+            "normalizedEmail" = EXCLUDED."normalizedEmail",
+            "normalizedPhone" = EXCLUDED."normalizedPhone",
+            "fingerprint" = EXCLUDED."fingerprint"
+          RETURNING "attempts"
+        `);
+        if (Number(rows?.[0]?.attempts) > MAX_SUBMISSIONS) throw new ConflictException("Too many inquiries; please try again later");
+      }
+      return;
+    }
+    const abuseStore = db.inquiryAbuseAttempt;
     if (abuseStore?.findFirst && abuseStore?.upsert) {
       const cutoff = new Date(now - WINDOW_MS);
       await abuseStore.deleteMany?.({ where: { lastAttemptAt: { lt: cutoff } } });
@@ -273,6 +291,11 @@ export class InquiriesService {
     const attempts = keys.flatMap((key) => recentGuestSubmissions.get(key) ?? []).filter((at) => now - at < WINDOW_MS);
     if (attempts.length >= MAX_SUBMISSIONS) throw new ConflictException("Too many inquiries; please try again later");
     for (const key of keys) recentGuestSubmissions.set(key, [...(recentGuestSubmissions.get(key) ?? []), now]);
+  }
+
+  private async withTransaction<T>(work: (tx: any) => Promise<T>): Promise<T> {
+    if (typeof (this.prisma as any).$transaction === "function") return (this.prisma as any).$transaction(work);
+    return work(this.prisma as any);
   }
 
   private normalizePhone(phone: string) { return `+${phone.replace(/\D/g, "")}`; }
