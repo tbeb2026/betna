@@ -164,6 +164,45 @@ describe("InquiriesService", () => {
     await expect(service.ownerRespond(inquiries[0].id, "owner-1", { decision: "MAYBE" } as any)).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it("lets the owner confirm an inquiry after an admin approves its location", async () => {
+    const { prisma, inquiries } = makePrisma();
+    const enqueue = vi.fn().mockResolvedValue(undefined);
+    const availability = {
+      confirmInquiryAndBlockDates: vi.fn(async (id: string) => {
+        const inquiry = inquiries.find((row) => row.id === id);
+        inquiry.status = "OWNER_CONFIRMED";
+        return { inquiry, blocked: true, declinedInquiryIds: [] };
+      }),
+    };
+    const service = new InquiriesService(prisma, { enqueue } as any, undefined, undefined, availability as any);
+    const created = await service.createGuestInquiry({
+      propertyId: "property-1",
+      mode: "SHORT_STAY",
+      name: "Location Guest",
+      email: "location-owner-response@example.com",
+      phone: "+254711111130",
+      message: "Please confirm after location review.",
+      startDate: "2026-12-10",
+      endDate: "2026-12-12",
+    });
+    inquiries[0].status = "LOCATION_APPROVED";
+
+    await expect(service.ownerRespond(created.inquiry.id, "owner-1", { decision: "CONFIRMED" }))
+      .resolves.toMatchObject({ status: "OWNER_CONFIRMED" });
+    expect(availability.confirmInquiryAndBlockDates).toHaveBeenCalledWith(created.inquiry.id, "owner-1");
+  });
+
+  it("requires both dates and a non-empty interval for short-stay inquiries", async () => {
+    const { prisma } = makePrisma();
+    const service = new InquiriesService(prisma, { enqueue: vi.fn() } as any);
+    await expect(service.createGuestInquiry({
+      propertyId: "property-1", mode: "SHORT_STAY", name: "Date Guest", email: "date-one@example.com", phone: "+254711111131", message: "Dates", startDate: "2026-12-10",
+    })).rejects.toThrow(/both.*date|endDate/i);
+    await expect(service.createGuestInquiry({
+      propertyId: "property-1", mode: "SHORT_STAY", name: "Date Guest", email: "date-two@example.com", phone: "+254711111132", message: "Dates", startDate: "2026-12-12", endDate: "2026-12-10",
+    })).rejects.toThrow(/endDate/i);
+  });
+
   it("requires a published property and an eligible owner for contact-click logging", async () => {
     const { prisma } = makePrisma();
     const service = new InquiriesService(prisma, { enqueue: vi.fn() } as any);

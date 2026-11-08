@@ -9,6 +9,7 @@ import {
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
+import { NotificationEvent, NotificationService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 
 const PENDING_INQUIRY_STATUSES = ["NEW", "CONTACTED", "LOCATION_APPROVED"];
@@ -18,11 +19,12 @@ export class AvailabilityService {
   constructor(
     private readonly prisma: PrismaService,
     @Optional() private readonly audit?: AuditService,
+    @Optional() private readonly notifications?: NotificationService,
   ) {}
 
   async confirmInquiryAndBlockDates(inquiryId: string, ownerId: string) {
     if (!inquiryId || !ownerId) throw new BadRequestException("Inquiry and owner are required");
-    return this.withTransaction(async (tx: any) => {
+    const result = await this.withTransaction(async (tx: any) => {
       const inquiry = await this.findInquiry(tx, inquiryId);
       this.assertOwner(inquiry, ownerId);
       if (inquiry.status === "OWNER_DECLINED") throw new ConflictException("Inquiry has been declined");
@@ -30,8 +32,15 @@ export class AvailabilityService {
         throw new ConflictException("Inquiry cannot be confirmed in its current state");
       }
 
-      const mode = inquiry.offering?.mode ?? inquiry.mode;
-      if (mode !== "SHORT_STAY" || !inquiry.startDate || !inquiry.endDate) {
+      const mode = this.modeOf(inquiry);
+      const hasStart = inquiry.startDate != null;
+      const hasEnd = inquiry.endDate != null;
+      if (hasStart !== hasEnd) throw new BadRequestException("Short-stay inquiries require both startDate and endDate");
+      const shortStay = mode === "SHORT_STAY" || (!mode && hasStart && hasEnd);
+      if (mode === "SHORT_STAY" && (!hasStart || !hasEnd)) {
+        throw new BadRequestException("Short-stay confirmation requires startDate and endDate");
+      }
+      if (!shortStay) {
         const updated = inquiry.status === "OWNER_CONFIRMED"
           ? inquiry
           : await tx.inquiry.update({ where: { id: inquiryId }, data: { status: "OWNER_CONFIRMED" } });
@@ -75,13 +84,17 @@ export class AvailabilityService {
         : await tx.inquiry.update({ where: { id: inquiryId }, data: { status: "OWNER_CONFIRMED" } });
       const overlapping = await this.findOverlappingPending(tx, inquiry, startDate, endDate);
       const declinedInquiryIds: string[] = [];
+      const declinedInquiries: any[] = [];
       for (const candidate of overlapping) {
         if (candidate.id === inquiryId) continue;
         const result = await tx.inquiry.updateMany({
           where: { id: candidate.id, status: { in: PENDING_INQUIRY_STATUSES } },
           data: { status: "OWNER_DECLINED" },
         });
-        if (result?.count !== 0) declinedInquiryIds.push(candidate.id);
+        if (result?.count !== 0) {
+          declinedInquiryIds.push(candidate.id);
+          declinedInquiries.push(candidate);
+        }
       }
       await this.audit?.record({ id: ownerId }, "INQUIRY_DATES_BLOCKED", {
         type: "Inquiry",
@@ -89,8 +102,10 @@ export class AvailabilityService {
         metadata: { startDate, endDate, declinedInquiryIds },
       });
       await this.audit?.record({ id: ownerId }, "INQUIRY_OWNER_CONFIRMED", { type: "Inquiry", id: inquiryId });
-      return { inquiry: updated, block, blocked: true, declinedInquiryIds };
+      return { inquiry: updated, block, blocked: true, declinedInquiryIds, declinedInquiries };
     });
+    await this.notifyAutoDeclines(result.declinedInquiries ?? [], result.inquiry);
+    return result;
   }
 
   async ownerDeclineInquiry(inquiryId: string, ownerId: string) {
@@ -128,16 +143,36 @@ export class AvailabilityService {
         status: { in: PENDING_INQUIRY_STATUSES },
         startDate: { lt: endDate },
         endDate: { gt: startDate },
-        offering: { mode: "SHORT_STAY" },
       },
       include: { offering: true },
     });
     return rows.filter((candidate: any) => {
-      const candidateMode = candidate.offering?.mode ?? candidate.mode;
+      const candidateMode = this.modeOf(candidate);
       if (candidateMode && candidateMode !== "SHORT_STAY") return false;
       if (!candidate.startDate || !candidate.endDate) return false;
       return new Date(candidate.startDate) < endDate && new Date(candidate.endDate) > startDate;
     });
+  }
+
+  private modeOf(inquiry: any): string | undefined {
+    return inquiry?.offering?.mode ?? inquiry?.mode;
+  }
+
+  private async notifyAutoDeclines(candidates: any[], winner: any) {
+    if (!this.notifications) return;
+    for (const candidate of candidates) {
+      const event: NotificationEvent = {
+        type: "INQUIRY_AUTO_DECLINED_OVERLAP",
+        inquiryId: candidate.id,
+        reference: candidate.reference,
+        recipients: [{ userId: candidate.guestUserId, email: candidate.guestEmail, phone: candidate.guestPhone }],
+        subject: `Betna update for inquiry ${candidate.reference ?? candidate.id}`,
+        body: `The dates requested in inquiry ${candidate.reference ?? candidate.id} are no longer available because another inquiry was confirmed.`,
+        idempotencyKey: `inquiry-auto-declined-overlap:${winner.id}:${candidate.id}`,
+        payload: { status: "OWNER_DECLINED", winnerInquiryId: winner.id },
+      };
+      await this.notifications.enqueue(event);
+    }
   }
 
   private assertOwner(inquiry: any, ownerId: string) {

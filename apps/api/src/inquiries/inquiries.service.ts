@@ -108,7 +108,7 @@ export class InquiriesService {
     if (inquiry.property?.ownerId !== ownerId && inquiry.property?.owner?.id !== ownerId) {
       throw new ForbiddenException("Only the property owner can respond");
     }
-    if (!["NEW", "CONTACTED"].includes(inquiry.status)) {
+    if (!["NEW", "CONTACTED", "LOCATION_APPROVED"].includes(inquiry.status)) {
       throw new ConflictException("Inquiry has already been decided");
     }
     if (decision === "CONFIRMED" && this.availability && (inquiry.offering?.mode === "SHORT_STAY" || inquiry.startDate || inquiry.endDate)) {
@@ -245,7 +245,8 @@ export class InquiriesService {
     if (input.guests != null && (!Number.isInteger(input.guests) || input.guests < 1 || input.guests > 100)) throw new BadRequestException("Guests must be between 1 and 100");
     const start = this.optionalDate(input.startDate, "startDate");
     const end = this.optionalDate(input.endDate, "endDate");
-    if (start && end && end.getTime() < start.getTime()) throw new BadRequestException("endDate cannot be before startDate");
+    if (Boolean(start) !== Boolean(end)) throw new BadRequestException("Short-stay inquiries require both startDate and endDate");
+    if (start && end && end.getTime() <= start.getTime()) throw new BadRequestException("endDate must be after startDate");
   }
 
   private async assertRateLimit(input: GuestInquiryRequest, db: any = this.prisma) {

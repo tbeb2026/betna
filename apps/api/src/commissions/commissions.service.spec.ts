@@ -24,6 +24,9 @@ function makePrisma() {
       update: vi.fn(async ({ where, data }: any) => { const row = commissions.find((candidate) => candidate.id === where.id); Object.assign(row, data); return row; }),
       findUnique: vi.fn(async ({ where }: any) => commissions.find((row) => row.id === where.id || row.conversionId === where.conversionId) ?? null),
     },
+    user: {
+      findUnique: vi.fn(async ({ where }: any) => where.id === "staff-1" ? { id: "staff-1", status: "ACTIVE", roles: [{ role: { name: "ADMIN" } }] } : null),
+    },
     $transaction: vi.fn(async (work: any) => work(prisma)),
   };
   return { prisma, conversions, commissions };
@@ -50,8 +53,10 @@ describe("ConversionsService and CommissionsService", () => {
     });
     expect(verified).toMatchObject({ status: "VERIFIED", verifiedBy: "staff-1" });
 
-    const due = await commissionsService.markDue(reported.id);
-    expect(due).toMatchObject({ status: "COMMISSION_DUE", percentage: 12.5, amountDue: 100, currency: "KES" });
+    const due = await commissionsService.markDue(reported.id, "staff-1");
+    expect(due).toMatchObject({ status: "COMMISSION_DUE", currency: "KES" });
+    expect(due.percentage.toFixed(2)).toBe("12.50");
+    expect(due.amountDue.toFixed(2)).toBe("100.00");
     expect(conversions).toHaveLength(1);
     expect(commissions).toHaveLength(1);
   });
@@ -68,6 +73,76 @@ describe("ConversionsService and CommissionsService", () => {
       paymentEvidence: "owner-assertion",
     });
 
-    await expect(commissionsService.markDue(reported.id)).rejects.toBeInstanceOf(ConflictException);
+    await expect(commissionsService.markDue(reported.id, "staff-1")).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("rejects commission actions for an unknown staff identity", async () => {
+    const { prisma } = makePrisma();
+    const conversionsService = new ConversionsService(prisma);
+    const reported = await conversionsService.report({
+      inquiryId: "inquiry-1",
+      ownerId: "owner-1",
+      firstPaymentAmount: "800.00",
+      firstPaymentCurrency: "KES",
+      paymentEvidence: "receipt",
+    });
+
+    await expect(conversionsService.verifyEvidence(reported.id, "missing-staff", { paymentEvidence: "checked" }))
+      .rejects.toThrow(/staff/i);
+  });
+
+  it("keeps terminal commission states immutable and idempotent", async () => {
+    const { prisma } = makePrisma();
+    const conversionsService = new ConversionsService(prisma);
+    const commissionsService = new CommissionsService(prisma, undefined, { commissionPercentage: 12.5 });
+    const reported = await conversionsService.report({
+      inquiryId: "inquiry-1",
+      ownerId: "owner-1",
+      firstPaymentAmount: "800.00",
+      firstPaymentCurrency: "KES",
+      paymentEvidence: "receipt",
+    });
+    await conversionsService.verifyEvidence(reported.id, "staff-1", { paymentEvidence: "checked" });
+    const due = await commissionsService.markDue(reported.id, "staff-1");
+    const paid = await commissionsService.markPaid(due.id, "staff-1");
+    await expect(commissionsService.waive(due.id, "staff-1")).rejects.toThrow(/transition/i);
+    await expect(commissionsService.markPaid(due.id, "staff-1")).resolves.toMatchObject({ status: "PAID" });
+    expect(paid.status).toBe("PAID");
+  });
+
+  it("returns one due commission when markDue races on a unique conversion", async () => {
+    const { prisma, commissions } = makePrisma();
+    const conversionsService = new ConversionsService(prisma);
+    const commissionsService = new CommissionsService(prisma, undefined, { commissionPercentage: 12.5 });
+    const reported = await conversionsService.report({
+      inquiryId: "inquiry-1",
+      ownerId: "owner-1",
+      firstPaymentAmount: "800.00",
+      firstPaymentCurrency: "KES",
+      paymentEvidence: "receipt",
+    });
+    await conversionsService.verifyEvidence(reported.id, "staff-1", { paymentEvidence: "checked" });
+    const results = await Promise.all([
+      commissionsService.markDue(reported.id, "staff-1"),
+      commissionsService.markDue(reported.id, "staff-1"),
+    ]);
+    expect(new Set(results.map((result) => result.id)).size).toBe(1);
+    expect(commissions).toHaveLength(1);
+  });
+
+  it("reports one conversion when duplicate owner submissions race", async () => {
+    const { prisma, conversions } = makePrisma();
+    const service = new ConversionsService(prisma);
+    const input = {
+      inquiryId: "inquiry-1",
+      ownerId: "owner-1",
+      firstPaymentAmount: "800.009",
+      firstPaymentCurrency: "KES",
+      paymentEvidence: "receipt",
+    };
+    const [first, second] = await Promise.all([service.report(input), service.report(input)]);
+    expect(first.id).toBe(second.id);
+    expect(conversions).toHaveLength(1);
+    expect(conversions[0].firstPaymentAmount.toFixed(2)).toBe("800.01");
   });
 });

@@ -1,84 +1,180 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../prisma/prisma.service";
 
-type CommissionConfig = { commissionPercentage?: number };
+type CommissionConfig = { commissionPercentage?: number | string };
+type TerminalCommissionStatus = "PAID" | "WAIVED" | "DISPUTED";
+
+const LEGAL_TRANSITIONS: Record<string, readonly string[]> = {
+  CONFIRMED: ["COMMISSION_DUE"],
+  COMMISSION_DUE: ["PAID", "WAIVED", "DISPUTED"],
+  PAID: [],
+  WAIVED: [],
+  DISPUTED: [],
+};
 
 @Injectable()
 export class CommissionsService {
   private readonly config: CommissionConfig;
-
-  constructor(private readonly prisma: PrismaService, @Optional() auditOrConfig?: AuditService | CommissionConfig, @Optional() config?: CommissionConfig) {
-    this.audit = (auditOrConfig && "record" in (auditOrConfig as any)) ? auditOrConfig as AuditService : undefined;
-    this.config = config ?? ((auditOrConfig && !("record" in (auditOrConfig as any))) ? auditOrConfig as CommissionConfig : {});
-  }
-
+  private readonly locks = new Map<string, Promise<unknown>>();
   private readonly audit?: AuditService;
 
-  async markDue(conversionId: string, staffId?: string) {
+  constructor(private readonly prisma: PrismaService, @Optional() auditOrConfig?: AuditService | CommissionConfig, @Optional() config?: CommissionConfig) {
+    this.audit = auditOrConfig && "record" in (auditOrConfig as any) ? auditOrConfig as AuditService : undefined;
+    this.config = config ?? (auditOrConfig && !("record" in (auditOrConfig as any)) ? auditOrConfig as CommissionConfig : {});
+  }
+
+  async markDue(conversionId: string, staffId: string) {
     if (!conversionId) throw new BadRequestException("Conversion is required");
-    const conversion = await (this.prisma as any).conversion.findUnique({ where: { id: conversionId }, include: { commission: true } });
-    if (!conversion) throw new NotFoundException("Conversion not found");
-    if (conversion.commission?.status === "COMMISSION_DUE" || conversion.commission?.status === "PAID") return conversion.commission;
-    if (conversion.status !== "VERIFIED" || !conversion.verifiedAt || !conversion.verifiedBy || !conversion.paymentEvidence || conversion.firstPaymentAmount == null || !conversion.firstPaymentCurrency) {
-      throw new ConflictException("Commission requires staff-verified first-payment evidence");
-    }
-    if (staffId) await this.assertStaff(staffId);
-    const percentage = this.percentage();
-    const firstPaymentAmount = Number(conversion.firstPaymentAmount);
-    const amountDue = Math.round(firstPaymentAmount * percentage) / 100;
-    if (!Number.isFinite(amountDue) || amountDue <= 0) throw new BadRequestException("Commission amount is invalid");
-    const create = async (tx: any) => tx.commission.create({ data: {
-      conversionId,
-      ownerId: conversion.ownerId,
-      status: "COMMISSION_DUE",
-      percentage,
-      firstPaymentAmount,
-      amountDue,
-      currency: conversion.firstPaymentCurrency,
-      evidence: conversion.paymentEvidence,
-    } });
-    const commission = typeof (this.prisma as any).$transaction === "function" ? await (this.prisma as any).$transaction(create) : await create(this.prisma as any);
-    await this.audit?.record(staffId ? { id: staffId } : null, "COMMISSION_MARKED_DUE", { type: "Commission", id: commission.id, metadata: { conversionId, percentage } });
-    return commission;
+    await this.assertStaff(staffId);
+    return this.withLock(`conversion:${conversionId}`, async () => {
+      let transitioned = false;
+      let commission: any;
+      try {
+        commission = await this.withTransaction(async (tx: any) => {
+        if (typeof tx.$queryRaw === "function") await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Conversion" WHERE "id" = ${conversionId} FOR UPDATE`);
+        const conversion = await tx.conversion.findUnique({ where: { id: conversionId }, include: { commission: true } });
+        if (!conversion) throw new NotFoundException("Conversion not found");
+        const existingCommission = conversion.commission ?? await tx.commission.findUnique?.({ where: { conversionId } });
+        if (existingCommission) {
+          if (["COMMISSION_DUE", "PAID"].includes(existingCommission.status)) return existingCommission;
+          if (["WAIVED", "DISPUTED"].includes(existingCommission.status)) throw new ConflictException(`Illegal commission transition from ${existingCommission.status}`);
+        }
+        if (conversion.status !== "VERIFIED" || !conversion.verifiedAt || !conversion.verifiedBy || !conversion.paymentEvidence || conversion.firstPaymentAmount == null || !conversion.firstPaymentCurrency) {
+          throw new ConflictException("Commission requires staff-verified first-payment evidence");
+        }
+        const percentage = this.percentage();
+        const firstPaymentAmount = this.money(conversion.firstPaymentAmount, "First payment amount");
+        const amountDue = firstPaymentAmount.times(percentage).dividedBy(100).toDecimalPlaces(2);
+        if (!amountDue.gt(0)) throw new BadRequestException("Commission amount is invalid");
+        const existing = existingCommission;
+        if (existing?.status === "CONFIRMED") {
+          transitioned = true;
+          const data = { status: "COMMISSION_DUE", percentage, firstPaymentAmount, amountDue, currency: conversion.firstPaymentCurrency, evidence: conversion.paymentEvidence };
+          if (tx.commission.updateMany) {
+            const result = await tx.commission.updateMany({ where: { id: existing.id, status: "CONFIRMED" }, data });
+            if (result.count !== 1) {
+              const current = await tx.commission.findUnique({ where: { id: existing.id } });
+              if (current?.status === "COMMISSION_DUE" || current?.status === "PAID") return current;
+              throw new ConflictException("Commission was changed by another reviewer");
+            }
+            return tx.commission.findUnique({ where: { id: existing.id } });
+          }
+          return tx.commission.update({ where: { id: existing.id }, data });
+        }
+        transitioned = true;
+        return tx.commission.create({ data: {
+          conversionId,
+          ownerId: conversion.ownerId,
+          status: "COMMISSION_DUE",
+          percentage,
+          firstPaymentAmount,
+          amountDue,
+          currency: conversion.firstPaymentCurrency,
+          evidence: conversion.paymentEvidence,
+        } });
+      });
+      } catch (error: any) {
+        if (error?.code !== "P2002") throw error;
+        commission = await (this.prisma as any).commission.findUnique({ where: { conversionId } });
+        if (!commission) throw error;
+        if (!["COMMISSION_DUE", "PAID"].includes(commission.status)) throw new ConflictException(`Illegal commission transition from ${commission.status}`);
+        transitioned = false;
+      }
+      if (transitioned) await this.audit?.record({ id: staffId }, "COMMISSION_MARKED_DUE", { type: "Commission", id: commission.id, metadata: { conversionId, percentage: commission.percentage } });
+      return commission;
+    });
   }
 
-  async markPaid(commissionId: string, staffId?: string) {
-    const commission = await this.getCommission(commissionId);
-    if (staffId) await this.assertStaff(staffId);
-    const updated = await (this.prisma as any).commission.update({ where: { id: commissionId }, data: { status: "PAID", paidAt: new Date() } });
-    await this.audit?.record(staffId ? { id: staffId } : null, "COMMISSION_PAID", { type: "Commission", id: commissionId });
-    return updated;
+  async markPaid(commissionId: string, staffId: string) {
+    return this.transition(commissionId, staffId, "PAID", "COMMISSION_PAID", { paidAt: new Date() });
   }
 
-  async waive(commissionId: string, staffId?: string) { return this.setState(commissionId, "WAIVED", staffId, "COMMISSION_WAIVED"); }
-  async dispute(commissionId: string, staffId?: string) { return this.setState(commissionId, "DISPUTED", staffId, "COMMISSION_DISPUTED"); }
+  async waive(commissionId: string, staffId: string) {
+    return this.transition(commissionId, staffId, "WAIVED", "COMMISSION_WAIVED");
+  }
 
-  async listForAdmin() { return (this.prisma as any).commission.findMany?.({ include: { conversion: true, owner: true }, orderBy: { createdAt: "desc" } }) ?? []; }
+  async dispute(commissionId: string, staffId: string) {
+    return this.transition(commissionId, staffId, "DISPUTED", "COMMISSION_DISPUTED");
+  }
+
+  async listForAdmin(staffId: string) {
+    await this.assertStaff(staffId);
+    return (this.prisma as any).commission.findMany?.({ include: { conversion: true, owner: true }, orderBy: { createdAt: "desc" } }) ?? [];
+  }
   async listForOwner(ownerId: string) { return (this.prisma as any).commission.findMany?.({ where: { ownerId }, include: { conversion: true }, orderBy: { createdAt: "desc" } }) ?? []; }
 
-  private async setState(commissionId: string, status: "WAIVED" | "DISPUTED", staffId: string | undefined, action: string) {
-    await this.getCommission(commissionId);
-    if (staffId) await this.assertStaff(staffId);
-    const updated = await (this.prisma as any).commission.update({ where: { id: commissionId }, data: { status } });
-    await this.audit?.record(staffId ? { id: staffId } : null, action, { type: "Commission", id: commissionId });
-    return updated;
+  private async transition(commissionId: string, staffId: string, next: TerminalCommissionStatus, action: string, extra: Record<string, unknown> = {}) {
+    if (!commissionId) throw new BadRequestException("Commission is required");
+    await this.assertStaff(staffId);
+    return this.withLock(`commission:${commissionId}`, async () => {
+      let transitioned = false;
+      const updated = await this.withTransaction(async (tx: any) => {
+        if (typeof tx.$queryRaw === "function") await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Commission" WHERE "id" = ${commissionId} FOR UPDATE`);
+        const commission = await tx.commission.findUnique({ where: { id: commissionId } });
+        if (!commission) throw new NotFoundException("Commission not found");
+        if (commission.status === next) return commission;
+        if (!this.canTransition(commission.status, next)) throw new ConflictException(`Illegal commission transition from ${commission.status} to ${next}`);
+        transitioned = true;
+        const data = { status: next, ...extra };
+        if (tx.commission.updateMany) {
+          const result = await tx.commission.updateMany({ where: { id: commissionId, status: commission.status }, data });
+          if (result.count !== 1) {
+            const current = await tx.commission.findUnique({ where: { id: commissionId } });
+            if (current?.status === next) return current;
+            throw new ConflictException(`Illegal commission transition to ${next}`);
+          }
+          return tx.commission.findUnique({ where: { id: commissionId } });
+        }
+        return tx.commission.update({ where: { id: commissionId }, data });
+      });
+      if (transitioned) await this.audit?.record({ id: staffId }, action, { type: "Commission", id: commissionId });
+      return updated;
+    });
   }
 
-  private async getCommission(id: string) {
-    const commission = await (this.prisma as any).commission.findUnique({ where: { id } });
-    if (!commission) throw new NotFoundException("Commission not found");
-    return commission;
+  private canTransition(from: string, to: string) { return LEGAL_TRANSITIONS[from]?.includes(to) ?? false; }
+
+  private async assertStaff(staffId: string) {
+    if (!staffId?.trim()) throw new ForbiddenException("Staff access required");
+    const user = await (this.prisma as any).user?.findUnique?.({ where: { id: staffId }, include: { roles: { include: { role: true } } } });
+    const roles = user?.roles?.map((entry: any) => String(entry?.role?.name ?? entry?.name ?? "").toUpperCase()) ?? [];
+    if (!user || user.status !== "ACTIVE" || !roles.some((role: string) => ["ADMIN", "STAFF"].includes(role))) throw new ForbiddenException("Staff access required");
   }
 
   private percentage() {
-    const configured = this.config.commissionPercentage ?? Number(process.env.BETNA_COMMISSION_PERCENTAGE ?? 10);
-    if (!Number.isFinite(configured) || configured <= 0 || configured > 100) throw new BadRequestException("Commission percentage is invalid");
-    return Math.round(configured * 100) / 100;
+    const configured = this.config.commissionPercentage ?? process.env.BETNA_COMMISSION_PERCENTAGE ?? "10";
+    const percentage = this.money(configured, "Commission percentage");
+    if (!percentage.gt(0) || percentage.gt(100)) throw new BadRequestException("Commission percentage is invalid");
+    return percentage;
   }
 
-  private async assertStaff(staffId: string) {
-    const user = await (this.prisma as any).user?.findUnique?.({ where: { id: staffId }, include: { roles: { include: { role: true } } } });
-    if (user && !user.roles?.some((entry: any) => ["ADMIN", "STAFF"].includes(entry.role?.name ?? entry.name))) throw new ForbiddenException("Staff access required");
+  private money(value: unknown, label: string) {
+    if (typeof value !== "string" && typeof value !== "number" && !(value instanceof Prisma.Decimal)) throw new BadRequestException(`${label} must be a valid decimal`);
+    try {
+      const amount = new Prisma.Decimal(value as any).toDecimalPlaces(2);
+      if (!amount.isFinite()) throw new Error("non-finite");
+      return amount;
+    } catch {
+      throw new BadRequestException(`${label} must be a valid decimal`);
+    }
+  }
+
+  private async withLock<T>(key: string, work: () => Promise<T>): Promise<T> {
+    const previous = this.locks.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    this.locks.set(key, current);
+    await previous;
+    try { return await work(); } finally {
+      release();
+      if (this.locks.get(key) === current) this.locks.delete(key);
+    }
+  }
+
+  private async withTransaction<T>(work: (tx: any) => Promise<T>) {
+    if (typeof (this.prisma as any).$transaction === "function") return (this.prisma as any).$transaction(work);
+    return work(this.prisma as any);
   }
 }

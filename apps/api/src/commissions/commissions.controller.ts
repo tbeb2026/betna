@@ -18,11 +18,11 @@ export class CommissionsController {
 
   @Get("admin/commissions")
   @Roles("ADMIN")
-  adminCommissions() { return this.commissions.listForAdmin(); }
+  adminCommissions(@Req() request: { user: { id: string } }) { return this.commissions.listForAdmin(request.user.id); }
 
   @Get("admin/conversions")
   @Roles("ADMIN")
-  adminConversions() { return this.conversions.listForAdmin(); }
+  adminConversions(@Req() request: { user: { id: string } }) { return this.conversions.listForAdmin(request.user.id); }
 
   @Post("admin/conversions/:id/verify")
   @Roles("ADMIN")
@@ -35,4 +35,12 @@ export class CommissionsController {
   @Post("admin/commissions/:id/paid")
   @Roles("ADMIN")
   paid(@Req() request: { user: { id: string } }, @Param("id") id: string) { return this.commissions.markPaid(id, request.user.id); }
+
+  @Post("admin/commissions/:id/waive")
+  @Roles("ADMIN")
+  waive(@Req() request: { user: { id: string } }, @Param("id") id: string) { return this.commissions.waive(id, request.user.id); }
+
+  @Post("admin/commissions/:id/dispute")
+  @Roles("ADMIN")
+  dispute(@Req() request: { user: { id: string } }, @Param("id") id: string) { return this.commissions.dispute(id, request.user.id); }
 }

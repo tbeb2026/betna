@@ -31,6 +31,18 @@ function makePrisma() {
       property: { id: "property-1", ownerId: "owner-1" },
       offering: { mode: "SHORT_STAY" },
     },
+    {
+      id: "inquiry-legacy-overlap",
+      propertyId: "property-1",
+      status: "NEW",
+      mode: "SHORT_STAY",
+      startDate: new Date("2026-12-11T00:00:00.000Z"),
+      endDate: new Date("2026-12-12T00:00:00.000Z"),
+      reference: "BTNA-LEGACY",
+      guestEmail: "legacy@example.com",
+      guestPhone: "+254700000009",
+      property: { id: "property-1", ownerId: "owner-1" },
+    },
   ];
   const blocks: any[] = [];
   const prisma: any = {
@@ -95,5 +107,19 @@ describe("AvailabilityService", () => {
 
     await expect(service.confirmInquiryAndBlockDates("inquiry-winner", "owner-1"))
       .rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("uses date-bearing legacy inquiries as short-stay overlaps and notifies auto-declines", async () => {
+    const { prisma, inquiries } = makePrisma();
+    const enqueue = vi.fn().mockResolvedValue(undefined);
+    const service = new AvailabilityService(prisma, undefined, { enqueue } as any);
+
+    await service.confirmInquiryAndBlockDates("inquiry-winner", "owner-1");
+
+    expect(inquiries.find((row) => row.id === "inquiry-legacy-overlap")?.status).toBe("OWNER_DECLINED");
+    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({
+      type: "INQUIRY_AUTO_DECLINED_OVERLAP",
+      inquiryId: "inquiry-legacy-overlap",
+    }));
   });
 });
