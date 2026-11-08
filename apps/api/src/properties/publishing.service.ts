@@ -314,6 +314,12 @@ export class PublishingService {
     const availableLocales = this.translations?.getApprovedLocales
       ? await this.translations.getApprovedLocales(property.id)
       : ["en"];
+    const normalizedAvailableLocales = availableLocales.map((locale: string) =>
+      locale.toLowerCase().split("-")[0],
+    );
+    const resolvedLocale = normalizedAvailableLocales.includes(requestedLocale)
+      ? requestedLocale
+      : "en";
     return {
       id: property.id,
       slug: property.slug,
@@ -323,8 +329,8 @@ export class PublishingService {
       subcategory: property.subcategory,
       amenities: property.amenities ?? [],
       status,
-      locale: requestedLocale,
-      availableLocales,
+      locale: resolvedLocale,
+      availableLocales: normalizedAvailableLocales,
       lastInspectedAt,
       verificationValidUntil,
       verification: {

@@ -20,3 +20,15 @@ export async function getPublicProperty(slug: string, locale: string) {
   try { return await createApiClient().get<PublicProperty>(`/public/properties/${encodeURIComponent(slug)}?locale=${encodeURIComponent(locale)}`); }
   catch { return null; }
 }
+
+/** Fetch every public page for build-independent sitemap generation. */
+export async function getAllPublicProperties(params: PublicSearchParams = {}) {
+  const pageSize = 100;
+  const properties = [] as Awaited<ReturnType<typeof getPublicProperties>>;
+  for (let page = 1; page <= 1000; page += 1) {
+    const batch = await getPublicProperties({ ...params, page: String(page), limit: String(pageSize) });
+    properties.push(...batch);
+    if (batch.length < pageSize) break;
+  }
+  return properties;
+}

@@ -83,7 +83,10 @@ function makePrisma() {
         return value;
       }),
       findMany: vi.fn(async ({ where }: any) =>
-        [...translations.values()].filter((entry) => entry.propertyId === where.propertyId),
+        [...translations.values()].filter((entry) =>
+          entry.propertyId === where.propertyId &&
+          (where.approved === undefined || entry.approved === where.approved),
+        ),
       ),
       findUnique: vi.fn(async ({ where }: any) =>
         translations.get(`${where.propertyId_locale.propertyId}:${where.propertyId_locale.locale}`) ?? null,
@@ -319,7 +322,7 @@ describe("TranslationService", () => {
     await publishing.publish("property-1");
 
     await expect(publishing.getPublicProjection("property-1", "ti")).resolves.toMatchObject({
-      locale: "ti",
+      locale: "en",
       title: "Kilimani garden apartment",
     });
   });

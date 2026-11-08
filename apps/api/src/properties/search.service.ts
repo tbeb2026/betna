@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { PublishingService } from "./publishing.service";
 
@@ -26,6 +26,7 @@ export class SearchService {
   ) {}
 
   async search(filters: PublicDiscoveryFilters = {}): Promise<PublicProperty[]> {
+    this.validateFilters(filters);
     const locale = this.normalizeLocale(filters.locale);
     const where = this.whereFor(filters);
     const rows = await this.prisma.property.findMany({
@@ -44,6 +45,7 @@ export class SearchService {
     for (const row of rows ?? []) {
       const projection = await this.publishing.getPublicProjection(row.id, locale);
       if (!projection || projection.status !== "PUBLISHED") continue;
+      if (!projection.verificationValidUntil || new Date(projection.verificationValidUntil).getTime() <= Date.now()) continue;
       if (!this.matchesPrice(projection, filters)) continue;
       projected.push(projection);
     }
@@ -55,7 +57,11 @@ export class SearchService {
 
   async findBySlug(slug: string, locale = "en"): Promise<PublicProperty> {
     const row = await this.prisma.property.findFirst({
-      where: { slug, status: "PUBLISHED" },
+      where: {
+        slug,
+        status: "PUBLISHED",
+        verificationValidUntil: { gt: new Date() },
+      },
       include: {
         country: true,
         city: true,
@@ -66,7 +72,12 @@ export class SearchService {
     });
     if (!row) throw new NotFoundException("Published property not found");
     const projection = await this.publishing.getPublicProjection(row.id, this.normalizeLocale(locale));
-    if (!projection || projection.status !== "PUBLISHED") {
+    if (
+      !projection ||
+      projection.status !== "PUBLISHED" ||
+      !projection.verificationValidUntil ||
+      new Date(projection.verificationValidUntil).getTime() <= Date.now()
+    ) {
       throw new NotFoundException("Published property not found");
     }
     return projection;
@@ -78,7 +89,7 @@ export class SearchService {
 
   private whereFor(filters: PublicDiscoveryFilters): any {
     const offering: Record<string, unknown> = {};
-    if (filters.mode) offering.mode = filters.mode.toUpperCase();
+    if (filters.mode) offering.mode = this.mode(filters.mode);
     const minPrice = this.numeric(filters.minPrice);
     const maxPrice = this.numeric(filters.maxPrice);
     if (minPrice !== undefined) offering.basePrice = { ...(offering.basePrice as object), gte: minPrice };
@@ -100,7 +111,7 @@ export class SearchService {
     const max = this.numeric(filters.maxPrice);
     if (min === undefined && max === undefined) return true;
     return (property.offerings ?? []).some((offering: PublicProperty) => {
-      if (filters.mode && String(offering.mode).toUpperCase() !== filters.mode.toUpperCase()) return false;
+      if (filters.mode && String(offering.mode).toUpperCase() !== this.mode(filters.mode)) return false;
       const price = Number(offering.basePrice);
       return Number.isFinite(price) && (min === undefined || price >= min) && (max === undefined || price <= max);
     });
@@ -120,5 +131,37 @@ export class SearchService {
   private normalizeLocale(locale?: string) {
     const normalized = (locale ?? "en").toLowerCase().replace("_", "-").split("-")[0];
     return normalized === "ti" ? "ti" : "en";
+  }
+
+  private mode(value: string) {
+    if (typeof value !== "string") {
+      throw new BadRequestException("mode must be SHORT_STAY or LONG_TERM");
+    }
+    const normalized = value.toUpperCase();
+    if (normalized !== "SHORT_STAY" && normalized !== "LONG_TERM") {
+      throw new BadRequestException("mode must be SHORT_STAY or LONG_TERM");
+    }
+    return normalized as "SHORT_STAY" | "LONG_TERM";
+  }
+
+  private validateFilters(filters: PublicDiscoveryFilters) {
+    if (filters.mode) this.mode(filters.mode);
+    const min = this.price(filters.minPrice, "minPrice");
+    const max = this.price(filters.maxPrice, "maxPrice");
+    if (min !== undefined && max !== undefined && min > max) {
+      throw new BadRequestException("minPrice cannot exceed maxPrice");
+    }
+  }
+
+  private price(value: number | string | undefined, field: string) {
+    if (value === undefined || value === "") return undefined;
+    if (typeof value === "string" && !value.trim()) {
+      throw new BadRequestException(`${field} must be a non-negative number`);
+    }
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new BadRequestException(`${field} must be a non-negative number`);
+    }
+    return parsed;
   }
 }

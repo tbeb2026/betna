@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("public discovery exposes filters, protected-location copy, and a localized property route", async ({ page }) => {
+test("public search exposes filters and protected-location copy", async ({ page }) => {
   await page.goto("/en/search");
 
   await expect(page.getByRole("heading", { name: "Find a verified place" })).toBeVisible();
@@ -12,6 +12,9 @@ test("public discovery exposes filters, protected-location copy, and a localized
   await page.getByRole("button", { name: "Apply filters" }).click();
   await expect(page).toHaveURL(/\/en\/search\?city=nairobi/);
 
+});
+
+test("localized not-found pages retain the requested document locale", async ({ page }) => {
   await page.goto("/ti/property/unknown-home");
   await expect(page.locator("html")).toHaveAttribute("lang", "ti");
 });

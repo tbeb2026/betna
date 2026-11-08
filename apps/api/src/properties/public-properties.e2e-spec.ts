@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { NotFoundException } from "@nestjs/common";
+import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { PublicPropertiesController } from "./public-properties.controller";
 import { SearchService } from "./search.service";
 
@@ -49,7 +49,12 @@ function makePrisma() {
         if (where.offerings?.some?.mode && !row.offerings.some((offering: any) => offering.mode === where.offerings.some.mode)) return false;
         return true;
       })),
-      findFirst: vi.fn(async ({ where }: any) => rows.find((row) => row.slug === where.slug) ?? null),
+      findFirst: vi.fn(async ({ where }: any) => rows.find((row) => {
+        if (row.slug !== where.slug) return false;
+        if (where.status && row.status !== where.status) return false;
+        if (where.verificationValidUntil?.gt && !(row.verificationValidUntil && row.verificationValidUntil > where.verificationValidUntil.gt)) return false;
+        return true;
+      }) ?? null),
     },
   };
   return { prisma, rows };
@@ -71,6 +76,7 @@ function makePublishing(prisma: any) {
         category: source.category,
         status: "PUBLISHED",
         locale,
+        verificationValidUntil: source.verificationValidUntil,
         location: { country: source.country.code, city: source.city.name, label: source.publicLocationLabel, latitude: source.publicLatitude, longitude: source.publicLongitude },
         offerings: source.offerings,
         media: source.media.filter((media: any) => media.isPublic && media.status === "CLEAN").map((media: any) => ({ id: media.id, objectKey: media.objectKey })),
@@ -117,6 +123,27 @@ describe("public property discovery", () => {
 
     await expect(service.findBySlug("verified-kilimani-home", "ti")).resolves.toMatchObject({ locale: "ti" });
     await expect(service.findBySlug("missing-home")).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("rejects a direct slug lookup without a current verification window", async () => {
+    const { prisma, rows } = makePrisma();
+    rows.push({ ...structuredClone(visible), id: "unverified", slug: "unverified-home", verificationValidUntil: null } as any);
+    const service = new SearchService(prisma, makePublishing(prisma) as any);
+
+    await expect(service.findBySlug("unverified-home")).rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.property.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ verificationValidUntil: { gt: expect.any(Date) } }),
+    }));
+  });
+
+  it("rejects invalid mode and price query inputs", async () => {
+    const { prisma } = makePrisma();
+    const service = new SearchService(prisma, makePublishing(prisma) as any);
+
+    await expect(service.search({ mode: "WEEKLY" })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.search({ minPrice: "not-a-number" })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.search({ minPrice: 9000, maxPrice: 1000 })).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.property.findMany).not.toHaveBeenCalled();
   });
 
   it("exposes the discovery and slug routes without authentication", async () => {
