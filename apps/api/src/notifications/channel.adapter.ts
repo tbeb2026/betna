@@ -10,6 +10,8 @@ export interface NotificationMessage {
   event: string;
   channel: NotificationChannel;
   recipient: NotificationRecipient;
+  /** Stable delivery key forwarded to providers that support idempotency. */
+  idempotencyKey?: string;
   subject?: string;
   body: string;
   payload?: Record<string, unknown>;

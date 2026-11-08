@@ -47,7 +47,7 @@ describe("NotificationService", () => {
   });
 
   it("claims persisted failed rows for a durable retry worker", async () => {
-    const row = {
+    const row: any = {
       id: "notification-retry",
       idempotencyKey: "retry-key",
       event: "INQUIRY_CREATED",
@@ -63,7 +63,15 @@ describe("NotificationService", () => {
     const sends = vi.fn().mockResolvedValue(undefined);
     const store = {
       findMany: vi.fn().mockResolvedValue([row]),
-      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      updateMany: vi.fn(async ({ where, data }: any) => {
+        if (data.status === "PROCESSING") {
+          Object.assign(row, data, { attempts: (row.attempts ?? 0) + 1 });
+          return { count: 1 };
+        }
+        if (where.processingToken !== row.processingToken) return { count: 0 };
+        Object.assign(row, data);
+        return { count: 1 };
+      }),
       update: vi.fn(async ({ data }: any) => Object.assign(row, data)),
     };
     const service = new NotificationService({ notification: store } as any, [{ channel: "EMAIL", send: sends }]);
@@ -73,6 +81,173 @@ describe("NotificationService", () => {
     expect(store.updateMany).toHaveBeenCalled();
     expect(sends).toHaveBeenCalledTimes(1);
     expect(row.status).toBe("SENT");
+  });
+
+  it("claims failed, legacy queued, and stale processing rows but not fresh processing rows", async () => {
+    const now = new Date("2026-11-09T10:00:00.000Z");
+    const failed = {
+      id: "notification-failed",
+      idempotencyKey: "failed-key",
+      event: "INQUIRY_CREATED",
+      channel: "EMAIL",
+      status: "FAILED",
+      recipientEmail: "failed@example.com",
+      recipientPhone: null,
+      recipientId: null,
+      attempts: 1,
+    };
+    const queued = {
+      id: "notification-queued",
+      idempotencyKey: "queued-key",
+      event: "INQUIRY_CREATED",
+      channel: "EMAIL",
+      status: "QUEUED",
+      recipientEmail: "queued@example.com",
+      recipientPhone: null,
+      recipientId: null,
+      attempts: 0,
+    };
+    const stale = {
+      id: "notification-stale",
+      idempotencyKey: "stale-key",
+      event: "INQUIRY_CREATED",
+      channel: "EMAIL",
+      status: "PROCESSING",
+      processingToken: "expired-token",
+      processingAt: new Date("2026-11-09T09:00:00.000Z"),
+      recipientEmail: "stale@example.com",
+      recipientPhone: null,
+      recipientId: null,
+      attempts: 1,
+    };
+    const fresh = {
+      id: "notification-fresh",
+      idempotencyKey: "fresh-key",
+      event: "INQUIRY_CREATED",
+      channel: "EMAIL",
+      status: "PROCESSING",
+      processingToken: "fresh-token",
+      processingAt: new Date("2026-11-09T09:59:00.000Z"),
+      recipientEmail: "fresh@example.com",
+      recipientPhone: null,
+      recipientId: null,
+      attempts: 1,
+    };
+    const rows: any[] = [failed, queued, stale, fresh];
+    const findMany = vi.fn().mockResolvedValue([failed, queued, stale]);
+    const updateMany = vi.fn(async ({ where, data }: any) => {
+      const row = rows.find((candidate) => candidate.id === where.id);
+      if (!row) return { count: 0 };
+      if (data.status === "PROCESSING") {
+        Object.assign(row, data, { attempts: (row.attempts ?? 0) + 1 });
+        return { count: 1 };
+      }
+      if (where.processingToken !== row.processingToken) return { count: 0 };
+      Object.assign(row, data);
+      return { count: 1 };
+    });
+    const sends = vi.fn().mockResolvedValue(undefined);
+    const service = new NotificationService({ notification: {
+      findMany,
+      updateMany,
+    } } as any, [{ channel: "EMAIL", send: sends }]);
+
+    await service.retryFailed(10, now);
+
+    const query = findMany.mock.calls[0][0].where;
+    expect(query.OR).toEqual(expect.arrayContaining([
+      { status: "FAILED", OR: expect.any(Array) },
+      { status: "QUEUED" },
+      { status: "PROCESSING", processingAt: { lt: expect.any(Date) } },
+    ]));
+    expect(sends).toHaveBeenCalledTimes(3);
+    expect(failed.status).toBe("SENT");
+    expect(queued.status).toBe("SENT");
+    expect(stale.status).toBe("SENT");
+    expect(fresh.status).toBe("PROCESSING");
+  });
+
+  it("fences a stale successful worker from overwriting a replacement claim", async () => {
+    const row: any = {
+      id: "notification-fenced-success",
+      idempotencyKey: "fenced-success-key",
+      event: "INQUIRY_CREATED",
+      channel: "EMAIL",
+      status: "PROCESSING",
+      processingToken: "expired-token",
+      processingAt: new Date("2026-11-09T09:00:00.000Z"),
+      recipientEmail: "fenced-success@example.com",
+      recipientPhone: null,
+      recipientId: null,
+      attempts: 1,
+    };
+    const findMany = vi.fn().mockResolvedValue([row]);
+    const updateMany = vi.fn(async ({ where, data }: any) => {
+      if (data.status === "PROCESSING") {
+        Object.assign(row, data, { attempts: row.attempts + 1 });
+        return { count: 1 };
+      }
+      if (where.processingToken !== row.processingToken) return { count: 0 };
+      Object.assign(row, data);
+      return { count: 1 };
+    });
+    const sends = vi.fn().mockImplementation(async () => {
+      row.processingToken = "replacement-token";
+      row.status = "PROCESSING";
+    });
+    const service = new NotificationService({ notification: { findMany, updateMany } } as any, [{ channel: "EMAIL", send: sends }]);
+
+    await service.retryFailed(10, new Date("2026-11-09T10:00:00.000Z"));
+
+    expect(sends).toHaveBeenCalledTimes(1);
+    expect(row.status).toBe("PROCESSING");
+    expect(row.processingToken).toBe("replacement-token");
+    expect(updateMany.mock.calls.at(-1)?.[0].where).toMatchObject({
+      id: row.id,
+      processingToken: expect.any(String),
+    });
+  });
+
+  it("fences a stale failed worker from overwriting a replacement claim", async () => {
+    const row: any = {
+      id: "notification-fenced-failure",
+      idempotencyKey: "fenced-failure-key",
+      event: "INQUIRY_CREATED",
+      channel: "EMAIL",
+      status: "PROCESSING",
+      processingToken: "expired-token",
+      processingAt: new Date("2026-11-09T09:00:00.000Z"),
+      recipientEmail: "fenced-failure@example.com",
+      recipientPhone: null,
+      recipientId: null,
+      attempts: 1,
+    };
+    const findMany = vi.fn().mockResolvedValue([row]);
+    const updateMany = vi.fn(async ({ where, data }: any) => {
+      if (data.status === "PROCESSING") {
+        Object.assign(row, data, { attempts: row.attempts + 1 });
+        return { count: 1 };
+      }
+      if (where.processingToken !== row.processingToken) return { count: 0 };
+      Object.assign(row, data);
+      return { count: 1 };
+    });
+    const sends = vi.fn().mockImplementation(async () => {
+      row.processingToken = "replacement-token";
+      row.status = "PROCESSING";
+      throw new Error("provider unavailable");
+    });
+    const service = new NotificationService({ notification: { findMany, updateMany } } as any, [{ channel: "EMAIL", send: sends }]);
+
+    await service.retryFailed(10, new Date("2026-11-09T10:00:00.000Z"));
+
+    expect(sends).toHaveBeenCalledTimes(1);
+    expect(row.status).toBe("PROCESSING");
+    expect(row.processingToken).toBe("replacement-token");
+    expect(updateMany.mock.calls.at(-1)?.[0].where).toMatchObject({
+      id: row.id,
+      processingToken: expect.any(String),
+    });
   });
 
   it("persists an idempotency key and delivers an event only once", async () => {
@@ -92,8 +267,10 @@ describe("NotificationService", () => {
         return row;
       }),
       updateMany: vi.fn(async ({ where, data }: any) => {
-        const row = [...rows.values()].find((item) => item.id === where.id && ["FAILED", "QUEUED"].includes(item.status));
+        const row = [...rows.values()].find((item) => item.id === where.id);
         if (!row) return { count: 0 };
+        if (data.status !== "PROCESSING" && where.processingToken !== row.processingToken) return { count: 0 };
+        if (data.status === "PROCESSING" && !["FAILED", "QUEUED"].includes(row.status)) return { count: 0 };
         Object.assign(row, data, { attempts: (row.attempts ?? 0) + 1 });
         return { count: 1 };
       }),
@@ -112,6 +289,7 @@ describe("NotificationService", () => {
     await service.enqueue(event);
     await service.enqueue(event);
     expect(sends).toHaveBeenCalledTimes(1);
+    expect(sends.mock.calls[0][0].idempotencyKey).toEqual(expect.any(String));
     expect(prisma.notification.create).toHaveBeenCalledWith({ data: expect.objectContaining({ idempotencyKey: expect.any(String) }) });
   });
 
@@ -134,8 +312,10 @@ describe("NotificationService", () => {
           return row;
         }),
         updateMany: vi.fn(async ({ where, data }: any) => {
-          const row = [...rows.values()].find((item) => item.id === where.id && ["FAILED", "QUEUED"].includes(item.status));
+          const row = [...rows.values()].find((item) => item.id === where.id);
           if (!row) return { count: 0 };
+          if (data.status !== "PROCESSING" && where.processingToken !== row.processingToken) return { count: 0 };
+          if (data.status === "PROCESSING" && !["FAILED", "QUEUED"].includes(row.status)) return { count: 0 };
           Object.assign(row, data, { attempts: (row.attempts ?? 0) + 1 });
           return { count: 1 };
         }),

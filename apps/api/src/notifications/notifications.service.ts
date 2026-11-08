@@ -83,12 +83,19 @@ export class NotificationService {
     return deliveries;
   }
 
-  /** Retry rows left FAILED by a provider outage from any API instance/worker. */
+  /** Retry failed, legacy queued, and expired processing rows from any worker. */
   async retryFailed(limit = 100, now = new Date()): Promise<number> {
     const store = this.store();
     if (!store?.findMany) return 0;
+    const staleBefore = new Date(now.getTime() - RETRY_LEASE_MS);
     const rows = await store.findMany({
-      where: { status: "FAILED", OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }] },
+      where: {
+        OR: [
+          { status: "FAILED", OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }] },
+          { status: "QUEUED" },
+          { status: "PROCESSING", processingAt: { lt: staleBefore } },
+        ],
+      },
       take: limit,
     });
     let retried = 0;
@@ -108,7 +115,7 @@ export class NotificationService {
         if (this.seenKeys.has(idempotencyKey)) return undefined;
         const adapter = this.adapters.get(channel);
         if (!adapter) throw new Error(`No adapter configured for ${channel}`);
-        await adapter.send(this.message(event, recipient, channel));
+        await adapter.send(this.message(event, recipient, channel, idempotencyKey));
         this.seenKeys.add(idempotencyKey);
         return undefined;
       }
@@ -172,12 +179,12 @@ export class NotificationService {
         event: row.event,
         channel,
         recipient,
+        idempotencyKey: row.idempotencyKey,
         subject: row.subject ?? undefined,
         body: row.body ?? `Betna update${row.reference ? ` for ${row.reference}` : ""}.`,
         payload: row.payload,
       });
-      if (store.update) return store.update({ where: { id: row.id }, data: { status: "SENT", sentAt: new Date(), error: null, processingToken: null, processingAt: null, nextAttemptAt: null } });
-      return { ...row, status: "SENT" };
+      return this.markSent(row, store);
     } catch (error) {
       await this.markFailed(row, store, error instanceof Error ? error.message : String(error));
       return row;
@@ -185,10 +192,22 @@ export class NotificationService {
   }
 
   private async markFailed(row: NotificationRow, store: NotificationStore, error: string) {
-    if (!store.update) return;
+    if (!store.updateMany || !row.processingToken) return;
     const attempts = row.attempts ?? 1;
     const delay = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** Math.max(0, attempts - 1));
-    await store.update({ where: { id: row.id }, data: { status: "FAILED", error, processingToken: null, processingAt: null, nextAttemptAt: new Date(Date.now() + delay) } });
+    await store.updateMany({
+      where: { id: row.id, status: "PROCESSING", processingToken: row.processingToken },
+      data: { status: "FAILED", error, processingToken: null, processingAt: null, nextAttemptAt: new Date(Date.now() + delay) },
+    });
+  }
+
+  private async markSent(row: NotificationRow, store: NotificationStore): Promise<NotificationRow> {
+    if (!store.updateMany || !row.processingToken) return row;
+    const result = await store.updateMany({
+      where: { id: row.id, status: "PROCESSING", processingToken: row.processingToken },
+      data: { status: "SENT", sentAt: new Date(), error: null, processingToken: null, processingAt: null, nextAttemptAt: null },
+    });
+    return result.count === 1 ? { ...row, status: "SENT", processingToken: null, processingAt: null, nextAttemptAt: null } : row;
   }
 
   private rowData(event: NotificationEvent, recipient: NotificationRecipient, channel: NotificationChannel, idempotencyKey: string, token: string, now: Date) {
@@ -201,8 +220,8 @@ export class NotificationService {
     };
   }
 
-  private message(event: NotificationEvent, recipient: NotificationRecipient, channel: NotificationChannel): NotificationMessage {
-    return { event: event.type, channel, recipient, subject: event.subject, body: event.body ?? `Betna update${event.reference ? ` for ${event.reference}` : ""}.`, payload: event.payload };
+  private message(event: NotificationEvent, recipient: NotificationRecipient, channel: NotificationChannel, idempotencyKey?: string): NotificationMessage {
+    return { event: event.type, channel, recipient, idempotencyKey, subject: event.subject, body: event.body ?? `Betna update${event.reference ? ` for ${event.reference}` : ""}.`, payload: event.payload };
   }
 
   private store() { return (this.prisma as any).notification as NotificationStore | undefined; }
