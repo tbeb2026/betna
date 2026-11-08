@@ -36,4 +36,40 @@ describe("NotificationService", () => {
     expect(sends).toHaveBeenCalledTimes(1);
     expect(prisma.notification.create).toHaveBeenCalledWith({ data: expect.objectContaining({ idempotencyKey: expect.any(String) }) });
   });
+
+  it("retries a persisted failed delivery on the next enqueue", async () => {
+    const rows = new Map<string, any>();
+    const sends = vi.fn()
+      .mockRejectedValueOnce(new Error("temporary provider failure"))
+      .mockResolvedValueOnce(undefined);
+    const prisma = {
+      notification: {
+        findUnique: vi.fn(async ({ where }: any) => rows.get(where.idempotencyKey) ?? null),
+        create: vi.fn(async ({ data }: any) => {
+          const row = { id: `notification-${rows.size + 1}`, ...data };
+          rows.set(row.idempotencyKey, row);
+          return row;
+        }),
+        update: vi.fn(async ({ where, data }: any) => {
+          const row = [...rows.values()].find((item) => item.id === where.id);
+          Object.assign(row, data);
+          return row;
+        }),
+      },
+    };
+    const service = new NotificationService(prisma as any, [{ channel: "EMAIL", send: sends }]);
+    const event: NotificationEvent = {
+      type: "INQUIRY_CREATED",
+      inquiryId: "inquiry-retry",
+      recipients: [{ email: "retry@example.com" }],
+      channels: ["EMAIL"],
+    };
+
+    await service.enqueue(event);
+    expect([...rows.values()][0].status).toBe("FAILED");
+    await service.enqueue(event);
+
+    expect(sends).toHaveBeenCalledTimes(2);
+    expect([...rows.values()][0].status).toBe("SENT");
+  });
 });

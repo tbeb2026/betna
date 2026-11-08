@@ -33,6 +33,7 @@ type NotificationStore = {
 export class NotificationService {
   private readonly adapters: Map<NotificationChannel, ChannelAdapter>;
   private readonly seenKeys = new Set<string>();
+  private readonly inFlight = new Map<string, Promise<any>>();
 
   constructor(
     private readonly prisma: PrismaService | { notification?: NotificationStore } = {} as PrismaService,
@@ -49,80 +50,78 @@ export class NotificationService {
       for (const channel of channels) {
         if (!this.hasAddress(recipient, channel)) continue;
         const idempotencyKey = this.keyFor(event, recipient, channel);
-        if (this.seenKeys.has(idempotencyKey)) continue;
         const store = (this.prisma as any).notification as NotificationStore | undefined;
-        const existing = store?.findUnique
-          ? await store.findUnique({ where: { idempotencyKey } })
-          : undefined;
-        if (existing) {
-          deliveries.push(existing);
-          continue;
-        }
-        const message: NotificationMessage = {
-          event: event.type,
-          channel,
-          recipient,
-          subject: event.subject,
-          body:
-            event.body ??
-            `Betna update${event.reference ? ` for ${event.reference}` : ""}.`,
-          payload: event.payload,
-        };
-        const id = randomUUID();
-        let queued;
-        try {
-          queued = store?.create
-            ? await store.create({
-              data: {
-                id,
-                idempotencyKey,
-                event: event.type,
-                channel,
-                status: "QUEUED",
-                recipientId: recipient.userId,
-                recipientEmail: recipient.email ?? undefined,
-                recipientPhone: recipient.phone ?? undefined,
-                inquiryId: event.inquiryId,
-                payload: event.payload ?? {},
-              },
-            })
-            : { id, idempotencyKey, event: event.type, channel, status: "QUEUED", recipient };
-        } catch (error) {
-          // A concurrent worker may have won the unique insert. Re-read and
-          // return that delivery rather than sending the message twice.
-          if (store?.findUnique) {
-            const duplicate = await store.findUnique({ where: { idempotencyKey } });
-            if (duplicate) {
-              deliveries.push(duplicate);
-              continue;
-            }
-          }
-          throw error;
-        }
-        deliveries.push(queued);
-        this.seenKeys.add(idempotencyKey);
-        try {
-          const adapter = this.adapters.get(channel);
-          if (!adapter) throw new Error(`No adapter configured for ${channel}`);
-          await adapter.send(message);
-          if (store?.update)
-            await store.update({
-              where: { id },
-              data: { status: "SENT", sentAt: new Date(), error: null },
-            });
-        } catch (error) {
-          if (store?.update)
-            await store.update({
-              where: { id },
-              data: {
-                status: "FAILED",
-                error: error instanceof Error ? error.message : String(error),
-              },
-            });
-        }
+        const delivery = this.inFlight.get(idempotencyKey) ?? this.deliver(event, recipient, channel, idempotencyKey, store);
+        this.inFlight.set(idempotencyKey, delivery);
+        deliveries.push(await delivery);
       }
     }
     return deliveries;
+  }
+
+  private deliver(
+    event: NotificationEvent,
+    recipient: NotificationRecipient,
+    channel: NotificationChannel,
+    idempotencyKey: string,
+    store?: NotificationStore,
+  ): Promise<any> {
+    const work = (async () => {
+      const existing = store?.findUnique
+        ? await store.findUnique({ where: { idempotencyKey } })
+        : undefined;
+      if (existing?.status === "SENT" || (!store && this.seenKeys.has(idempotencyKey))) return existing;
+
+      const message: NotificationMessage = {
+        event: event.type,
+        channel,
+        recipient,
+        subject: event.subject,
+        body: event.body ?? `Betna update${event.reference ? ` for ${event.reference}` : ""}.`,
+        payload: event.payload,
+      };
+      let queued = existing;
+      const id = existing?.id ?? randomUUID();
+      if (!queued) {
+        try {
+          queued = store?.create
+            ? await store.create({ data: {
+              id,
+              idempotencyKey,
+              event: event.type,
+              channel,
+              status: "QUEUED",
+              recipientId: recipient.userId,
+              recipientEmail: recipient.email ?? undefined,
+              recipientPhone: recipient.phone ?? undefined,
+              inquiryId: event.inquiryId,
+              payload: event.payload ?? {},
+            } })
+            : { id, idempotencyKey, event: event.type, channel, status: "QUEUED", recipient };
+        } catch (error) {
+          const duplicate = store?.findUnique ? await store.findUnique({ where: { idempotencyKey } }) : undefined;
+          if (duplicate) queued = duplicate;
+          else throw error;
+        }
+      }
+      try {
+        const adapter = this.adapters.get(channel);
+        if (!adapter) throw new Error(`No adapter configured for ${channel}`);
+        await adapter.send(message);
+        this.seenKeys.add(idempotencyKey);
+        if (store?.update) return store.update({ where: { id }, data: { status: "SENT", sentAt: new Date(), error: null } });
+        return queued;
+      } catch (error) {
+        this.seenKeys.delete(idempotencyKey);
+        if (store?.update) return store.update({ where: { id }, data: { status: "FAILED", error: error instanceof Error ? error.message : String(error) } });
+        return queued;
+      }
+    })();
+    void work.then(
+      () => this.inFlight.delete(idempotencyKey),
+      () => this.inFlight.delete(idempotencyKey),
+    );
+    return work;
   }
 
   private keyFor(event: NotificationEvent, recipient: NotificationRecipient, channel: NotificationChannel) {

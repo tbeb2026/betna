@@ -200,4 +200,116 @@ describe("InquiriesService", () => {
     await expect(service.getReleasedLocation(created.inquiry.id, actor)).resolves.toBeNull();
     expect(inquiries[0].status).toBe("CONTACTED");
   });
+
+  it("serializes concurrent location releases and emits one approval event", async () => {
+    const { prisma } = makePrisma();
+    const enqueue = vi.fn().mockResolvedValue(undefined);
+    const service = new InquiriesService(prisma, { enqueue } as any);
+    const created = await service.createGuestInquiry({
+      propertyId: "property-1",
+      mode: "SHORT_STAY",
+      name: "Concurrent Guest",
+      email: "concurrent-release@example.com",
+      phone: "+254711111115",
+      message: "Please release the address.",
+    });
+    const actor = { id: "admin-1", roles: ["ADMIN"] };
+
+    await Promise.all([
+      service.adminReleaseLocation(created.inquiry.id, actor),
+      service.adminReleaseLocation(created.inquiry.id, actor),
+    ]);
+
+    expect(enqueue.mock.calls.filter(([event]) => event.type === "INQUIRY_LOCATION_APPROVED")).toHaveLength(1);
+  });
+
+  it("does not disclose a legacy approved release with no expiry", async () => {
+    const { prisma, inquiries } = makePrisma();
+    const service = new InquiriesService(prisma, { enqueue: vi.fn() } as any);
+    const created = await service.createGuestInquiry({
+      propertyId: "property-1",
+      mode: "SHORT_STAY",
+      name: "Legacy Guest",
+      email: "legacy-release@example.com",
+      phone: "+254711111116",
+      message: "Please release the address.",
+    });
+    inquiries[0].status = "LOCATION_APPROVED";
+    inquiries[0].locationReleaseExpiresAt = null;
+
+    await expect(service.getReleasedLocation(created.inquiry.id, { id: "admin-1", roles: ["ADMIN"] })).resolves.toBeNull();
+    expect(inquiries[0].status).toBe("CONTACTED");
+  });
+
+  it("uses a distinct notification key when an expired release is renewed", async () => {
+    const { prisma, inquiries } = makePrisma();
+    const enqueue = vi.fn().mockResolvedValue(undefined);
+    const service = new InquiriesService(prisma, { enqueue } as any);
+    const created = await service.createGuestInquiry({
+      propertyId: "property-1",
+      mode: "SHORT_STAY",
+      name: "Renewal Guest",
+      email: "renewal-release@example.com",
+      phone: "+254711111117",
+      message: "Please release the address.",
+    });
+    const actor = { id: "admin-1", roles: ["ADMIN"] };
+    await service.adminReleaseLocation(created.inquiry.id, actor);
+    inquiries[0].locationReleaseExpiresAt = new Date(Date.now() - 1);
+    await service.adminReleaseLocation(created.inquiry.id, actor);
+
+    const keys = enqueue.mock.calls
+      .map(([event]) => event)
+      .filter((event) => event.type === "INQUIRY_LOCATION_APPROVED")
+      .map((event) => event.idempotencyKey);
+    expect(keys).toHaveLength(2);
+    expect(new Set(keys).size).toBe(2);
+  });
+
+  it("returns BadRequestException for malformed runtime input instead of throwing TypeError", async () => {
+    const { prisma } = makePrisma();
+    const service = new InquiriesService(prisma, { enqueue: vi.fn() } as any);
+    await expect(service.createGuestInquiry({
+      propertyId: "property-1",
+      mode: "SHORT_STAY",
+      name: "Malformed Guest",
+      email: "malformed@example.com",
+      phone: "+254711111118",
+      message: "hello",
+      honeypot: 42 as any,
+    })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.logContactClick({ propertyId: 42 as any, target: "BETNA", channel: "WHATSAPP" })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.adminReleaseLocation("missing", { id: "admin-1", roles: ["ADMIN"] }, 42 as any)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("consumes the persisted rate limit atomically under concurrent submissions", async () => {
+    const { prisma } = makePrisma();
+    const attempts = new Map<string, number>();
+    (prisma as any).inquiryAbuseAttempt = {
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      findFirst: vi.fn(async ({ where }: any) => {
+        const key = where?.key;
+        const count = key ? attempts.get(key) ?? 0 : 0;
+        return count ? { key, attempts: count, windowStartedAt: new Date(), lastAttemptAt: new Date() } : null;
+      }),
+      upsert: vi.fn(async ({ where, create, update }: any) => {
+        const count = attempts.get(where.key) ?? 0;
+        const next = count ? count + 1 : create.attempts;
+        attempts.set(where.key, next);
+        return { ...create, ...update, key: where.key, attempts: next };
+      }),
+    };
+    const service = new InquiriesService(prisma, { enqueue: vi.fn() } as any);
+    const input = {
+      propertyId: "property-1",
+      mode: "SHORT_STAY" as const,
+      name: "Rate Limited Guest",
+      email: "atomic-rate-limit@example.com",
+      phone: "+254711111119",
+      message: "hello",
+    };
+    const results = await Promise.allSettled(Array.from({ length: 7 }, () => service.createGuestInquiry(input)));
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(5);
+    expect(results.filter((result) => result.status === "rejected" && result.reason instanceof ConflictException)).toHaveLength(2);
+  });
 });

@@ -1,4 +1,5 @@
-import { ConflictException, ForbiddenException, NotFoundException, Injectable } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException, Injectable } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -15,6 +16,8 @@ function isAdmin(actor: InquiryActor | undefined) {
 
 @Injectable()
 export class LocationReleaseService {
+  private readonly releaseLocks = new Map<string, Promise<unknown>>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit?: AuditService,
@@ -22,106 +25,143 @@ export class LocationReleaseService {
 
   async release(inquiryId: string, actor: InquiryActor, reason?: string) {
     if (!isAdmin(actor)) throw new ForbiddenException("Only admins can release exact location");
-    const inquiry = await (this.prisma as any).inquiry.findUnique({
-      where: { id: inquiryId },
-      include: { property: true },
-    });
-    if (!inquiry) throw new NotFoundException("Inquiry not found");
-    if (!inquiry.property?.exactAddress) {
-      throw new NotFoundException("Exact location is not available");
+    if (reason !== undefined && typeof reason !== "string") throw new BadRequestException("Release reason must be text");
+    const previous = this.releaseLocks.get(inquiryId);
+    const run = (previous ? previous.catch(() => undefined) : Promise.resolve())
+      .then(() => this.releaseOnce(inquiryId, actor, reason));
+    this.releaseLocks.set(inquiryId, run);
+    try {
+      return await run;
+    } finally {
+      if (this.releaseLocks.get(inquiryId) === run) this.releaseLocks.delete(inquiryId);
     }
+  }
 
-    const now = new Date();
-    if (inquiry.status === "LOCATION_APPROVED") {
-      const expiresAt = inquiry.locationReleaseExpiresAt
-        ? new Date(inquiry.locationReleaseExpiresAt)
-        : null;
-      if (!expiresAt || expiresAt.getTime() > now.getTime()) {
-        return {
-          inquiry,
-          location: this.location(inquiry.property),
-          idempotent: true,
-        };
+  private async releaseOnce(inquiryId: string, actor: InquiryActor, reason?: string) {
+    const result = await this.withTransaction(async (tx: any) => {
+      let inquiry = await this.findInquiry(tx, inquiryId);
+      if (!inquiry) throw new NotFoundException("Inquiry not found");
+      if (!inquiry.property?.exactAddress) throw new NotFoundException("Exact location is not available");
+      const now = new Date();
+      if (inquiry.status === "LOCATION_APPROVED") {
+        const expiresAt = inquiry.locationReleaseExpiresAt ? new Date(inquiry.locationReleaseExpiresAt) : null;
+        if (!expiresAt) {
+          await this.revokeWithinTransaction(tx, inquiry, actor, "Legacy location release had no expiry");
+          throw new ConflictException("Location release has no expiry and must be re-approved");
+        }
+        if (expiresAt.getTime() > now.getTime()) {
+          return {
+            inquiry,
+            location: this.location(inquiry.property),
+            idempotent: true,
+            releaseId: inquiry.locationReleaseId ?? inquiry.locationApprovedAt?.toISOString() ?? inquiry.id,
+          };
+        }
+        await this.revokeWithinTransaction(tx, inquiry, actor, "Location release expired");
+        inquiry = await this.findInquiry(tx, inquiryId);
       }
-      await this.revoke(inquiryId, actor, "Location release expired");
-      inquiry.status = "CONTACTED";
-      inquiry.locationReleaseExpiresAt = null;
-    }
-    if (!["NEW", "CONTACTED", "OWNER_CONFIRMED"].includes(inquiry.status)) {
-      throw new ConflictException("Inquiry is not eligible for location release");
-    }
-
-    const approvedAt = now;
-    const expiresAt = new Date(now.getTime() + LOCATION_RELEASE_TTL_MS);
-    const updated = await (this.prisma as any).inquiry.update({
-      where: { id: inquiryId },
-      data: {
+      if (!["NEW", "CONTACTED", "OWNER_CONFIRMED"].includes(inquiry.status)) {
+        throw new ConflictException("Inquiry is not eligible for location release");
+      }
+      const approvedAt = now;
+      const expiresAt = new Date(now.getTime() + LOCATION_RELEASE_TTL_MS);
+      const releaseId = randomUUID();
+      const data = {
         status: "LOCATION_APPROVED",
         locationApprovedAt: approvedAt,
         locationReleaseExpiresAt: expiresAt,
         locationRevokedAt: null,
         locationReleasedBy: actor.id,
-      },
-      include: { property: true },
+        locationReleaseId: releaseId,
+      };
+      let claimed = true;
+      if (typeof tx.inquiry.updateMany === "function") {
+        const claim = await tx.inquiry.updateMany({
+          where: { id: inquiryId, status: { in: ["NEW", "CONTACTED", "OWNER_CONFIRMED"] } },
+          data,
+        });
+        claimed = claim.count === 1;
+      } else {
+        await tx.inquiry.update({ where: { id: inquiryId }, data });
+      }
+      if (!claimed) {
+        const current = await this.findInquiry(tx, inquiryId);
+        if (current?.status === "LOCATION_APPROVED" && current.locationReleaseExpiresAt && new Date(current.locationReleaseExpiresAt).getTime() > Date.now()) {
+          return {
+            inquiry: current,
+            location: this.location(current.property),
+            idempotent: true,
+            releaseId: current.locationReleaseId ?? current.locationApprovedAt?.toISOString() ?? current.id,
+          };
+        }
+        throw new ConflictException("Inquiry is not eligible for location release");
+      }
+      const updated = await this.findInquiry(tx, inquiryId);
+      return { inquiry: updated, location: this.location(updated.property), idempotent: false, releaseId };
     });
-    await this.audit?.record(actor, "EXACT_LOCATION_RELEASED", {
-      type: "Inquiry",
-      id: inquiryId,
-      metadata: { reason: reason?.trim() || "admin-approved inquiry" },
-    });
-    const property = updated.property ?? inquiry.property;
-    return {
-      inquiry: updated,
-      location: this.location(property),
-      idempotent: false,
-    };
+    if (!result.idempotent) {
+      await this.audit?.record(actor, "EXACT_LOCATION_RELEASED", {
+        type: "Inquiry",
+        id: inquiryId,
+        metadata: { reason: reason?.trim() || "admin-approved inquiry", releaseId: result.releaseId },
+      });
+    }
+    return result;
   }
 
   async revoke(inquiryId: string, actor: InquiryActor, reason = "Admin revoked location release") {
     if (!isAdmin(actor)) throw new ForbiddenException("Only admins can revoke exact location");
-    const inquiry = await (this.prisma as any).inquiry.findUnique({ where: { id: inquiryId }, include: { property: true } });
-    if (!inquiry) throw new NotFoundException("Inquiry not found");
-    if (inquiry.status !== "LOCATION_APPROVED") return { inquiry, revoked: false };
-    const updated = await (this.prisma as any).inquiry.update({
-      where: { id: inquiryId },
-      data: {
-        status: "CONTACTED",
-        locationApprovedAt: null,
-        locationRevokedAt: new Date(),
-        locationReleaseExpiresAt: null,
-        locationReleasedBy: null,
-      },
-      include: { property: true },
+    if (typeof reason !== "string") throw new BadRequestException("Release reason must be text");
+    return this.withTransaction(async (tx: any) => {
+      const inquiry = await this.findInquiry(tx, inquiryId);
+      if (!inquiry) throw new NotFoundException("Inquiry not found");
+      if (inquiry.status !== "LOCATION_APPROVED") return { inquiry, revoked: false };
+      return this.revokeWithinTransaction(tx, inquiry, actor, reason);
     });
-    await this.audit?.record(actor, "EXACT_LOCATION_REVOKED", {
-      type: "Inquiry",
-      id: inquiryId,
-      metadata: { reason: typeof reason === "string" && reason.trim() ? reason.trim().slice(0, 500) : "Admin revoked location release" },
-    });
-    return { inquiry: updated, revoked: true };
   }
 
   async getReleasedLocation(inquiryId: string, actor: InquiryActor) {
     if (!isAdmin(actor)) throw new ForbiddenException("Only admins can view exact location");
-    const inquiry = await (this.prisma as any).inquiry.findUnique({
-      where: { id: inquiryId },
-      include: { property: true },
-    });
+    const inquiry = await this.findInquiry(this.prisma as any, inquiryId);
     if (!inquiry) throw new NotFoundException("Inquiry not found");
     if (inquiry.status !== "LOCATION_APPROVED") return null;
-    if (inquiry.locationReleaseExpiresAt && new Date(inquiry.locationReleaseExpiresAt).getTime() <= Date.now()) {
-      await this.revoke(inquiryId, actor, "Location release expired");
+    if (!inquiry.locationReleaseExpiresAt || new Date(inquiry.locationReleaseExpiresAt).getTime() <= Date.now()) {
+      await this.revoke(inquiryId, actor, inquiry.locationReleaseExpiresAt ? "Location release expired" : "Legacy location release had no expiry");
       return null;
     }
     return this.location(inquiry.property);
   }
 
-  private location(property: any) {
-    return {
-      exactAddress: property.exactAddress,
-      latitude: this.numberOrNull(property.exactLatitude),
-      longitude: this.numberOrNull(property.exactLongitude),
+  private async revokeWithinTransaction(tx: any, inquiry: any, actor: InquiryActor, reason: string) {
+    const data = {
+      status: "CONTACTED",
+      locationApprovedAt: null,
+      locationRevokedAt: new Date(),
+      locationReleaseExpiresAt: null,
+      locationReleasedBy: null,
+      locationReleaseId: null,
     };
+    if (typeof tx.inquiry.updateMany === "function") {
+      await tx.inquiry.updateMany({ where: { id: inquiry.id, status: "LOCATION_APPROVED" }, data });
+    } else {
+      await tx.inquiry.update({ where: { id: inquiry.id }, data });
+    }
+    const updated = await this.findInquiry(tx, inquiry.id);
+    await this.audit?.record(actor, "EXACT_LOCATION_REVOKED", { type: "Inquiry", id: inquiry.id, metadata: { reason } });
+    return { inquiry: updated, revoked: true };
+  }
+
+  private async findInquiry(tx: any, inquiryId: string) {
+    return tx.inquiry.findUnique({ where: { id: inquiryId }, include: { property: true } });
+  }
+
+  private async withTransaction<T>(work: (tx: any) => Promise<T>): Promise<T> {
+    if (typeof (this.prisma as any).$transaction === "function") return (this.prisma as any).$transaction(work);
+    return work(this.prisma as any);
+  }
+
+  private location(property: any) {
+    return { exactAddress: property.exactAddress, latitude: this.numberOrNull(property.exactLatitude), longitude: this.numberOrNull(property.exactLongitude) };
   }
 
   private numberOrNull(value: unknown) {

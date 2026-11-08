@@ -138,7 +138,9 @@ export class InquiriesService {
     if (!released.idempotent) {
       await this.notifications.enqueue({
         type: "INQUIRY_LOCATION_APPROVED",
-        idempotencyKey: `inquiry-location-approved:${inquiryId}`,
+        // Every approval window has its own durable id, so a renewal after
+        // expiry is delivered even though it belongs to the same inquiry.
+        idempotencyKey: `inquiry-location-approved:${inquiryId}:${released.releaseId}`,
         inquiryId,
         reference: released.inquiry.reference,
         recipients: [{ email: released.inquiry.guestEmail, phone: released.inquiry.guestPhone }],
@@ -173,7 +175,7 @@ export class InquiriesService {
   }
 
   async logContactClick(input: { propertyId: string; target: "BETNA" | "OWNER"; channel: "WHATSAPP" | "EMAIL" }) {
-    if (!input || !input.propertyId?.trim() || input.propertyId.length > 100 || !["BETNA", "OWNER"].includes(input.target) || !["WHATSAPP", "EMAIL"].includes(input.channel) || (input.target === "OWNER" && input.channel !== "WHATSAPP")) {
+    if (!input || typeof input !== "object" || typeof input.propertyId !== "string" || !input.propertyId.trim() || input.propertyId.length > 100 || typeof input.target !== "string" || typeof input.channel !== "string" || !["BETNA", "OWNER"].includes(input.target) || !["WHATSAPP", "EMAIL"].includes(input.channel) || (input.target === "OWNER" && input.channel !== "WHATSAPP")) {
       throw new BadRequestException("Invalid contact click");
     }
     const property = await (this.prisma as any).property.findUnique?.({
@@ -216,12 +218,18 @@ export class InquiriesService {
 
   private validateGuestInput(input: GuestInquiryRequest) {
     if (!input || typeof input !== "object") throw new BadRequestException("Inquiry payload is required");
-    if (input.honeypot?.trim()) throw new BadRequestException("Inquiry could not be submitted");
-    if (!input.propertyId || !input.name?.trim() || !input.message?.trim()) throw new BadRequestException("Name, message and property are required");
+    if (input.honeypot !== undefined && typeof input.honeypot !== "string") throw new BadRequestException("Inquiry payload is invalid");
+    if (typeof input.honeypot === "string" && input.honeypot.trim()) throw new BadRequestException("Inquiry could not be submitted");
+    if (typeof input.propertyId !== "string" || typeof input.name !== "string" || typeof input.message !== "string" || !input.propertyId.trim() || !input.name.trim() || !input.message.trim()) throw new BadRequestException("Name, message and property are required");
     if (input.name.trim().length > 160 || input.message.trim().length > 4000) throw new BadRequestException("Name or message is too long");
+    if (typeof input.email !== "string" || !/^\S+@\S+\.\S+$/.test(input.email.trim())) throw new BadRequestException("A valid email is required");
+    if (typeof input.phone !== "string" || !/^\+?[0-9 ()-]{7,25}$/.test(input.phone.trim())) throw new BadRequestException("A valid phone number is required");
     if (input.mode !== "SHORT_STAY" && input.mode !== "LONG_TERM") throw new BadRequestException("A valid rental mode is required");
-    if (!/^\S+@\S+\.\S+$/.test(input.email?.trim() ?? "")) throw new BadRequestException("A valid email is required");
-    if (!/^\+?[0-9 ()-]{7,25}$/.test(input.phone?.trim() ?? "")) throw new BadRequestException("A valid phone number is required");
+    if (input.offeringId !== undefined && typeof input.offeringId !== "string") throw new BadRequestException("A valid offering is required");
+    if (typeof input.offeringId === "string" && !input.offeringId.trim()) throw new BadRequestException("A valid offering is required");
+    if (input.fingerprint !== undefined && typeof input.fingerprint !== "string") throw new BadRequestException("Inquiry payload is invalid");
+    if (input.startDate !== undefined && typeof input.startDate !== "string") throw new BadRequestException("startDate must be a valid date");
+    if (input.endDate !== undefined && typeof input.endDate !== "string") throw new BadRequestException("endDate must be a valid date");
     if (input.guests != null && (!Number.isInteger(input.guests) || input.guests < 1 || input.guests > 100)) throw new BadRequestException("Guests must be between 1 and 100");
     const start = this.optionalDate(input.startDate, "startDate");
     const end = this.optionalDate(input.endDate, "endDate");
@@ -237,32 +245,26 @@ export class InquiriesService {
     if (abuseStore?.findFirst && abuseStore?.upsert) {
       const cutoff = new Date(now - WINDOW_MS);
       await abuseStore.deleteMany?.({ where: { lastAttemptAt: { lt: cutoff } } });
-      const existing = await abuseStore.findFirst({
-        where: {
-          lastAttemptAt: { gt: cutoff },
-          OR: [
-            { normalizedEmail },
-            { normalizedPhone },
-            ...(fingerprint ? [{ fingerprint }] : []),
-          ],
-        },
-      });
-      if (existing && existing.attempts >= MAX_SUBMISSIONS) throw new ConflictException("Too many inquiries; please try again later");
       const keys = [
         `email:${normalizedEmail}`,
         `phone:${normalizedPhone}`,
         ...(fingerprint ? [`fingerprint:${fingerprint}`] : []),
       ];
       const nowDate = new Date(now);
-      const windowOpen = existing && now - new Date(existing.windowStartedAt).getTime() < WINDOW_MS;
       for (const key of keys) {
-      await abuseStore.upsert({
-        where: { key },
-        create: { key, normalizedEmail, normalizedPhone, fingerprint, attempts: 1, windowStartedAt: nowDate, lastAttemptAt: nowDate },
-        update: windowOpen
-          ? { attempts: { increment: 1 }, lastAttemptAt: new Date(now) }
-          : { attempts: 1, windowStartedAt: new Date(now), lastAttemptAt: new Date(now), normalizedEmail, normalizedPhone, fingerprint },
-      });
+        const existing = await abuseStore.findUnique?.({ where: { key } }) ?? await abuseStore.findFirst?.({ where: { key } });
+        const windowOpen = existing && now - new Date(existing.windowStartedAt).getTime() < WINDOW_MS;
+        const row = await abuseStore.upsert({
+          where: { key },
+          create: { key, normalizedEmail, normalizedPhone, fingerprint, attempts: 1, windowStartedAt: nowDate, lastAttemptAt: nowDate },
+          update: windowOpen
+            ? { attempts: { increment: 1 }, lastAttemptAt: nowDate }
+            : { attempts: 1, windowStartedAt: nowDate, lastAttemptAt: nowDate, normalizedEmail, normalizedPhone, fingerprint },
+        });
+        // Prisma's upsert is atomic on the unique key. Checking the returned
+        // counter means concurrent callers cannot all pass a read-before-write
+        // limit check.
+        if (row?.attempts > MAX_SUBMISSIONS) throw new ConflictException("Too many inquiries; please try again later");
       }
       return;
     }

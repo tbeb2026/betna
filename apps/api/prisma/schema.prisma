@@ -381,6 +381,8 @@ model Inquiry {
   guests             Int?
   locationApprovedAt DateTime?
   locationReleaseExpiresAt DateTime?
+  /// A new identifier is generated for every approval window, including renewals.
+  locationReleaseId String? @unique @db.Uuid
   locationRevokedAt DateTime?
   locationReleasedBy String? @db.Uuid
   createdAt          DateTime      @default(now())
