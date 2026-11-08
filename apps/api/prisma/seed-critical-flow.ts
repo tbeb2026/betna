@@ -5,7 +5,12 @@ import { seed } from "./seed";
 const prisma = new PrismaClient();
 const ownerEmail = "critical-owner@betna.example";
 const adminEmail = "critical-admin@betna.example";
-const password = "critical-flow-password";
+const configuredPassword = process.env.BETNA_CRITICAL_FLOW_PASSWORD;
+
+if (!configuredPassword) {
+  throw new Error("BETNA_CRITICAL_FLOW_PASSWORD is required");
+}
+const password = configuredPassword;
 
 async function ensureRole(userId: string, roleName: string) {
   const role = await prisma.role.findUniqueOrThrow({

@@ -45,7 +45,13 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm --filter @betna/api prisma migrate deploy
-      - run: pnpm --filter @betna/api prisma:seed:critical-flow
+      - name: Seed critical flow fixtures
+        run: |
+          set -euo pipefail
+          critical_flow_password="$(openssl rand -hex 32)"
+          echo "::add-mask::$critical_flow_password"
+          printf 'BETNA_CRITICAL_FLOW_PASSWORD=%s\n' "$critical_flow_password" >> "$GITHUB_ENV"
+          BETNA_CRITICAL_FLOW_PASSWORD="$critical_flow_password" pnpm --filter @betna/api prisma:seed:critical-flow
       - run: pnpm --filter @betna/api build
       - name: Start API for critical flow
         run: |
@@ -59,10 +65,15 @@ jobs:
       - name: Export critical-flow sessions
         run: |
           set -euo pipefail
-          owner_token=$(curl --fail --silent http://127.0.0.1:4000/auth/password/sign-in \
-            -H 'content-type: application/json' --data '{"email":"critical-owner@betna.example","password":"critical-flow-password"}' | node -e 'let s=""; process.stdin.on("data", d => s += d).on("end", () => process.stdout.write(JSON.parse(s).session.token))')
-          admin_token=$(curl --fail --silent http://127.0.0.1:4000/auth/password/sign-in \
-            -H 'content-type: application/json' --data '{"email":"critical-admin@betna.example","password":"critical-flow-password"}' | node -e 'let s=""; process.stdin.on("data", d => s += d).on("end", () => process.stdout.write(JSON.parse(s).session.token))')
+          auth_token() {
+            local email="$1"
+            curl --fail --silent http://127.0.0.1:4000/auth/password/sign-in \
+              -H 'content-type: application/json' --data-binary @- <<EOF
+          {"email":"$email","password":"$BETNA_CRITICAL_FLOW_PASSWORD"}
+          EOF
+          }
+          owner_token=$(auth_token critical-owner@betna.example | node -e 'let s=""; process.stdin.on("data", d => s += d).on("end", () => process.stdout.write(JSON.parse(s).session.token))')
+          admin_token=$(auth_token critical-admin@betna.example | node -e 'let s=""; process.stdin.on("data", d => s += d).on("end", () => process.stdout.write(JSON.parse(s).session.token))')
           echo "BETNA_E2E_OWNER_TOKEN=$owner_token" >> "$GITHUB_ENV"
           echo "BETNA_E2E_ADMIN_TOKEN=$admin_token" >> "$GITHUB_ENV"
       - run: pnpm test

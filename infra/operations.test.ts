@@ -46,4 +46,20 @@ describe("seed output", () => {
     );
     expect(seed).not.toMatch(/console\.log\([^\n]*password/);
   });
+
+  it("keeps the critical-flow password in the environment and out of curl arguments", () => {
+    const seed = readFileSync(
+      resolve(infraDir, "../apps/api/prisma/seed-critical-flow.ts"),
+      "utf8",
+    );
+    const workflow = readFileSync(
+      resolve(infraDir, "../.github/workflows/ci.yml"),
+      "utf8",
+    );
+
+    expect(seed).toContain("process.env.BETNA_CRITICAL_FLOW_PASSWORD");
+    expect(workflow).toContain("BETNA_CRITICAL_FLOW_PASSWORD");
+    expect(workflow).toContain("--data-binary @-");
+    expect(workflow).not.toContain('"password":"critical-flow-password"');
+  });
 });
