@@ -11,7 +11,7 @@ export type PublicProperty = {
   locale?: string;
   availableLocales?: string[];
   location: { country?: string; city?: string; neighborhood?: string; label: string; latitude: number; longitude: number };
-  offerings: Array<{ mode: "SHORT_STAY" | "LONG_TERM" | string; currency: string; basePrice: number; negotiable?: boolean; minimumNights?: number | null; leaseDurationMonths?: number | null }>;
+  offerings: Array<{ id?: string; mode: "SHORT_STAY" | "LONG_TERM" | string; currency: string; basePrice: number; negotiable?: boolean; minimumNights?: number | null; leaseDurationMonths?: number | null }>;
   media: Array<{ id: string; objectKey: string }>;
   verification?: { badge?: string; validUntil?: string | null };
 };

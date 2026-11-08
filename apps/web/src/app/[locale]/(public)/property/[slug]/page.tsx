@@ -4,6 +4,8 @@ import { getPublicProperty } from "../../../../../features/search/data";
 import { Link } from "../../../../../i18n/navigation";
 import { PropertyOfferings } from "../../../../../features/search/property-offerings";
 import { jsonLd, siteUrl } from "../../../../../features/search/seo";
+import { ContactButtons } from "../../../../../features/inquiries/contact-buttons";
+import { GuestInquiryForm } from "../../../../../features/inquiries/guest-inquiry-form";
 
 function canonical(locale: string, slug: string) { return `${siteUrl}/${locale}/property/${encodeURIComponent(slug)}`; }
 
@@ -30,6 +32,8 @@ export default async function PropertyPage({ params }: { params: Promise<{ local
       <p className="property-description">{property.description}</p>
       <section aria-labelledby="property-offerings"><h2 id="property-offerings">Rental options</h2><PropertyOfferings offerings={property.offerings} /></section>
       <section aria-labelledby="property-verification"><h2 id="property-verification">Betna verification</h2><p>{property.verification?.badge ?? "VERIFIED_BY_BETNA"}. Exact address is protected while Betna manages contact.</p></section>
+      <ContactButtons propertyId={property.id} propertyTitle={property.title} betnaPhone={process.env.NEXT_PUBLIC_BETNA_WHATSAPP ?? "+254700000000"} />
+      <GuestInquiryForm propertyId={property.id} offeringId={property.offerings[0]?.id} defaultMode={property.offerings[0]?.mode === "LONG_TERM" ? "LONG_TERM" : "SHORT_STAY"} />
     </article>
   );
 }

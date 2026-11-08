@@ -6,6 +6,8 @@ import { PropertiesModule } from "./properties/properties.module";
 import { MediaModule } from "./media/media.module";
 import { UsersModule } from "./users/users.module";
 import { VerificationModule } from "./verification/verification.module";
+import { InquiriesModule } from "./inquiries/inquiries.module";
+import { NotificationsModule } from "./notifications/notifications.module";
 
 @Module({
   imports: [
@@ -16,6 +18,8 @@ import { VerificationModule } from "./verification/verification.module";
     PropertiesModule,
     MediaModule,
     VerificationModule,
+    NotificationsModule,
+    InquiriesModule,
   ],
 })
 export class AppModule {}

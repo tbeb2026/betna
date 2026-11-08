@@ -389,6 +389,38 @@ model Inquiry {
   @@index([propertyId, status])
 }
 
+/// Queued deliveries are persisted so notification attempts can be retried
+/// without changing the user-visible inquiry transition.
+model Notification {
+  id            String    @id @default(uuid()) @db.Uuid
+  event         String    @db.VarChar(100)
+  channel       String    @db.VarChar(30)
+  status        String    @default("QUEUED") @db.VarChar(30)
+  recipientId   String?   @db.Uuid
+  recipientEmail String?  @db.VarChar(320)
+  recipientPhone String?  @db.VarChar(40)
+  inquiryId     String?   @db.Uuid
+  payload       Json      @default("{}")
+  error         String?
+  createdAt     DateTime  @default(now())
+  sentAt        DateTime?
+
+  @@index([inquiryId, createdAt])
+  @@index([status, createdAt])
+  @@index([recipientId, createdAt])
+}
+
+model ContactClick {
+  id         String   @id @default(uuid()) @db.Uuid
+  propertyId String   @db.Uuid
+  target     String   @db.VarChar(20)
+  channel    String   @db.VarChar(20)
+  createdAt  DateTime @default(now())
+
+  @@index([propertyId, createdAt])
+  @@index([target, channel, createdAt])
+}
+
 model Conversion {
   id                   String           @id @default(uuid()) @db.Uuid
   inquiryId            String           @unique @db.Uuid

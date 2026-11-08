@@ -1,0 +1,145 @@
+import { describe, expect, it, vi } from "vitest";
+import { ForbiddenException } from "@nestjs/common";
+import { InquiriesService } from "./inquiries.service";
+
+const property = {
+  id: "property-1",
+  ownerId: "owner-1",
+  status: "PUBLISHED",
+  publicLocationLabel: "Kilimani, Nairobi",
+  publicLatitude: -1.2921,
+  publicLongitude: 36.8219,
+  exactAddress: "12 Private Lane",
+  exactLatitude: -1.2922,
+  exactLongitude: 36.822,
+  owner: {
+    id: "owner-1",
+    email: "owner@example.com",
+    phone: "+254700000001",
+  },
+  offerings: [{ id: "offering-1", mode: "SHORT_STAY" }],
+};
+
+function makePrisma() {
+  const inquiries: any[] = [];
+  const auditEvent = { create: vi.fn().mockResolvedValue({ id: "audit-1" }) };
+  const prisma: any = {
+    property: {
+      findUnique: vi.fn().mockResolvedValue(property),
+    },
+    inquiry: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      findUnique: vi.fn(async ({ where }: any) =>
+        inquiries.find((item) => item.id === where.id) ?? null,
+      ),
+      findMany: vi.fn(async () => inquiries),
+      create: vi.fn(async ({ data }: any) => {
+        const inquiry = {
+          id: `inquiry-${inquiries.length + 1}`,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          ...data,
+          property,
+        };
+        inquiries.push(inquiry);
+        return inquiry;
+      }),
+      update: vi.fn(async ({ where, data }: any) => {
+        const inquiry = inquiries.find((item) => item.id === where.id);
+        Object.assign(inquiry, data);
+        return inquiry;
+      }),
+    },
+    contactClick: { create: vi.fn() },
+    auditEvent,
+    $transaction: vi.fn(async (callback: any) => callback(prisma)),
+  };
+  return { prisma, inquiries, auditEvent };
+}
+
+describe("InquiriesService", () => {
+  it("accepts a guest inquiry without an account and notifies owner and Betna", async () => {
+    const { prisma } = makePrisma();
+    const enqueue = vi.fn().mockResolvedValue(undefined);
+    const service = new InquiriesService(prisma, { enqueue } as any);
+
+    const result = await service.createGuestInquiry({
+      propertyId: "property-1",
+      offeringId: "offering-1",
+      mode: "SHORT_STAY",
+      name: "Amina Guest",
+      email: "amina@example.com",
+      phone: "+254711111111",
+      message: "Can I visit this weekend?",
+      guests: 2,
+    });
+
+    expect(result.inquiry).toMatchObject({
+      status: "NEW",
+    });
+    expect(result).toMatchObject({
+      location: { label: "Kilimani, Nairobi", latitude: -1.2921 },
+    });
+    expect(result).not.toHaveProperty("location.exactAddress");
+    expect(enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "INQUIRY_CREATED",
+        recipients: expect.arrayContaining([
+          expect.objectContaining({ userId: "owner-1" }),
+          expect.objectContaining({ email: "amina@example.com" }),
+        ]),
+      }),
+    );
+  });
+
+  it("does not disclose exact location until an admin releases it", async () => {
+    const { prisma, inquiries } = makePrisma();
+    const service = new InquiriesService(prisma, { enqueue: vi.fn() } as any);
+    const created = await service.createGuestInquiry({
+      propertyId: "property-1",
+      mode: "SHORT_STAY",
+      name: "Amina Guest",
+      email: "second@example.com",
+      phone: "+254711111112",
+      message: "I would like more details.",
+    });
+
+    expect(created.location).not.toHaveProperty("exactAddress");
+    await expect(
+      service.adminReleaseLocation(created.inquiry.id, {
+        id: "owner-1",
+        roles: ["OWNER"],
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    const released = await service.adminReleaseLocation(created.inquiry.id, {
+      id: "admin-1",
+      roles: ["ADMIN"],
+    });
+    expect(released).toMatchObject({
+      inquiry: { status: "LOCATION_APPROVED" },
+      location: { exactAddress: "12 Private Lane", latitude: -1.2922 },
+    });
+    expect(inquiries[0].locationApprovedAt).toEqual(expect.any(Date));
+  });
+
+  it("logs a prefilled contact click without exposing conversation contents", async () => {
+    const { prisma } = makePrisma();
+    const service = new InquiriesService(prisma, { enqueue: vi.fn() } as any);
+
+    const result = await service.logContactClick({
+      propertyId: "property-1",
+      target: "BETNA",
+      channel: "WHATSAPP",
+    });
+
+    expect(result).toMatchObject({ propertyId: "property-1", target: "BETNA", channel: "WHATSAPP" });
+    expect(prisma.contactClick.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        propertyId: "property-1",
+        target: "BETNA",
+        channel: "WHATSAPP",
+      }),
+    });
+  });
+});
