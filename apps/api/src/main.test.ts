@@ -23,6 +23,27 @@ describe("API CORS policy", () => {
       /API_CORS_ORIGINS/,
     );
   });
+
+  it("requires an explicit HTTPS-only allow-list for production credentials", () => {
+    expect(() =>
+      getApiCorsOrigins({
+        NODE_ENV: "production",
+        API_CORS_ORIGINS: "http://betna.example",
+      }),
+    ).toThrow(/HTTPS/);
+    expect(() =>
+      getApiCorsOrigins({
+        NODE_ENV: "production",
+        API_CORS_ORIGINS: "*",
+      }),
+    ).toThrow(/Wildcard/);
+    expect(() =>
+      getApiCorsOrigins({
+        NODE_ENV: "production",
+        API_CORS_ORIGINS: "https://betna.example/path",
+      }),
+    ).toThrow(/origin/);
+  });
 });
 
 describe("production runtime validation", () => {

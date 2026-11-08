@@ -12,6 +12,24 @@ describe("API URL resolution", () => {
     );
   });
 
+  it("requires an explicit HTTPS public API URL in production", () => {
+    expect(() => getApiBaseUrl({ NODE_ENV: "production" })).toThrow(
+      /NEXT_PUBLIC_API_URL/,
+    );
+    expect(() =>
+      getApiBaseUrl({
+        NODE_ENV: "production",
+        NEXT_PUBLIC_API_URL: "http://api.example.com",
+      }),
+    ).toThrow(/HTTPS/);
+    expect(
+      getApiBaseUrl({
+        NODE_ENV: "production",
+        NEXT_PUBLIC_API_URL: "https://api.example.com/",
+      }),
+    ).toBe("https://api.example.com");
+  });
+
   it("sends authenticated patch requests for draft edits", async () => {
     let request: Request | undefined;
     const client = new (await import("./api-client")).ApiClient({

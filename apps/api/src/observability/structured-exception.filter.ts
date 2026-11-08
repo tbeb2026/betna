@@ -6,6 +6,7 @@ import {
   HttpStatus,
 } from "@nestjs/common";
 import { StructuredLogger } from "./structured-logger";
+import { redactLogValue } from "./structured-logger";
 
 @Catch()
 export class StructuredExceptionFilter implements ExceptionFilter {
@@ -28,15 +29,19 @@ export class StructuredExceptionFilter implements ExceptionFilter {
     const body =
       exception instanceof HttpException ? exception.getResponse() : undefined;
     const message = status >= 500 ? "Internal server error" : body;
+    const rawPath = request.originalUrl ?? request.url ?? "/";
+    const path = rawPath.split(/[?#]/, 1)[0] || "/";
 
     this.logger.error(
       {
         event: "http.request.error",
         status,
         method: request.method,
-        path: request.originalUrl ?? request.url,
+        path,
         error:
-          exception instanceof Error ? exception.message : String(exception),
+          redactLogValue(
+            exception instanceof Error ? exception.message : String(exception),
+          ),
       },
       exception instanceof Error ? exception.stack : undefined,
       "HttpException",
@@ -45,7 +50,7 @@ export class StructuredExceptionFilter implements ExceptionFilter {
       statusCode: status,
       message,
       timestamp: new Date().toISOString(),
-      path: request.originalUrl ?? request.url,
+      path,
     });
   }
 }

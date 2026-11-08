@@ -13,6 +13,8 @@ Production startup rejects missing, placeholder, or short values for `DATABASE_U
 
 `API_CORS_ORIGINS` must be an explicit allow-list of HTTPS browser origins. Do not use `*` with credentials. Keep `API_INTERNAL_URL` private to the web runtime; only `NEXT_PUBLIC_API_URL` is browser-visible.
 
+`NEXT_PUBLIC_API_URL` is embedded into the browser bundle at web image build time. Production web builds must pass the public HTTPS API origin as the `NEXT_PUBLIC_API_URL` Docker build argument; setting it only when the container starts cannot repair an already-built client bundle.
+
 ## Data and access
 
 - PostgreSQL is the system of record. Database users receive least privilege; migration credentials are separate from the runtime user.

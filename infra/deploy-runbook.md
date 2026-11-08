@@ -9,7 +9,7 @@
 ## Deploy
 
 1. Publish API and web images tagged with the full commit SHA.
-2. Apply environment variables without printing them; production startup validation must pass.
+2. Build the web image with `--build-arg NEXT_PUBLIC_API_URL=https://api.example.com` and deploy it with `API_INTERNAL_URL=http://api:4000` (or the private service DNS name). `NEXT_PUBLIC_API_URL` is a build-time browser setting; `API_INTERNAL_URL` is a runtime-only server setting. Apply all other environment variables without printing them; production startup validation must pass.
 3. Run `pnpm --filter @betna/api prisma migrate deploy` from the controlled migration job.
 4. Deploy the API with at least one old replica serving until the new replica is ready. Wait for `/health/ready` before shifting traffic.
 5. Deploy the web image and verify `/api/health`.

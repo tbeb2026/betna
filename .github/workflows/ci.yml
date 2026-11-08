@@ -45,11 +45,34 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm --filter @betna/api prisma migrate deploy
+      - run: pnpm --filter @betna/api prisma:seed:critical-flow
+      - run: pnpm --filter @betna/api build
+      - name: Start API for critical flow
+        run: |
+          NODE_ENV=test API_PORT=4000 API_CORS_ORIGINS=http://127.0.0.1:3100 \
+            REDIS_URL=redis://localhost:6379 SESSION_SECRET=ci-session-secret-long-enough \
+            JWT_SECRET=ci-jwt-secret-long-enough MEDIA_SIGNING_SECRET=ci-media-secret-long-enough \
+            pnpm --filter @betna/api start > /tmp/betna-api.log 2>&1 &
+          for attempt in {1..30}; do curl --fail http://127.0.0.1:4000/health/live && exit 0; sleep 1; done
+          cat /tmp/betna-api.log
+          exit 1
+      - name: Export critical-flow sessions
+        run: |
+          set -euo pipefail
+          owner_token=$(curl --fail --silent http://127.0.0.1:4000/auth/password/sign-in \
+            -H 'content-type: application/json' --data '{"email":"critical-owner@betna.example","password":"critical-flow-password"}' | node -e 'let s=""; process.stdin.on("data", d => s += d).on("end", () => process.stdout.write(JSON.parse(s).session.token))')
+          admin_token=$(curl --fail --silent http://127.0.0.1:4000/auth/password/sign-in \
+            -H 'content-type: application/json' --data '{"email":"critical-admin@betna.example","password":"critical-flow-password"}' | node -e 'let s=""; process.stdin.on("data", d => s += d).on("end", () => process.stdout.write(JSON.parse(s).session.token))')
+          echo "BETNA_E2E_OWNER_TOKEN=$owner_token" >> "$GITHUB_ENV"
+          echo "BETNA_E2E_ADMIN_TOKEN=$admin_token" >> "$GITHUB_ENV"
       - run: pnpm test
       - run: pnpm --filter @betna/web exec playwright install --with-deps chromium
       - run: pnpm test:e2e
         env:
           CI: true
+          BETNA_CRITICAL_FLOW_E2E: "1"
+          NEXT_PUBLIC_API_URL: http://127.0.0.1:4000
+          BETNA_E2E_PROPERTY_SLUG: verified-kilimani-home
       - run: pnpm audit --audit-level=high
       - run: git diff --check
 
@@ -61,5 +84,19 @@ jobs:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
       - run: docker build --file infra/Dockerfile.api --tag betna-api:ci .
-      - run: docker build --file infra/Dockerfile.web --tag betna-web:ci .
+      - run: docker build --build-arg NEXT_PUBLIC_API_URL=https://api.ci.invalid --file infra/Dockerfile.web --tag betna-web:ci .
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: betna-api:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: betna-web:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
       - run: docker compose -f infra/docker-compose.yml config

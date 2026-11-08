@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { getApiBaseUrl } from "../../lib/api-client";
 
 export type MediaPurpose = "LISTING" | "INSPECTION_EVIDENCE";
 
@@ -25,7 +26,7 @@ const DEFAULT_MAX_BYTES = 10 * 1024 * 1024;
 export function MediaUploader({
   propertyId,
   purpose = "LISTING",
-  apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000",
+  apiBaseUrl = getApiBaseUrl(),
   maxBytes = DEFAULT_MAX_BYTES,
   authToken,
 }: MediaUploaderProps) {

@@ -65,7 +65,28 @@ export function getApiCorsOrigins(
   const configured = environment.API_CORS_ORIGINS?.split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
-  if (configured?.length) return configured;
+  if (configured?.length) {
+    const origins = configured.map((origin) => {
+      if (origin === "*") {
+        throw new Error("Wildcard CORS origins are not allowed with credentials");
+      }
+      let parsed: URL;
+      try {
+        parsed = new URL(origin);
+      } catch {
+        throw new Error(`Invalid CORS origin: ${origin}`);
+      }
+      if (parsed.origin !== origin || parsed.pathname !== "/" || parsed.search || parsed.hash) {
+        throw new Error(`Invalid CORS origin: ${origin}`);
+      }
+      if (environment.NODE_ENV === "production" && parsed.protocol !== "https:") {
+        throw new Error("Production CORS origins must use HTTPS");
+      }
+      if (!parsed.hostname) throw new Error(`Invalid CORS origin: ${origin}`);
+      return parsed.origin;
+    });
+    return [...new Set(origins)];
+  }
   if (environment.NODE_ENV === "production") {
     throw new Error("API_CORS_ORIGINS is required in production");
   }

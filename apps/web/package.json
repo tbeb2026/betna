@@ -5,7 +5,7 @@
     "dev": "next dev --port ${WEB_PORT:-3000}",
     "build": "next build",
     "start": "next start --port ${WEB_PORT:-3000}",
-    "lint": "tsc --noEmit",
+    "lint": "eslint . --no-error-on-unmatched-pattern",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit"

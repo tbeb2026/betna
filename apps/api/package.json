@@ -5,13 +5,14 @@
     "dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main.js",
-    "lint": "tsc --noEmit",
+    "lint": "eslint . --no-error-on-unmatched-pattern",
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "typecheck": "tsc --noEmit",
     "prisma": "prisma",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:seed": "tsx prisma/seed.ts"
+    "prisma:seed": "tsx prisma/seed.ts",
+    "prisma:seed:critical-flow": "tsx prisma/seed-critical-flow.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

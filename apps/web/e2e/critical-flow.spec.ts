@@ -22,7 +22,13 @@ test("critical inquiry-to-commission flow stays observable end to end", async ({
   await expect((await request.get(`${api}/health/live`)).ok()).toBeTruthy();
   await expect((await request.get(`${api}/health/ready`)).ok()).toBeTruthy();
 
-  await page.goto(`/en/property/${propertySlug}`);
+  await page.goto("/en/search");
+  await expect(
+    page.getByRole("heading", { name: "Find a verified place" }),
+  ).toBeVisible();
+  await expect(page.getByTestId("property-card")).toHaveCount(1);
+  await page.getByRole("link", { name: "View property" }).click();
+  await expect(page).toHaveURL(new RegExp(`/en/property/${propertySlug}$`));
   await expect(
     page.getByRole("heading", { name: "Ask about this place" }),
   ).toBeVisible();
