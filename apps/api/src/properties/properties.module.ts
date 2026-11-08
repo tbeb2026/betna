@@ -4,11 +4,27 @@ import { UsersModule } from "../users/users.module";
 import { PropertiesController } from "./properties.controller";
 import { PropertiesService } from "./properties.service";
 import { TaxonomyService } from "./taxonomy.service";
+import { PublishingController } from "./publishing.controller";
+import { PublishingService } from "./publishing.service";
+import { TranslationService } from "./translation.service";
+import { ListingLifecycleJob } from "./listing-lifecycle.job";
 
 @Module({
   imports: [AuthModule, UsersModule],
-  controllers: [PropertiesController],
-  providers: [PropertiesService, TaxonomyService],
-  exports: [PropertiesService, TaxonomyService],
+  controllers: [PropertiesController, PublishingController],
+  providers: [
+    PropertiesService,
+    TaxonomyService,
+    PublishingService,
+    TranslationService,
+    ListingLifecycleJob,
+  ],
+  exports: [
+    PropertiesService,
+    TaxonomyService,
+    PublishingService,
+    TranslationService,
+    ListingLifecycleJob,
+  ],
 })
 export class PropertiesModule {}
