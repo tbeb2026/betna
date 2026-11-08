@@ -1,10 +1,19 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
-import { getApiCorsOrigins, getApiPort } from "./runtime";
+import { StructuredExceptionFilter } from "./observability/structured-exception.filter";
+import { StructuredLogger } from "./observability/structured-logger";
+import {
+  getApiCorsOrigins,
+  getApiPort,
+  validateRuntimeEnvironment,
+} from "./runtime";
 
 export async function createApiApp() {
+  validateRuntimeEnvironment();
   const app = await NestFactory.create(AppModule);
+  app.useLogger(new StructuredLogger());
+  app.useGlobalFilters(new StructuredExceptionFilter());
   app.enableCors({
     origin: getApiCorsOrigins(),
     credentials: true,

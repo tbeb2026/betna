@@ -1,0 +1,31 @@
+# Betna operations
+
+## Health and alerts
+
+- API liveness: `GET /health/live` (process-only; Kubernetes restart probe).
+- API readiness: `GET /health/ready` (database dependency; remove from traffic on HTTP 503).
+- Web health: `GET /api/health` (proxies API readiness; HTTP 503 when the API is unavailable).
+- Alert on readiness failures for 2 consecutive minutes, container restarts, database connection saturation, Redis queue age, notification retry growth, and backup age over 24 hours.
+
+The API emits one JSON object per log line. Include `service=betna-api`, level, timestamp, status, method, and path in dashboards. Do not add request bodies or credentials to logs.
+
+## Deployment
+
+1. Confirm the CI workflow is green, the migration is backward compatible, and the release owner has a rollback decision and maintenance window.
+2. Build and publish immutable `betna-api:<git-sha>` and `betna-web:<git-sha>` images. Scan images and dependencies; do not deploy a mutable `latest` tag.
+3. Apply production environment variables from the secret manager. The API refuses to boot if required production values are missing or unsafe.
+4. Run `pnpm --filter @betna/api prisma migrate deploy` from a migration job using the migration database credential. Never run `migrate dev` in production.
+5. Roll out the API with readiness checks, then the web image. Verify `/health/live`, `/health/ready`, `/api/health`, public search, guest inquiry, owner response, and the admin commission flow.
+6. Watch errors, latency, queue age, and database health for at least 15 minutes. Record image digests, migration IDs, operator, and verification results.
+
+To roll back an application regression, route traffic to the last known-good image digest and keep forward-compatible migrations in place. Do not automatically downgrade or delete a database migration; use the restore runbook for destructive schema/data recovery.
+
+## Routine maintenance
+
+- Daily: verify backup success and age, inspect readiness and queue alerts, and review failed notification/media jobs.
+- Weekly: test restore into an isolated environment, review dependency/image findings, and check audit-log retention.
+- Monthly: rotate credentials as scheduled, review access and role assignments, and exercise the incident contact tree.
+
+## SLO starting points
+
+Target 99.5% monthly availability for public search and inquiry submission, with API readiness as the primary availability signal. Page on-call for a sustained 5xx rate above 2%, readiness unavailable for 2 minutes, or a queue older than 15 minutes. Product owners decide whether a degraded inquiry path is acceptable during an incident.

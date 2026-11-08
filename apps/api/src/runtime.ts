@@ -1,9 +1,50 @@
 export type ApiRuntimeEnvironment = {
+  [key: string]: string | undefined;
   API_PORT?: string;
   PORT?: string;
   API_CORS_ORIGINS?: string;
   NODE_ENV?: string;
+  DATABASE_URL?: string;
+  REDIS_URL?: string;
+  SESSION_SECRET?: string;
+  JWT_SECRET?: string;
+  MEDIA_SIGNING_SECRET?: string;
 };
+
+const productionRequiredEnvironment = [
+  "DATABASE_URL",
+  "REDIS_URL",
+  "SESSION_SECRET",
+  "JWT_SECRET",
+  "MEDIA_SIGNING_SECRET",
+  "API_CORS_ORIGINS",
+] as const;
+const productionSecretEnvironment = new Set([
+  "SESSION_SECRET",
+  "JWT_SECRET",
+  "MEDIA_SIGNING_SECRET",
+]);
+
+/** Fail before Nest boots when production would start without its trust boundaries. */
+export function validateRuntimeEnvironment(
+  environment: ApiRuntimeEnvironment = process.env,
+): void {
+  if (environment.NODE_ENV !== "production") return;
+
+  const missing = productionRequiredEnvironment.filter((key) => {
+    const value = environment[key]?.trim();
+    return (
+      !value ||
+      (productionSecretEnvironment.has(key) && value.length < 16) ||
+      value.includes("replace-with")
+    );
+  });
+  if (missing.length) {
+    throw new Error(
+      `Missing or unsafe production environment variables: ${missing.join(", ")}`,
+    );
+  }
+}
 
 /** Resolve the API listener from the documented API_PORT, defaulting to 4000. */
 export function getApiPort(

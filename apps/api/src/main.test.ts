@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { getApiCorsOrigins, getApiPort } from "./runtime";
+import {
+  getApiCorsOrigins,
+  getApiPort,
+  validateRuntimeEnvironment,
+} from "./runtime";
 
 describe("API port resolution", () => {
   it("uses API_PORT and the documented 4000 default", () => {
@@ -18,5 +22,24 @@ describe("API CORS policy", () => {
     expect(() => getApiCorsOrigins({ NODE_ENV: "production" })).toThrow(
       /API_CORS_ORIGINS/,
     );
+  });
+});
+
+describe("production runtime validation", () => {
+  it("requires the secrets and service URLs needed to start safely", () => {
+    expect(() =>
+      validateRuntimeEnvironment({ NODE_ENV: "production" }),
+    ).toThrow(/DATABASE_URL.*SESSION_SECRET.*JWT_SECRET/s);
+    expect(() =>
+      validateRuntimeEnvironment({
+        NODE_ENV: "production",
+        API_CORS_ORIGINS: "https://betna.example",
+        DATABASE_URL: "postgresql://db/betna",
+        REDIS_URL: "redis://redis:6379",
+        SESSION_SECRET: "session-secret-that-is-long-enough",
+        JWT_SECRET: "jwt-secret-that-is-long-enough",
+        MEDIA_SIGNING_SECRET: "media-signing-secret-that-is-long-enough",
+      }),
+    ).not.toThrow();
   });
 });
