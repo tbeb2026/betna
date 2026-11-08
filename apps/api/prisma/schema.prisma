@@ -266,6 +266,7 @@ model PropertyVersion {
   snapshot   Json
   isApproved Boolean   @default(false)
   approvedAt DateTime?
+  approvedBy String?   @db.Uuid
   createdAt  DateTime  @default(now())
   property   Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 

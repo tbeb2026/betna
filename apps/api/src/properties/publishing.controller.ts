@@ -40,6 +40,19 @@ export class PublishingController {
     return this.publishing.createMaterialEditReview(id, body, request.user.id);
   }
 
+  @Patch("publishing/:id/ownership-change")
+  ownershipChange(
+    @Req() request: { user: { id: string; roles?: unknown[] } },
+    @Param("id") id: string,
+    @Body() body: { newOwnerId: string },
+  ) {
+    return this.publishing.reverifyOwnershipChange(
+      id,
+      body?.newOwnerId,
+      request.user,
+    );
+  }
+
   @Get("translations")
   translationQueue() {
     return this.translations.listPending();
@@ -61,4 +74,3 @@ export class PublishingController {
     );
   }
 }
-

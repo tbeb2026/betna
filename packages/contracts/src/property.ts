@@ -36,6 +36,13 @@ export interface PropertySummary {
   location: PublicLocation;
   offerings: PropertyOffering[];
   verificationValidUntil?: string;
+  lastInspectedAt?: string;
+  verification?: {
+    verified: boolean;
+    badge: string;
+    lastInspectedAt?: string;
+    validUntil?: string;
+  };
 }
 
 export interface PropertyDetail extends PropertySummary {

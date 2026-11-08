@@ -1,14 +1,17 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
+import { PrismaService } from "../prisma/prisma.service";
+import { TranslationService } from "./translation.service";
 
-type PrismaLike = any;
 type Listing = any;
-type Actor = string | { id?: string } | undefined;
+type Actor = string | { id?: string; roles?: unknown[] } | undefined;
 
 const PUBLIC_STATUSES = new Set(["PUBLISHED"]);
 const EDITABLE_FIELDS = [
@@ -21,13 +24,37 @@ const EDITABLE_FIELDS = [
   "publicLatitude",
   "publicLongitude",
 ];
+const MATERIAL_EDIT_FIELDS = new Set([
+  "basePrice",
+  "offerings",
+  "media",
+  "mediaIds",
+  "corePhotos",
+  "exactAddress",
+  "exactLatitude",
+  "exactLongitude",
+  "exactLocation",
+  "category",
+  "subcategory",
+  "bedrooms",
+  "capacity",
+  "amenities",
+  "publicLocationLabel",
+  "publicLatitude",
+  "publicLongitude",
+  "safetyNotes",
+  "authorizationAttested",
+]);
 
 /** Owns the transition from verified private data to a public listing. */
 @Injectable()
 export class PublishingService {
   private readonly approvedSnapshots = new Map<string, Listing>();
 
-  constructor(private readonly prisma: PrismaLike) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly translations?: TranslationService,
+  ) {}
 
   async publish(propertyId: string, actor?: Actor): Promise<Listing> {
     const property = await this.findProperty(propertyId);
@@ -44,7 +71,7 @@ export class PublishingService {
       throw new ConflictException("Verification has expired");
     }
 
-    const snapshot = this.publicSnapshot(property);
+    const snapshot = await this.publicSnapshot(property);
     this.approvedSnapshots.set(propertyId, snapshot);
     await this.createApprovedVersion(propertyId, snapshot, actor);
     return this.prisma.property.update({
@@ -77,8 +104,11 @@ export class PublishingService {
     if (property.status !== "PUBLISHED") {
       throw new ConflictException("Only a published listing can be edited");
     }
-    await this.ensureApprovedSnapshot(property, actor);
-    const data: Record<string, unknown> = { status: "PENDING_REVIEW" };
+    const material = this.isMaterialEdit(patch);
+    if (material) await this.ensureApprovedSnapshot(property, actor);
+    const data: Record<string, unknown> = {
+      status: material ? "PENDING_REVIEW" : property.status,
+    };
     for (const key of EDITABLE_FIELDS) {
       if (Object.prototype.hasOwnProperty.call(patch, key)) data[key] = patch[key];
     }
@@ -114,7 +144,7 @@ export class PublishingService {
       if (
         validUntil &&
         validUntil.getTime() <= Date.now() &&
-        ["PUBLISHED", "VERIFIED"].includes(property.status)
+        ["PUBLISHED", "VERIFIED", "PENDING_REVIEW"].includes(property.status)
       ) {
         await this.prisma.property.update({
           where: { id: property.id },
@@ -125,7 +155,7 @@ export class PublishingService {
       return [];
     }
     const expired: Listing[] = [];
-    for (const status of ["PUBLISHED", "VERIFIED"]) {
+    for (const status of ["PUBLISHED", "VERIFIED", "PENDING_REVIEW"] as const) {
       const rows = await this.prisma.property.findMany({
         where: {
           status,
@@ -158,8 +188,27 @@ export class PublishingService {
   }
 
   /** Ownership changes invalidate the old inspection and force a new review. */
-  async reverifyOwnershipChange(propertyId: string, newOwnerId: string): Promise<Listing> {
+  async reverifyOwnershipChange(
+    propertyId: string,
+    newOwnerId: string,
+    actor?: Actor,
+  ): Promise<Listing> {
     if (!newOwnerId?.trim()) throw new BadRequestException("New owner is required");
+    if (actor && !this.hasRole(actor, "ADMIN")) {
+      throw new ForbiddenException("Admin access is required");
+    }
+    if (this.prisma.user?.findUnique) {
+      const owner = await this.prisma.user.findUnique({
+        where: { id: newOwnerId },
+        include: { roles: { include: { role: true } } },
+      });
+      const roles = (owner?.roles ?? []).map((entry: any) =>
+        (typeof entry === "string" ? entry : entry.role?.name ?? entry.name)?.toUpperCase(),
+      );
+      if (!owner || owner.status !== "ACTIVE" || !roles.includes("OWNER") || roles.includes("AGENT") || roles.includes("BUSINESS")) {
+        throw new BadRequestException("New owner must be an active individual owner");
+      }
+    }
     await this.findProperty(propertyId);
     return this.prisma.property.update({
       where: { id: propertyId },
@@ -173,18 +222,19 @@ export class PublishingService {
     });
   }
 
-  transferOwnership(propertyId: string, newOwnerId: string) {
-    return this.reverifyOwnershipChange(propertyId, newOwnerId);
+  transferOwnership(propertyId: string, newOwnerId: string, actor?: Actor) {
+    return this.reverifyOwnershipChange(propertyId, newOwnerId, actor);
   }
 
   /** Public APIs should call this projection and never serialize the Property row directly. */
   async getPublicProjection(propertyId: string, locale = "en") {
     const property = await this.findProperty(propertyId);
+    if (this.isExpired(property)) return null;
     if (PUBLIC_STATUSES.has(property.status)) return this.publicSnapshot(property, locale);
     if (property.status !== "PENDING_REVIEW") return null;
     const snapshot =
       this.approvedSnapshots.get(propertyId) ?? (await this.findApprovedSnapshot(propertyId));
-    return snapshot ? this.publicSnapshot(snapshot, locale, "PUBLISHED") : null;
+    return snapshot ? this.publicSnapshot({ ...snapshot, verificationValidUntil: property.verificationValidUntil, lastInspectedAt: property.lastInspectedAt }, locale, "PUBLISHED") : null;
   }
 
   async listPublishingQueue() {
@@ -211,7 +261,7 @@ export class PublishingService {
       this.approvedSnapshots.set(property.id, persisted);
       return;
     }
-    const snapshot = this.publicSnapshot(property);
+    const snapshot = await this.publicSnapshot(property);
     this.approvedSnapshots.set(property.id, snapshot);
     await this.createApprovedVersion(property.id, snapshot, actor);
   }
@@ -250,17 +300,31 @@ export class PublishingService {
     });
   }
 
-  private publicSnapshot(property: Listing, locale = "en", status = "PUBLISHED") {
+  private async publicSnapshot(property: Listing, locale = "en", status = "PUBLISHED") {
+    const requestedLocale = locale.toLowerCase().startsWith("ti") ? "ti" : "en";
+    const translation = this.translations
+      ? await this.translations.getPublicContent(property.id, requestedLocale)
+      : null;
+    const lastInspectedAt = property.lastInspectedAt?.toISOString?.() ?? property.lastInspectedAt;
+    const verificationValidUntil = property.verificationValidUntil?.toISOString?.() ?? property.verificationValidUntil;
     return {
       id: property.id,
       slug: property.slug,
-      title: property.title,
-      description: property.description,
+      title: translation?.title ?? property.title,
+      description: translation?.description ?? property.description,
       category: property.category,
       subcategory: property.subcategory,
       amenities: property.amenities ?? [],
       status,
-      locale,
+      locale: requestedLocale,
+      lastInspectedAt,
+      verificationValidUntil,
+      verification: {
+        verified: true,
+        badge: "VERIFIED_BY_BETNA",
+        lastInspectedAt,
+        validUntil: verificationValidUntil,
+      },
       location: {
         country: property.country?.code ?? property.countryCode,
         city: property.city?.name ?? property.cityName,
@@ -292,5 +356,24 @@ export class PublishingService {
       offerings: true,
       media: true,
     };
+  }
+
+  private isMaterialEdit(patch: Record<string, unknown>): boolean {
+    return Object.keys(patch).some((key) => MATERIAL_EDIT_FIELDS.has(key));
+  }
+
+  private isExpired(property: Listing, now = new Date()): boolean {
+    return Boolean(
+      property.verificationValidUntil &&
+        new Date(property.verificationValidUntil).getTime() <= now.getTime(),
+    );
+  }
+
+  private hasRole(actor: Actor, expected: string): boolean {
+    if (!actor || typeof actor === "string") return false;
+    return (actor.roles ?? []).some((entry: any) => {
+      const role = typeof entry === "string" ? entry : entry?.name ?? entry?.role?.name;
+      return typeof role === "string" && role.toUpperCase() === expected;
+    });
   }
 }

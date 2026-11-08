@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service";
 
-type PrismaLike = any;
 type TranslationInput = {
   title: string;
   description: string;
@@ -11,7 +11,7 @@ type TranslationInput = {
 export class TranslationService {
   private readonly local = new Map<string, any>();
 
-  constructor(private readonly prisma: PrismaLike) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async upsertApprovedTranslation(
     propertyId: string,
