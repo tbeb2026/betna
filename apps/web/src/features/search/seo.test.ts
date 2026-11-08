@@ -32,6 +32,21 @@ describe("public property SEO", () => {
     expect(data.mainEntity.itemListElement[0].url).toContain("/en/property/kilimani-home");
   });
 
+  it("uses the resolved fallback locale in collection JSON-LD", () => {
+    const data = collectionJsonLd("https://betna.example/ti/nairobi", "Verified places", [
+      {
+        slug: "english-only-home",
+        title: "English-only home",
+        description: "Verified home",
+        locale: "en",
+        availableLocales: ["en"],
+      },
+    ]);
+
+    expect(data.url).toBe("https://betna.example/en/nairobi");
+    expect(data.mainEntity.itemListElement[0].url).toContain("/en/property/english-only-home");
+  });
+
   it("loads every sitemap page from the public API", async () => {
     const fetcher = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(Array.from({ length: 100 }, (_, index) => ({ id: String(index), slug: `home-${index}` }))), { status: 200 }))
@@ -43,5 +58,22 @@ describe("public property SEO", () => {
     expect(properties).toHaveLength(101);
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(String(fetcher.mock.calls[1]?.[0])).toContain("page=2");
+  });
+
+  it("does not silently truncate sitemaps after 1000 pages", async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const page = Number(new URL(String(input)).searchParams.get("page"));
+      const body = page <= 1000
+        ? Array.from({ length: 100 }, (_, index) => ({ id: `${page}-${index}`, slug: `home-${page}-${index}` }))
+        : [{ id: "last", slug: "last-home" }];
+      return new Response(JSON.stringify(body), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetcher);
+
+    const properties = await getAllPublicProperties({ locale: "en" });
+
+    expect(properties).toHaveLength(100001);
+    expect(fetcher).toHaveBeenCalledTimes(1001);
+    expect(String(fetcher.mock.calls[1000]?.[0])).toContain("page=1001");
   });
 });

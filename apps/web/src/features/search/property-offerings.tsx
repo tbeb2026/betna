@@ -10,15 +10,20 @@ type Offering = {
   leaseDurationMonths?: number | null;
 };
 
+export function resolveSelectedMode(modes: string[], selectedMode: string) {
+  return modes.includes(selectedMode) ? selectedMode : modes[0] ?? "SHORT_STAY";
+}
+
 export function PropertyOfferings({ offerings }: { offerings: Offering[] }) {
   const modes = useMemo(() => [...new Set(offerings.map((offering) => offering.mode))], [offerings]);
   const [selectedMode, setSelectedMode] = useState(modes[0] ?? "SHORT_STAY");
-  const selected = offerings.filter((offering) => offering.mode === selectedMode);
+  const activeMode = resolveSelectedMode(modes, selectedMode);
+  const selected = offerings.filter((offering) => offering.mode === activeMode);
   return (
     <div>
       <div className="mode-switch" aria-label="Rental mode">
         {(["SHORT_STAY", "LONG_TERM"] as const).filter((mode) => modes.includes(mode)).map((mode) => (
-          <button key={mode} className="button" type="button" aria-pressed={selectedMode === mode} onClick={() => setSelectedMode(mode)}>
+          <button key={mode} className="button" type="button" aria-pressed={activeMode === mode} onClick={() => setSelectedMode(mode)}>
             {mode === "LONG_TERM" ? "Long-term" : "Short-stay"}
           </button>
         ))}

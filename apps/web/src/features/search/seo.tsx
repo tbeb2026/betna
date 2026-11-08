@@ -37,18 +37,25 @@ export function jsonLd(value: Record<string, unknown>) {
   return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(value) }} />;
 }
 
-export function collectionJsonLd(url: string, name: string, properties: Array<Pick<PublicProperty, "slug" | "title" | "description" | "locale">>) {
+export function collectionJsonLd(
+  url: string,
+  name: string,
+  properties: Array<Pick<PublicProperty, "slug" | "title" | "description" | "locale" | "availableLocales">>,
+) {
+  const requestedLocale = url.match(/\/(en|ti)(?=\/|$)/i)?.[1] ?? "en";
+  const resolvedLocale = canonicalLocale(requestedLocale, properties);
+  const canonicalUrl = url.replace(/\/(en|ti)(?=\/|$)/i, `/${resolvedLocale}`);
   return {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
-    url,
+    url: canonicalUrl,
     name,
     mainEntity: {
       "@type": "ItemList",
       itemListElement: properties.map((property, index) => ({
         "@type": "ListItem",
         position: index + 1,
-        url: `${siteUrl}/${property.locale ?? url.match(/\/(en|ti)\//)?.[1] ?? "en"}/property/${encodeURIComponent(property.slug)}`,
+        url: `${siteUrl}/${property.locale ?? resolvedLocale}/property/${encodeURIComponent(property.slug)}`,
         name: property.title,
         description: property.description,
       })),

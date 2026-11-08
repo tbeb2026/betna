@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Filters, type SearchFilterValues } from "../../../../features/search/filters";
 import { getPublicProperties } from "../../../../features/search/data";
 import { PropertyCard } from "../../../../features/search/property-card";
-import { collectionJsonLd, collectionMetadata, jsonLd, siteUrl } from "../../../../features/search/seo";
+import { canonicalLocale, collectionJsonLd, collectionMetadata, jsonLd, siteUrl } from "../../../../features/search/seo";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 function first(value: string | string[] | undefined) { return Array.isArray(value) ? value[0] : value; }
@@ -20,7 +20,7 @@ export default async function SearchPage({ params, searchParams }: { params: Pro
   const properties = await getPublicProperties({ ...values, locale });
   return (
     <section className="search-page">
-      {jsonLd(collectionJsonLd(`${siteUrl}/${locale}/search`, "Betna verified property discovery", properties))}
+      {jsonLd(collectionJsonLd(`${siteUrl}/${canonicalLocale(locale, properties)}/search`, "Betna verified property discovery", properties))}
       <div className="search-intro"><p className="eyebrow">Betna discovery</p><h1>Find a verified place</h1><p className="lede">Browse approximate locations and local prices for places inspected by Betna.</p></div>
       <Filters locale={locale} values={values} />
       <div className="map-summary" aria-label="Approximate map area"><span>Approximate map display</span><span>Exact addresses remain protected until managed release.</span></div>
