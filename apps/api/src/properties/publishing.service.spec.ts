@@ -56,9 +56,23 @@ function makePrisma() {
         versions.push(version);
         return version;
       }),
-      findFirst: vi.fn(async ({ where }: any) =>
-        versions.find((version) => version.propertyId === where.propertyId && version.isApproved) ?? null,
+      findFirst: vi.fn(async ({ where, orderBy }: any) => {
+        const matches = versions.filter(
+          (version) => version.propertyId === where.propertyId && version.isApproved,
+        );
+        if (orderBy?.version === "desc") matches.sort((a, b) => b.version - a.version);
+        return matches[0] ?? null;
+      }),
+      count: vi.fn(async ({ where }: any) =>
+        versions.filter((version) => version.propertyId === where.propertyId).length,
       ),
+      updateMany: vi.fn(async ({ where, data }: any) => {
+        for (const version of versions) {
+          if (version.propertyId === where.propertyId && version.isApproved === where.isApproved) {
+            Object.assign(version, data);
+          }
+        }
+      }),
     },
     propertyTranslation: {
       upsert: vi.fn(async ({ where, create, update }: any) => {
@@ -117,6 +131,32 @@ describe("PublishingService", () => {
     });
   });
 
+  it("persists a new approved version on every republish and exposes it after reload", async () => {
+    const { prisma, rows, versions } = makePrisma();
+    const first = new PublishingService(prisma);
+    await first.publish("property-1");
+
+    const row = rows.get("property-1")!;
+    row.category = "residential-premium";
+    row.status = "VERIFIED";
+    await first.publish("property-1");
+
+    expect(versions).toHaveLength(2);
+    expect(versions[1]).toMatchObject({
+      version: 2,
+      isApproved: true,
+      snapshot: { category: "residential-premium" },
+    });
+    expect(versions[0].isApproved).toBe(false);
+
+    row.status = "PENDING_REVIEW";
+    const fresh = new PublishingService(prisma);
+    await expect(fresh.getPublicProjection("property-1")).resolves.toMatchObject({
+      category: "residential-premium",
+      status: "PUBLISHED",
+    });
+  });
+
   it("does not expose an expired approved version during pending review", async () => {
     const { prisma, rows } = makePrisma();
     const service = new PublishingService(prisma);
@@ -138,6 +178,50 @@ describe("PublishingService", () => {
     );
   });
 
+  it("persists every supported field from a material edit patch", async () => {
+    const { prisma, rows } = makePrisma();
+    const service = new PublishingService(prisma);
+    await service.publish("property-1");
+
+    const offerings = [{ mode: "SHORT_STAY", currency: "KES", basePrice: 2200 }];
+    await service.createMaterialEditReview("property-1", {
+      category: "residential-premium",
+      exactAddress: "New exact address",
+      publicLatitude: -1.3,
+      publicLongitude: 36.8,
+      offerings,
+      mediaIds: ["media-1"],
+      bedrooms: 3,
+      capacity: 6,
+      safetyNotes: "Fire exit checked",
+    });
+
+    expect(rows.get("property-1")).toMatchObject({
+      category: "residential-premium",
+      exactAddress: "New exact address",
+      publicLatitude: -1.3,
+      publicLongitude: 36.8,
+      materialFacts: {
+        bedrooms: 3,
+        capacity: 6,
+        safetyNotes: "Fire exit checked",
+      },
+    });
+    expect(prisma.property.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          offerings: expect.objectContaining({
+            deleteMany: {},
+            create: expect.arrayContaining([
+              expect.objectContaining({ mode: "SHORT_STAY", basePrice: 2200 }),
+            ]),
+          }),
+          media: { set: [{ id: "media-1" }] },
+        }),
+      }),
+    );
+  });
+
   it("requires an admin and an eligible owner for ownership re-verification", async () => {
     const { prisma } = makePrisma();
     prisma.user = {
@@ -148,6 +232,10 @@ describe("PublishingService", () => {
       ),
     };
     const service = new PublishingService(prisma);
+
+    await expect(
+      service.reverifyOwnershipChange("property-1", "owner-2", undefined as any),
+    ).rejects.toBeInstanceOf(ForbiddenException);
 
     await expect(
       service.reverifyOwnershipChange("property-1", "owner-2", { id: "staff-1", roles: ["OWNER"] }),

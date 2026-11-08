@@ -11,7 +11,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { TranslationService } from "./translation.service";
 
 type Listing = any;
-type Actor = string | { id?: string; roles?: unknown[] } | undefined;
+type Actor = string | { id?: string; roles?: unknown[] };
 
 const PUBLIC_STATUSES = new Set(["PUBLISHED"]);
 const EDITABLE_FIELDS = [
@@ -58,8 +58,7 @@ export class PublishingService {
 
   async publish(propertyId: string, actor?: Actor): Promise<Listing> {
     const property = await this.findProperty(propertyId);
-    if (property.status === "PUBLISHED") return property;
-    if (property.status !== "VERIFIED") {
+    if (property.status !== "VERIFIED" && property.status !== "PUBLISHED") {
       throw new ConflictException(
         "Only a verified listing can be published",
       );
@@ -109,9 +108,11 @@ export class PublishingService {
     const data: Record<string, unknown> = {
       status: material ? "PENDING_REVIEW" : property.status,
     };
-    for (const key of EDITABLE_FIELDS) {
-      if (Object.prototype.hasOwnProperty.call(patch, key)) data[key] = patch[key];
-    }
+    this.addScalarPatchFields(data, patch);
+    this.addExactLocationPatchFields(data, patch);
+    this.addOfferingPatch(data, patch);
+    this.addMediaPatch(data, patch);
+    this.addMaterialFactsPatch(data, property, patch);
     return this.prisma.property.update({
       where: { id: propertyId },
       data,
@@ -191,10 +192,10 @@ export class PublishingService {
   async reverifyOwnershipChange(
     propertyId: string,
     newOwnerId: string,
-    actor?: Actor,
+    actor: Actor,
   ): Promise<Listing> {
     if (!newOwnerId?.trim()) throw new BadRequestException("New owner is required");
-    if (actor && !this.hasRole(actor, "ADMIN")) {
+    if (!this.hasRole(actor, "ADMIN")) {
       throw new ForbiddenException("Admin access is required");
     }
     if (this.prisma.user?.findUnique) {
@@ -222,7 +223,7 @@ export class PublishingService {
     });
   }
 
-  transferOwnership(propertyId: string, newOwnerId: string, actor?: Actor) {
+  transferOwnership(propertyId: string, newOwnerId: string, actor: Actor) {
     return this.reverifyOwnershipChange(propertyId, newOwnerId, actor);
   }
 
@@ -277,16 +278,19 @@ export class PublishingService {
 
   private async createApprovedVersion(propertyId: string, snapshot: Listing, actor?: Actor) {
     if (!this.prisma.propertyVersion?.create) return;
-    const existing = this.prisma.propertyVersion.findFirst
+    const latest = this.prisma.propertyVersion.findFirst
       ? await this.prisma.propertyVersion.findFirst({
-          where: { propertyId, isApproved: true },
+          where: { propertyId },
           orderBy: { version: "desc" },
         })
       : null;
-    if (existing) return;
-    const version = this.prisma.propertyVersion.count
-      ? (await this.prisma.propertyVersion.count({ where: { propertyId } })) + 1
-      : 1;
+    const version = (latest?.version ?? 0) + 1;
+    if (this.prisma.propertyVersion.updateMany) {
+      await this.prisma.propertyVersion.updateMany({
+        where: { propertyId, isApproved: true },
+        data: { isApproved: false },
+      });
+    }
     await this.prisma.propertyVersion.create({
       data: {
         id: randomUUID(),
@@ -360,6 +364,92 @@ export class PublishingService {
 
   private isMaterialEdit(patch: Record<string, unknown>): boolean {
     return Object.keys(patch).some((key) => MATERIAL_EDIT_FIELDS.has(key));
+  }
+
+  private addScalarPatchFields(
+    data: Record<string, unknown>,
+    patch: Record<string, unknown>,
+  ) {
+    for (const key of [
+      ...EDITABLE_FIELDS,
+      "exactAddress",
+      "exactLatitude",
+      "exactLongitude",
+      "authorizationAttested",
+    ]) {
+      if (Object.prototype.hasOwnProperty.call(patch, key)) data[key] = patch[key];
+    }
+  }
+
+  private addExactLocationPatchFields(
+    data: Record<string, unknown>,
+    patch: Record<string, unknown>,
+  ) {
+    const location = patch.exactLocation;
+    if (!location || typeof location !== "object") return;
+    const exact = location as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(exact, "address")) {
+      data.exactAddress = exact.address;
+    }
+    if (Object.prototype.hasOwnProperty.call(exact, "latitude")) {
+      data.exactLatitude = exact.latitude;
+    }
+    if (Object.prototype.hasOwnProperty.call(exact, "longitude")) {
+      data.exactLongitude = exact.longitude;
+    }
+  }
+
+  private addOfferingPatch(data: Record<string, unknown>, patch: Record<string, unknown>) {
+    if (Array.isArray(patch.offerings)) {
+      data.offerings = {
+        deleteMany: {},
+        create: patch.offerings.map((offering) => {
+          const value = offering as Record<string, unknown>;
+          return {
+            mode: value.mode,
+            currency: value.currency,
+            basePrice: value.basePrice,
+            negotiable: value.negotiable ?? false,
+            minimumNights: value.minimumNights,
+            moveInDate: value.moveInDate
+              ? new Date(value.moveInDate as string | number | Date)
+              : undefined,
+            leaseDurationMonths: value.leaseDurationMonths,
+          };
+        }),
+      };
+      return;
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, "basePrice")) {
+      data.offerings = { updateMany: { data: { basePrice: patch.basePrice } } };
+    }
+  }
+
+  private addMediaPatch(data: Record<string, unknown>, patch: Record<string, unknown>) {
+    const media = patch.mediaIds ?? patch.corePhotos ?? patch.media;
+    if (Array.isArray(media)) {
+      data.media = {
+        set: media.map((id) => (typeof id === "string" ? { id } : id)),
+      };
+    }
+  }
+
+  private addMaterialFactsPatch(
+    data: Record<string, unknown>,
+    property: Listing,
+    patch: Record<string, unknown>,
+  ) {
+    const factKeys = ["bedrooms", "capacity", "safetyNotes"];
+    const changedFacts = factKeys.filter((key) =>
+      Object.prototype.hasOwnProperty.call(patch, key),
+    );
+    if (changedFacts.length === 0) return;
+    data.materialFacts = {
+      ...(property.materialFacts && typeof property.materialFacts === "object"
+        ? property.materialFacts
+        : {}),
+      ...Object.fromEntries(changedFacts.map((key) => [key, patch[key]])),
+    };
   }
 
   private isExpired(property: Listing, now = new Date()): boolean {

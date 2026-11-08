@@ -239,6 +239,7 @@ model Property {
   verificationValidUntil DateTime?
   lastInspectedAt        DateTime?
   fraudReason            String?
+  materialFacts          Json                                 @default("{}")
   createdAt              DateTime                             @default(now())
   updatedAt              DateTime                             @updatedAt
   owner                  User                                 @relation("PropertyOwner", fields: [ownerId], references: [id])

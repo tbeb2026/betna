@@ -67,3 +67,20 @@ Verification:
 - `pnpm --filter @betna/web typecheck` — PASS.
 - `pnpm --filter @betna/web test` — PASS, 12/12.
 - Full API suite: 67/67 tests passed; suite exits non-zero because the pre-existing `prisma/seed.test.ts` requires `DATABASE_URL` and no database is configured.
+
+## Round 2 recovery — 2026-11-08
+
+The second review's P1 findings are addressed:
+
+- Every call to `publish()` now writes a new immutable `PropertyVersion`, increments from the latest persisted version, and retires the prior approved version. A fresh service instance therefore reads the latest approved snapshot during pending review rather than stale in-process state.
+- `createMaterialEditReview()` now persists every supported detected material change: scalar property fields and exact-location aliases, complete offering replacements or price updates, media/core-photo relation sets, and inspection facts (`bedrooms`, `capacity`, and `safetyNotes`) in the new `Property.materialFacts` JSON column. Text-only fields continue to be persisted without forcing review.
+- `reverifyOwnershipChange()` and `transferOwnership()` require an actor at the type and runtime boundaries and reject missing/non-admin actors before changing ownership. The admin controller passes the authenticated actor through.
+- Added migration `20261108030000_property_material_facts` without modifying the already-applied lifecycle migration.
+
+Round 2 verification:
+
+- `pnpm --filter @betna/api test publishing` — PASS, 15/15.
+- `pnpm --filter @betna/api typecheck` — PASS.
+- `pnpm --filter @betna/api build` — PASS.
+- `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/betna pnpm --filter @betna/api prisma validate` — PASS.
+- Full API suite — 70/70 tests passed; command exits non-zero only because the pre-existing `prisma/seed.test.ts` requires `DATABASE_URL` and no database is configured.
