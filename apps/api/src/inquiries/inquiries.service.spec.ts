@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ForbiddenException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { InquiriesService } from "./inquiries.service";
 
 const property = {
@@ -141,5 +141,63 @@ describe("InquiriesService", () => {
         channel: "WHATSAPP",
       }),
     });
+  });
+
+  it("lets the owner confirm or decline a pending inquiry and rejects invalid transitions", async () => {
+    const { prisma, inquiries } = makePrisma();
+    const enqueue = vi.fn().mockResolvedValue(undefined);
+    const service = new InquiriesService(prisma, { enqueue } as any);
+    const created = await service.createGuestInquiry({
+      propertyId: "property-1",
+      mode: "SHORT_STAY",
+      name: "Amina Guest",
+      email: "owner-response@example.com",
+      phone: "+254711111113",
+      message: "Please confirm availability.",
+    });
+
+    await expect(service.ownerRespond(created.inquiry.id, "owner-1", { decision: "CONFIRMED" })).resolves.toMatchObject({
+      status: "OWNER_CONFIRMED",
+    });
+    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ type: "INQUIRY_OWNER_CONFIRMED" }));
+    await expect(service.ownerRespond(created.inquiry.id, "owner-1", { decision: "DECLINED" })).rejects.toBeInstanceOf(ConflictException);
+    await expect(service.ownerRespond(inquiries[0].id, "owner-1", { decision: "MAYBE" } as any)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("requires a published property and an eligible owner for contact-click logging", async () => {
+    const { prisma } = makePrisma();
+    const service = new InquiriesService(prisma, { enqueue: vi.fn() } as any);
+    prisma.property.findUnique.mockResolvedValueOnce({ ...property, status: "PAUSED" });
+    await expect(service.logContactClick({ propertyId: "property-1", target: "BETNA", channel: "WHATSAPP" })).rejects.toThrow("Published property");
+    prisma.property.findUnique.mockResolvedValueOnce({ ...property, owner: null });
+    await expect(service.logContactClick({ propertyId: "property-1", target: "OWNER", channel: "WHATSAPP" })).rejects.toThrow("owner contact");
+  });
+
+  it("makes an approved location idempotent, expires it, and supports admin revocation", async () => {
+    const { prisma, inquiries } = makePrisma();
+    const enqueue = vi.fn().mockResolvedValue(undefined);
+    const service = new InquiriesService(prisma, { enqueue } as any);
+    const created = await service.createGuestInquiry({
+      propertyId: "property-1",
+      mode: "SHORT_STAY",
+      name: "Amina Guest",
+      email: "location-release@example.com",
+      phone: "+254711111114",
+      message: "Please release the address.",
+    });
+    const actor = { id: "admin-1", roles: ["ADMIN"] };
+    const first = await service.adminReleaseLocation(created.inquiry.id, actor, "Verified inquiry");
+    const second = await service.adminReleaseLocation(created.inquiry.id, actor, "Duplicate request");
+    expect(first).toMatchObject({ inquiry: { status: "LOCATION_APPROVED" } });
+    expect(second).toMatchObject({ inquiry: { status: "LOCATION_APPROVED" }, idempotent: true });
+    expect(enqueue.mock.calls.filter(([event]) => event.type === "INQUIRY_LOCATION_APPROVED")).toHaveLength(1);
+
+    inquiries[0].locationReleaseExpiresAt = new Date(Date.now() - 1);
+    await expect(service.getReleasedLocation(created.inquiry.id, actor)).resolves.toBeNull();
+    expect(inquiries[0].status).toBe("CONTACTED");
+    await service.adminReleaseLocation(created.inquiry.id, actor);
+    await service.revokeLocation(created.inquiry.id, actor, "Guest withdrew request");
+    await expect(service.getReleasedLocation(created.inquiry.id, actor)).resolves.toBeNull();
+    expect(inquiries[0].status).toBe("CONTACTED");
   });
 });

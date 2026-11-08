@@ -1,5 +1,5 @@
-import { Injectable } from "@nestjs/common";
-import { randomUUID } from "node:crypto";
+import { Inject, Injectable } from "@nestjs/common";
+import { createHash, randomUUID } from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   ChannelAdapter,
@@ -7,6 +7,7 @@ import {
   NotificationChannel,
   NotificationMessage,
   NotificationRecipient,
+  NOTIFICATION_CHANNEL_ADAPTERS,
 } from "./channel.adapter";
 
 export interface NotificationEvent {
@@ -14,25 +15,28 @@ export interface NotificationEvent {
   inquiryId?: string;
   reference?: string;
   recipients: NotificationRecipient[];
-  channels?: NotificationChannel[];
+  channels?: readonly NotificationChannel[];
   subject?: string;
   body?: string;
   payload?: Record<string, unknown>;
+  idempotencyKey?: string;
 }
 
 type NotificationStore = {
   id?: string;
   create?: (args: { data: Record<string, unknown> }) => Promise<any>;
   update?: (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<any>;
+  findUnique?: (args: { where: { idempotencyKey: string } }) => Promise<any>;
 };
 
 @Injectable()
 export class NotificationService {
   private readonly adapters: Map<NotificationChannel, ChannelAdapter>;
+  private readonly seenKeys = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService | { notification?: NotificationStore } = {} as PrismaService,
-    adapters: ChannelAdapter[] = defaultChannelAdapters(),
+    @Inject(NOTIFICATION_CHANNEL_ADAPTERS) adapters: ChannelAdapter[] = defaultChannelAdapters(),
   ) {
     this.adapters = new Map(adapters.map((adapter) => [adapter.channel, adapter]));
   }
@@ -44,6 +48,16 @@ export class NotificationService {
     for (const recipient of event.recipients) {
       for (const channel of channels) {
         if (!this.hasAddress(recipient, channel)) continue;
+        const idempotencyKey = this.keyFor(event, recipient, channel);
+        if (this.seenKeys.has(idempotencyKey)) continue;
+        const store = (this.prisma as any).notification as NotificationStore | undefined;
+        const existing = store?.findUnique
+          ? await store.findUnique({ where: { idempotencyKey } })
+          : undefined;
+        if (existing) {
+          deliveries.push(existing);
+          continue;
+        }
         const message: NotificationMessage = {
           event: event.type,
           channel,
@@ -55,11 +69,13 @@ export class NotificationService {
           payload: event.payload,
         };
         const id = randomUUID();
-        const store = (this.prisma as any).notification as NotificationStore | undefined;
-        const queued = store?.create
-          ? await store.create({
+        let queued;
+        try {
+          queued = store?.create
+            ? await store.create({
               data: {
                 id,
+                idempotencyKey,
                 event: event.type,
                 channel,
                 status: "QUEUED",
@@ -70,8 +86,21 @@ export class NotificationService {
                 payload: event.payload ?? {},
               },
             })
-          : { id, event: event.type, channel, status: "QUEUED", recipient };
+            : { id, idempotencyKey, event: event.type, channel, status: "QUEUED", recipient };
+        } catch (error) {
+          // A concurrent worker may have won the unique insert. Re-read and
+          // return that delivery rather than sending the message twice.
+          if (store?.findUnique) {
+            const duplicate = await store.findUnique({ where: { idempotencyKey } });
+            if (duplicate) {
+              deliveries.push(duplicate);
+              continue;
+            }
+          }
+          throw error;
+        }
         deliveries.push(queued);
+        this.seenKeys.add(idempotencyKey);
         try {
           const adapter = this.adapters.get(channel);
           if (!adapter) throw new Error(`No adapter configured for ${channel}`);
@@ -94,6 +123,12 @@ export class NotificationService {
       }
     }
     return deliveries;
+  }
+
+  private keyFor(event: NotificationEvent, recipient: NotificationRecipient, channel: NotificationChannel) {
+    if (event.idempotencyKey?.trim()) return `${event.idempotencyKey.trim()}:${channel}:${recipient.userId ?? recipient.email ?? recipient.phone ?? "unknown"}`;
+    const input = [event.type, event.inquiryId ?? "", event.reference ?? "", channel, recipient.userId ?? "", recipient.email ?? "", recipient.phone ?? ""].join("|");
+    return `notification:${createHash("sha256").update(input).digest("hex")}`;
   }
 
   private hasAddress(recipient: NotificationRecipient, channel: NotificationChannel) {

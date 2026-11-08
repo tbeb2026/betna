@@ -15,6 +15,9 @@ export interface NotificationMessage {
   payload?: Record<string, unknown>;
 }
 
+/** Explicit token keeps interface-typed adapter arrays resolvable by Nest. */
+export const NOTIFICATION_CHANNEL_ADAPTERS = Symbol("NOTIFICATION_CHANNEL_ADAPTERS");
+
 export interface ChannelAdapter {
   readonly channel: NotificationChannel;
   send(message: NotificationMessage): Promise<void>;

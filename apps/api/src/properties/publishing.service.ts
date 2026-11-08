@@ -347,6 +347,7 @@ export class PublishingService {
         latitude: Number(property.publicLatitude),
         longitude: Number(property.publicLongitude),
       },
+      ownerPhone: this.publicPhone(property.owner?.phone),
       offerings: (property.offerings ?? []).map((offering: Listing) => ({
         mode: offering.mode,
         currency: offering.currency,
@@ -364,12 +365,19 @@ export class PublishingService {
 
   private propertyInclude() {
     return {
+      owner: { select: { phone: true } },
       country: true,
       city: true,
       neighborhood: true,
       offerings: true,
       media: true,
     };
+  }
+
+  private publicPhone(value: unknown): string | null {
+    if (typeof value !== "string") return null;
+    const digits = value.replace(/\D/g, "");
+    return digits.length >= 7 && digits.length <= 15 ? `+${digits}` : null;
   }
 
   private isMaterialEdit(patch: Record<string, unknown>): boolean {

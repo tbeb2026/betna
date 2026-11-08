@@ -68,4 +68,13 @@ export class AdminInquiriesController {
   ) {
     return this.inquiries.adminReleaseLocation(id, request.user, body?.reason);
   }
+
+  @Post(":id/location-release/revoke")
+  revoke(
+    @Req() request: { user: { id: string; roles: string[] } },
+    @Param("id") id: string,
+    @Body() body: { reason?: string },
+  ) {
+    return this.inquiries.revokeLocation(id, request.user, body?.reason);
+  }
 }

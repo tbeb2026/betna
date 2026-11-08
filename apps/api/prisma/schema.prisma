@@ -380,6 +380,9 @@ model Inquiry {
   endDate            DateTime?
   guests             Int?
   locationApprovedAt DateTime?
+  locationReleaseExpiresAt DateTime?
+  locationRevokedAt DateTime?
+  locationReleasedBy String? @db.Uuid
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
   property           Property      @relation(fields: [propertyId], references: [id])
@@ -387,12 +390,14 @@ model Inquiry {
   conversion         Conversion?
 
   @@index([propertyId, status])
+  @@index([status, locationReleaseExpiresAt])
 }
 
 /// Queued deliveries are persisted so notification attempts can be retried
 /// without changing the user-visible inquiry transition.
 model Notification {
   id            String    @id @default(uuid()) @db.Uuid
+  idempotencyKey String   @unique @db.VarChar(255)
   event         String    @db.VarChar(100)
   channel       String    @db.VarChar(30)
   status        String    @default("QUEUED") @db.VarChar(30)
@@ -408,6 +413,26 @@ model Notification {
   @@index([inquiryId, createdAt])
   @@index([status, createdAt])
   @@index([recipientId, createdAt])
+}
+
+/// Durable, bounded guest-abuse counters. Rows are periodically pruned by
+/// the maintenance job using lastAttemptAt; no unbounded process-local state
+/// is required for multi-instance API deployments.
+model InquiryAbuseAttempt {
+  id              String   @id @default(uuid()) @db.Uuid
+  key             String   @unique @db.VarChar(255)
+  normalizedEmail String   @db.VarChar(320)
+  normalizedPhone String   @db.VarChar(40)
+  fingerprint     String?  @db.VarChar(128)
+  attempts        Int      @default(0)
+  windowStartedAt DateTime
+  lastAttemptAt   DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@index([lastAttemptAt])
+  @@index([normalizedEmail, lastAttemptAt])
+  @@index([normalizedPhone, lastAttemptAt])
+  @@index([fingerprint, lastAttemptAt])
 }
 
 model ContactClick {

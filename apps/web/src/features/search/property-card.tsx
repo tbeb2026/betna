@@ -14,6 +14,7 @@ export type PublicProperty = {
   offerings: Array<{ id?: string; mode: "SHORT_STAY" | "LONG_TERM" | string; currency: string; basePrice: number; negotiable?: boolean; minimumNights?: number | null; leaseDurationMonths?: number | null }>;
   media: Array<{ id: string; objectKey: string }>;
   verification?: { badge?: string; validUntil?: string | null };
+  ownerPhone?: string | null;
 };
 
 function price(property: PublicProperty) {
