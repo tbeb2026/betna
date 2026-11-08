@@ -311,6 +311,9 @@ export class PublishingService {
       : null;
     const lastInspectedAt = property.lastInspectedAt?.toISOString?.() ?? property.lastInspectedAt;
     const verificationValidUntil = property.verificationValidUntil?.toISOString?.() ?? property.verificationValidUntil;
+    const availableLocales = this.translations?.getApprovedLocales
+      ? await this.translations.getApprovedLocales(property.id)
+      : ["en"];
     return {
       id: property.id,
       slug: property.slug,
@@ -321,6 +324,7 @@ export class PublishingService {
       amenities: property.amenities ?? [],
       status,
       locale: requestedLocale,
+      availableLocales,
       lastInspectedAt,
       verificationValidUntil,
       verification: {

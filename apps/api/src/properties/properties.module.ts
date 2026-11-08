@@ -9,16 +9,19 @@ import { PublishingController } from "./publishing.controller";
 import { PublishingService } from "./publishing.service";
 import { TranslationService } from "./translation.service";
 import { ListingLifecycleJob } from "./listing-lifecycle.job";
+import { PublicPropertiesController } from "./public-properties.controller";
+import { SearchService } from "./search.service";
 
 @Module({
   imports: [PrismaModule, AuthModule, UsersModule],
-  controllers: [PropertiesController, PublishingController],
+  controllers: [PropertiesController, PublishingController, PublicPropertiesController],
   providers: [
     PropertiesService,
     TaxonomyService,
     PublishingService,
     TranslationService,
     ListingLifecycleJob,
+    SearchService,
   ],
   exports: [
     PropertiesService,

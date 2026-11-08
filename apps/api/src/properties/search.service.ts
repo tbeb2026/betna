@@ -1,0 +1,124 @@
+import { Injectable, NotFoundException } from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service";
+import { PublishingService } from "./publishing.service";
+
+export type PublicDiscoveryFilters = {
+  country?: string;
+  city?: string;
+  category?: string;
+  subcategory?: string;
+  mode?: "SHORT_STAY" | "LONG_TERM" | string;
+  minPrice?: number | string;
+  maxPrice?: number | string;
+  locale?: string;
+  page?: number | string;
+  limit?: number | string;
+};
+
+type PublicProperty = Record<string, any>;
+
+/** Indexed discovery over published rows, followed by the Task 8 public projection boundary. */
+@Injectable()
+export class SearchService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly publishing: PublishingService,
+  ) {}
+
+  async search(filters: PublicDiscoveryFilters = {}): Promise<PublicProperty[]> {
+    const locale = this.normalizeLocale(filters.locale);
+    const where = this.whereFor(filters);
+    const rows = await this.prisma.property.findMany({
+      where,
+      include: {
+        country: true,
+        city: true,
+        neighborhood: true,
+        offerings: true,
+        media: true,
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    const projected: PublicProperty[] = [];
+    for (const row of rows ?? []) {
+      const projection = await this.publishing.getPublicProjection(row.id, locale);
+      if (!projection || projection.status !== "PUBLISHED") continue;
+      if (!this.matchesPrice(projection, filters)) continue;
+      projected.push(projection);
+    }
+
+    const page = this.number(filters.page, 1);
+    const limit = Math.min(this.number(filters.limit, 24), 100);
+    return projected.slice((page - 1) * limit, page * limit);
+  }
+
+  async findBySlug(slug: string, locale = "en"): Promise<PublicProperty> {
+    const row = await this.prisma.property.findFirst({
+      where: { slug, status: "PUBLISHED" },
+      include: {
+        country: true,
+        city: true,
+        neighborhood: true,
+        offerings: true,
+        media: true,
+      },
+    });
+    if (!row) throw new NotFoundException("Published property not found");
+    const projection = await this.publishing.getPublicProjection(row.id, this.normalizeLocale(locale));
+    if (!projection || projection.status !== "PUBLISHED") {
+      throw new NotFoundException("Published property not found");
+    }
+    return projection;
+  }
+
+  getBySlug(slug: string, locale = "en") {
+    return this.findBySlug(slug, locale);
+  }
+
+  private whereFor(filters: PublicDiscoveryFilters): any {
+    const offering: Record<string, unknown> = {};
+    if (filters.mode) offering.mode = filters.mode.toUpperCase();
+    const minPrice = this.numeric(filters.minPrice);
+    const maxPrice = this.numeric(filters.maxPrice);
+    if (minPrice !== undefined) offering.basePrice = { ...(offering.basePrice as object), gte: minPrice };
+    if (maxPrice !== undefined) offering.basePrice = { ...(offering.basePrice as object), lte: maxPrice };
+
+    return {
+      status: "PUBLISHED",
+      ...(filters.country ? { country: { code: filters.country.toUpperCase() } } : {}),
+      ...(filters.city ? { city: { slug: filters.city.toLowerCase() } } : {}),
+      ...(filters.category ? { category: filters.category } : {}),
+      ...(filters.subcategory ? { subcategory: filters.subcategory } : {}),
+      ...(Object.keys(offering).length ? { offerings: { some: offering } } : {}),
+      verificationValidUntil: { gt: new Date() },
+    };
+  }
+
+  private matchesPrice(property: PublicProperty, filters: PublicDiscoveryFilters) {
+    const min = this.numeric(filters.minPrice);
+    const max = this.numeric(filters.maxPrice);
+    if (min === undefined && max === undefined) return true;
+    return (property.offerings ?? []).some((offering: PublicProperty) => {
+      if (filters.mode && String(offering.mode).toUpperCase() !== filters.mode.toUpperCase()) return false;
+      const price = Number(offering.basePrice);
+      return Number.isFinite(price) && (min === undefined || price >= min) && (max === undefined || price <= max);
+    });
+  }
+
+  private numeric(value: number | string | undefined) {
+    if (value === undefined || value === "") return undefined;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  private number(value: number | string | undefined, fallback: number) {
+    const parsed = this.numeric(value);
+    return parsed && parsed > 0 ? Math.floor(parsed) : fallback;
+  }
+
+  private normalizeLocale(locale?: string) {
+    const normalized = (locale ?? "en").toLowerCase().replace("_", "-").split("-")[0];
+    return normalized === "ti" ? "ti" : "en";
+  }
+}

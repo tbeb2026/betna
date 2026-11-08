@@ -255,6 +255,7 @@ model Property {
   translations           PropertyTranslation[]
 
   @@index([countryId, cityId, status])
+  @@index([status, verificationValidUntil, countryId, cityId, category])
   @@index([status])
 }
 
@@ -309,6 +310,7 @@ model Offering {
 
   @@unique([propertyId, mode])
   @@index([mode, currency])
+  @@index([mode, basePrice])
 }
 
 model Media {

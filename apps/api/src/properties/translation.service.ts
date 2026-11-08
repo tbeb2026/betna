@@ -99,6 +99,22 @@ export class TranslationService {
     return this.getTranslation(propertyId, "en");
   }
 
+  /** Locales with approved content are the only locales eligible for SEO alternates. */
+  async getApprovedLocales(propertyId: string): Promise<string[]> {
+    if (this.prisma.propertyTranslation?.findMany) {
+      const rows = await this.prisma.propertyTranslation.findMany({
+        where: { propertyId, approved: true },
+        select: { locale: true },
+      });
+      return ["en", ...((rows ?? []).map((row: { locale: string }) => row.locale))]
+        .map((locale) => locale.toLowerCase().split("-")[0])
+        .filter((locale, index, all) => all.indexOf(locale) === index);
+    }
+    return ["en", ...[...this.local.values()]
+      .filter((entry) => entry.propertyId === propertyId && entry.approved)
+      .map((entry) => entry.locale)];
+  }
+
   async listPending() {
     if (!this.prisma.propertyTranslation?.findMany) {
       return [...this.local.values()].filter((entry) => !entry.approved);

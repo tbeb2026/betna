@@ -10,7 +10,7 @@ export default async function HomePage() {
       <p className="lede">{t("description")}</p>
       <div className="actions">
         <Link className="button primary" href="/owner">{t("ownerCta")}</Link>
-        <Link className="button secondary" href="/places">{t("searchCta")}</Link>
+        <Link className="button secondary" href="/search">{t("searchCta")}</Link>
       </div>
     </section>
   );
