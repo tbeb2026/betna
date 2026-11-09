@@ -52,6 +52,10 @@ export class LocationReleaseService {
           throw new ConflictException("Location release has no expiry and must be re-approved");
         }
         if (expiresAt.getTime() > now.getTime()) {
+          await this.recordAudit(tx, actor, "EXACT_LOCATION_VIEWED", inquiry.id, {
+            channel: "admin-release",
+            releaseId: inquiry.locationReleaseId,
+          });
           return {
             inquiry,
             location: this.location(inquiry.property),
@@ -90,6 +94,10 @@ export class LocationReleaseService {
       if (!claimed) {
         const current = await this.findInquiry(tx, inquiryId);
         if (current?.status === "LOCATION_APPROVED" && current.locationReleaseExpiresAt && new Date(current.locationReleaseExpiresAt).getTime() > Date.now()) {
+          await this.recordAudit(tx, actor, "EXACT_LOCATION_VIEWED", current.id, {
+            channel: "admin-release",
+            releaseId: current.locationReleaseId,
+          });
           return {
             inquiry: current,
             location: this.location(current.property),
@@ -102,6 +110,10 @@ export class LocationReleaseService {
       const updated = await this.findInquiry(tx, inquiryId);
       await this.recordAudit(tx, actor, "EXACT_LOCATION_RELEASED", inquiryId, {
         reason: reason?.trim() || "admin-approved inquiry",
+        releaseId,
+      });
+      await this.recordAudit(tx, actor, "EXACT_LOCATION_VIEWED", inquiryId, {
+        channel: "admin-release",
         releaseId,
       });
       return { inquiry: updated, location: this.location(updated.property), releaseToken: releaseId, idempotent: false, releaseId };
@@ -146,28 +158,39 @@ export class LocationReleaseService {
     if (typeof token !== "string" || !/^[0-9a-f-]{36}$/i.test(token)) {
       throw new NotFoundException("Released location not found");
     }
-    const inquiry = await this.prisma.inquiry.findUnique({
-      where: { locationReleaseId: token },
-      include: { property: true },
+    return this.withTransaction(async (tx: any) => {
+      // The first read only discovers the row to lock. It must be followed by
+      // a fresh read after the lock because a revoke may commit while waiting.
+      let inquiry = await tx.inquiry.findUnique({
+        where: { locationReleaseId: token },
+        include: { property: true },
+      });
+      if (!inquiry) throw new NotFoundException("Released location not found");
+
+      await this.lockInquiry(tx, inquiry.id);
+      inquiry = await tx.inquiry.findUnique({
+        where: { locationReleaseId: token },
+        include: { property: true },
+      });
+      if (
+        !inquiry ||
+        inquiry.status !== "LOCATION_APPROVED" ||
+        !inquiry.locationReleaseExpiresAt ||
+        new Date(inquiry.locationReleaseExpiresAt).getTime() <= Date.now() ||
+        inquiry.locationRevokedAt
+      ) {
+        throw new NotFoundException("Released location not found");
+      }
+      await this.recordAudit(tx, {}, "EXACT_LOCATION_VIEWED", inquiry.id, {
+        releaseId: token,
+        channel: "visitor-token",
+      });
+      return {
+        inquiryReference: inquiry.reference,
+        expiresAt: inquiry.locationReleaseExpiresAt,
+        location: this.location(inquiry.property),
+      };
     });
-    if (
-      !inquiry ||
-      inquiry.status !== "LOCATION_APPROVED" ||
-      !inquiry.locationReleaseExpiresAt ||
-      new Date(inquiry.locationReleaseExpiresAt).getTime() <= Date.now() ||
-      inquiry.locationRevokedAt
-    ) {
-      throw new NotFoundException("Released location not found");
-    }
-    await this.recordAudit(this.prisma, {}, "EXACT_LOCATION_VIEWED", inquiry.id, {
-      releaseId: token,
-      channel: "visitor-token",
-    });
-    return {
-      inquiryReference: inquiry.reference,
-      expiresAt: inquiry.locationReleaseExpiresAt,
-      location: this.location(inquiry.property),
-    };
   }
 
   private async revokeWithinTransaction(tx: any, inquiry: any, actor: InquiryActor, reason: string) {
@@ -197,6 +220,9 @@ export class LocationReleaseService {
 
   private async recordAudit(tx: any, actor: { id?: string }, action: string, inquiryId: string, metadata: Record<string, unknown>) {
     if (this.audit?.record) {
+      if (typeof tx.auditEvent?.create !== "function") {
+        throw new InternalServerErrorException("Exact-location audit persistence is unavailable");
+      }
       await this.audit.record(tx, {
         actor,
         action,
@@ -208,7 +234,7 @@ export class LocationReleaseService {
       await tx.auditEvent.create({ data: { actorId: actor.id ?? null, action, entityType: "Inquiry", entityId: inquiryId, metadata: metadata as Prisma.InputJsonValue } });
       return;
     }
-    await this.audit?.record(actor, action, { type: "Inquiry", id: inquiryId, metadata: metadata as Prisma.InputJsonValue });
+    throw new InternalServerErrorException("Exact-location audit persistence is unavailable");
   }
 
   private async findInquiry(tx: any, inquiryId: string) {
