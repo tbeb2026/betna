@@ -9,6 +9,13 @@
 
 The API emits one JSON object per log line. Include `service=betna-api`, level, timestamp, status, method, and path in dashboards. Do not add request bodies or credentials to logs.
 
+The database migration `20261109070000_property_currency_integrity` is the
+authoritative currency guard: PostgreSQL rejects direct writes to offerings,
+conversions, and commissions when their currency does not match the related
+property country (Kenya/KES or Uganda/UGX). Apply migrations before starting
+the API and treat a migration failure caused by existing mismatches as a data
+correction incident; do not bypass the trigger with application-side writes.
+
 ## Deployment
 
 1. Confirm the CI workflow is green, the migration is backward compatible, and the release owner has a rollback decision and maintenance window.
@@ -30,8 +37,12 @@ To roll back an application regression, route traffic to the last known-good ima
 
 Run `pnpm test:db` (or `pnpm test:integration`) against an isolated
 PostgreSQL/PostGIS database after migrations. This gate validates the durable
-schema and immutable audit trigger; unit tests use transactional fakes when a
-database is unavailable. Run the browser release gate separately with
+schema, immutable audit trigger, and direct-SQL property currency triggers;
+unit tests use transactional fakes and structural migration assertions when a
+database is unavailable. If no database is available locally, run
+`pnpm --filter @betna/api exec vitest run src/prisma/currency-integrity-migration.spec.ts`
+and record the skipped `pnpm test:db` gate; CI must still run the full database
+gate after `prisma migrate deploy`. Run the browser release gate separately with
 `pnpm test:playwright`, or run both API and browser end-to-end suites with
 `pnpm test:e2e` after the required services are available.
 

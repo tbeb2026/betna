@@ -2,7 +2,7 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    include: ["prisma/seed.test.ts"],
+    include: ["prisma/seed.test.ts", "prisma/currency-integrity.test.ts"],
     exclude: ["node_modules/**", ".next/**"],
   },
 });
