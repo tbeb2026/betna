@@ -1,5 +1,4 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
-import { Optional } from "@nestjs/common";
+import { BadRequestException, Injectable, InternalServerErrorException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -12,64 +11,54 @@ export type ChecklistDefinition = {
   rules?: Record<string, "PASS" | "FAIL" | "ESCALATE">;
 };
 
-const BASELINE = [
-  "identityAuthorization",
-  "exactLocation",
-  "currentPhotos",
-  "statedPrice",
-  "category",
-  "safetyCondition",
-] as const;
-
-const CATEGORY_REQUIREMENTS: Record<string, string[]> = {
-  residential: ["residentialUtilities"],
-  land: ["landBoundaries", "landAccess"],
-  commercial: ["commercialUse", "commercialSafety"],
-};
-
 @Injectable()
 export class ChecklistService {
-  private readonly versions = new Map<string, number>();
+  constructor(private readonly prisma: PrismaService) {}
 
-  constructor(@Optional() private readonly prisma?: PrismaService) {}
-
-  get(category = "residential"): ChecklistDefinition {
+  async getPersisted(category = "residential", version?: number): Promise<ChecklistDefinition> {
     const normalized = category.trim().toLowerCase();
-    return {
-      version: this.versions.get(normalized) ?? 1,
-      category: normalized,
-      required: [...BASELINE, ...(CATEGORY_REQUIREMENTS[normalized] ?? [])],
-      rules: Object.fromEntries(
-        [...BASELINE, ...(CATEGORY_REQUIREMENTS[normalized] ?? [])].map((key) => [key, "PASS"]),
-      ),
-    };
-  }
-
-  async getPersisted(category = "residential"): Promise<ChecklistDefinition> {
-    const normalized = category.trim().toLowerCase();
-    const row = await this.prisma?.checklistDefinition?.findFirst?.({
-      where: { category: normalized, isPublished: true },
-      orderBy: { version: "desc" },
-    });
-    if (!row) return this.get(normalized);
+    if (!normalized) throw new BadRequestException("Checklist category is required");
+    if (version !== undefined && (!Number.isInteger(version) || version < 1)) {
+      throw new BadRequestException("Checklist version must be a positive integer");
+    }
+    const store = (this.prisma as any)?.checklistDefinition;
+    if (!store?.findFirst) {
+      throw new InternalServerErrorException("Checklist definitions are not configured");
+    }
+    const query = version === undefined
+      ? { where: { category: normalized, isPublished: true }, orderBy: { version: "desc" } }
+      : { where: { category: normalized, version } };
+    const row = await store.findFirst(query);
+    if (!row) {
+      throw new InternalServerErrorException(
+        version === undefined
+          ? `No published checklist definition is configured for ${normalized}`
+          : `Checklist definition ${normalized} v${version} is not configured`,
+      );
+    }
     const definition = (row.definition ?? {}) as Record<string, unknown>;
     const required = Array.isArray(definition.required)
       ? definition.required.filter((key): key is string => typeof key === "string")
-      : this.get(normalized).required;
+      : [];
+    if (required.length === 0) {
+      throw new InternalServerErrorException(`Checklist definition ${normalized} v${row.version} is invalid`);
+    }
     const rules = definition.rules && typeof definition.rules === "object"
       ? Object.fromEntries(
           Object.entries(definition.rules).filter(
             ([, value]) => value === "PASS" || value === "FAIL" || value === "ESCALATE",
           ),
         ) as ChecklistDefinition["rules"]
-      : this.get(normalized).rules;
+      : undefined;
     return { category: normalized, version: row.version, required, rules };
   }
 
   async listDefinitions() {
-    return this.prisma?.checklistDefinition?.findMany?.({
+    const store = (this.prisma as any)?.checklistDefinition;
+    if (!store?.findMany) throw new InternalServerErrorException("Checklist definitions are not configured");
+    return store.findMany({
       orderBy: [{ category: "asc" }, { version: "desc" }],
-    }) ?? [];
+    });
   }
 
   async upsertDefinition(
@@ -92,20 +81,20 @@ export class ChecklistService {
         throw new BadRequestException("Checklist rules must be PASS, FAIL, or ESCALATE");
       }
     }
-    const current = await this.prisma?.checklistDefinition?.findFirst?.({
+    const store = (this.prisma as any)?.checklistDefinition;
+    if (!store?.findFirst || !store?.create || !store?.updateMany) {
+      throw new InternalServerErrorException("Checklist definitions are not configured");
+    }
+    const current = await store.findFirst({
       where: { category: normalized },
       orderBy: { version: "desc" },
     });
-    const version = (current?.version ?? this.versions.get(normalized) ?? 0) + 1;
-    if (!this.prisma?.checklistDefinition?.create) {
-      this.versions.set(normalized, version);
-      return { category: normalized, version, required, rules };
-    }
-    await this.prisma.checklistDefinition.updateMany({
+    const version = (current?.version ?? 0) + 1;
+    await store.updateMany({
       where: { category: normalized, isPublished: true },
       data: { isPublished: false },
     });
-    return this.prisma.checklistDefinition.create({
+    return store.create({
       data: {
         id: randomUUID(),
         category: normalized,
@@ -116,24 +105,17 @@ export class ChecklistService {
     });
   }
 
-  version(category: string, version?: number) {
-    const normalized = category.trim().toLowerCase();
-    if (version !== undefined && (!Number.isInteger(version) || version < 1)) {
-      throw new BadRequestException(
-        "Checklist version must be a positive integer",
-      );
-    }
-    if (version !== undefined) this.versions.set(normalized, version);
-    return this.get(normalized);
+  get(category = "residential"): Promise<ChecklistDefinition> {
+    return this.getPersisted(category);
   }
 
-  missing(category: string, answers: ChecklistAnswers = {}) {
-    const definition = this.get(category);
+  async missing(category: string, answers: ChecklistAnswers = {}) {
+    const definition = await this.getPersisted(category);
     return definition.required.filter((key) => !this.answerPasses(answers[key]));
   }
 
-  assertComplete(category: string, answers: ChecklistAnswers = {}) {
-    const missing = this.missing(category, answers);
+  async assertComplete(category: string, answers: ChecklistAnswers = {}) {
+    const missing = await this.missing(category, answers);
     if (missing.length > 0) {
       throw new BadRequestException(
         `Required inspection checklist items are incomplete: ${missing.join(", ")}`,

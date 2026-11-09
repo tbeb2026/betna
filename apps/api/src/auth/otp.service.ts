@@ -68,6 +68,7 @@ export class OtpService {
   private readonly windowMs: number;
   private readonly maxAttempts: number;
   private readonly records = new Map<string, RequestRecord>();
+  private readonly verifyLocks = new Map<string, Promise<void>>();
 
   constructor(
     prismaOrOptions: PrismaService | OtpOptions = {},
@@ -113,10 +114,11 @@ export class OtpService {
       attempts: 0,
       maxAttempts: this.maxAttempts,
     };
+    const challengeId = randomUUID();
     if (this.prisma) {
       await this.prisma.otpChallenge.create({
         data: {
-          id: randomUUID(),
+          id: challengeId,
           phone: normalizedPhone,
           salt: record.challenge.salt,
           codeHash: record.challenge.codeHash,
@@ -124,10 +126,16 @@ export class OtpService {
           maxAttempts: this.maxAttempts,
         },
       });
-    } else {
-      this.records.set(normalizedPhone, record);
     }
-    await this.provider.sendOtp(normalizedPhone, code, expiresAt);
+    try {
+      await this.provider.sendOtp(normalizedPhone, code, expiresAt);
+    } catch (error) {
+      if (this.prisma?.otpChallenge.delete) {
+        await this.prisma.otpChallenge.delete({ where: { id: challengeId } });
+      }
+      throw error;
+    }
+    if (!this.prisma) this.records.set(normalizedPhone, record);
     return { expiresAt };
   }
 
@@ -137,6 +145,21 @@ export class OtpService {
 
   async verify(phone: string, code: string): Promise<boolean> {
     const normalizedPhone = normalizePhone(phone);
+    const previous = this.verifyLocks.get(normalizedPhone) ?? Promise.resolve();
+    let release!: () => void;
+    const lock = new Promise<void>((resolve) => { release = resolve; });
+    const queued = previous.then(() => lock);
+    this.verifyLocks.set(normalizedPhone, queued);
+    await previous;
+    try {
+      return await this.verifyLocked(normalizedPhone, code);
+    } finally {
+      release();
+      if (this.verifyLocks.get(normalizedPhone) === queued) this.verifyLocks.delete(normalizedPhone);
+    }
+  }
+
+  private async verifyLocked(normalizedPhone: string, code: string): Promise<boolean> {
     const record = this.records.get(normalizedPhone);
     const challenge = this.prisma
       ? await this.prisma.otpChallenge.findFirst({
@@ -156,15 +179,30 @@ export class OtpService {
       if (!("id" in challenge) || typeof challenge.id !== "string") {
         throw new OtpError("OTP is invalid or expired", 401);
       }
-      await this.prisma.otpChallenge.update({
-        where: { id: challenge.id },
-        data: {
-          attempts,
-          ...(valid || attempts >= challenge.maxAttempts
-            ? { consumedAt: new Date() }
-            : {}),
-        },
-      });
+      const update = this.prisma.otpChallenge.updateMany;
+      if (update) {
+        const result = await update({
+          where: {
+            id: challenge.id,
+            consumedAt: null,
+            expiresAt: { gt: new Date() },
+            attempts: { lt: challenge.maxAttempts },
+          },
+          data: {
+            attempts: { increment: 1 },
+            ...(valid || attempts >= challenge.maxAttempts ? { consumedAt: new Date() } : {}),
+          },
+        });
+        if (result.count !== 1) throw new OtpError("OTP is invalid or expired", 401);
+      } else {
+        await this.prisma.otpChallenge.update({
+          where: { id: challenge.id },
+          data: {
+            attempts,
+            ...(valid || attempts >= challenge.maxAttempts ? { consumedAt: new Date() } : {}),
+          },
+        });
+      }
     } else if (!valid && attempts >= challenge.maxAttempts) {
       record!.challenge = undefined;
     }

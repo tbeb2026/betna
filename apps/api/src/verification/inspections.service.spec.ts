@@ -43,6 +43,24 @@ function makePrisma() {
     any
   >;
   const evidenceRows = new Map<string, any[]>();
+  const checklistDefinitions = [
+    {
+      category: "residential",
+      version: 1,
+      isPublished: true,
+      definition: {
+        required: [
+          "identityAuthorization",
+          "exactLocation",
+          "currentPhotos",
+          "statedPrice",
+          "category",
+          "safetyCondition",
+          "residentialUtilities",
+        ],
+      },
+    },
+  ];
   const mediaRows = new Map<string, any>([
     [
       "media-1",
@@ -125,6 +143,15 @@ function makePrisma() {
       findMany: vi.fn(async () => []),
       findUnique: vi.fn(async ({ where }: any) => mediaRows.get(where.id) ?? null),
     },
+    checklistDefinition: {
+      findFirst: vi.fn(async ({ where }: any) => {
+        const matches = checklistDefinitions.filter((candidate) =>
+          Object.entries(where).every(([key, value]) => candidate[key as keyof typeof candidate] === value),
+        );
+        return matches.sort((left, right) => right.version - left.version)[0] ?? null;
+      }),
+      findMany: vi.fn(async () => checklistDefinitions),
+    },
   };
   return { prisma, rows, evidenceRows };
 }
@@ -195,6 +222,40 @@ describe("InspectionsService", () => {
 
     await expect(service.adminReview("inspection-1", { id: "admin-1", roles: ["ADMIN"] }, "APPROVED"))
       .rejects.toThrow(/publishedRequirement/);
+  });
+
+  it("reviews against the inspection checklist version instead of the latest published version", async () => {
+    const { prisma, rows } = makePrisma();
+    prisma.checklistDefinition.findFirst.mockImplementation(async ({ where }: any) => {
+      if (where.version === 7) {
+        return {
+          category: "residential",
+          version: 7,
+          isPublished: false,
+          definition: { required: ["identityAuthorization"] },
+        };
+      }
+      return {
+        category: "residential",
+        version: 9,
+        isPublished: true,
+        definition: { required: ["identityAuthorization", "newRequirement"] },
+      };
+    });
+    Object.assign(rows.get("inspection-1"), {
+      status: "READY_FOR_REVIEW",
+      requiredEvidenceSynced: true,
+      checklist: { identityAuthorization: true },
+      checklistVersion: 7,
+    });
+    const service = makeService(prisma);
+
+    await expect(
+      service.adminReview("inspection-1", { id: "admin-1", roles: ["ADMIN"] }, "APPROVED"),
+    ).resolves.toMatchObject({ status: "APPROVED" });
+    expect(prisma.checklistDefinition.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { category: "residential", version: 7 } }),
+    );
   });
 
   it("restricts assignments to a verifier assigned to the inspection territory", async () => {

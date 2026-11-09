@@ -162,7 +162,7 @@ export class NotificationService {
     return { ...row, status: "PROCESSING", processingToken: token, processingAt: now, attempts: (row.attempts ?? 0) + 1 };
   }
 
-  private async sendClaimed(row: NotificationRow, store: NotificationStore): Promise<any> {
+  private async sendClaimed(row: NotificationRow, store: NotificationStore): Promise<NotificationRow> {
     const channel = row.channel as NotificationChannel;
     const recipient: NotificationRecipient = {
       userId: row.recipientId ?? undefined,
@@ -171,8 +171,7 @@ export class NotificationService {
     };
     const adapter = this.adapters.get(channel);
     if (!adapter) {
-      await this.markFailed(row, store, `No adapter configured for ${channel}`);
-      return row;
+      return this.markFailed(row, store, `No adapter configured for ${channel}`);
     }
     try {
       await adapter.send({
@@ -186,19 +185,21 @@ export class NotificationService {
       });
       return this.markSent(row, store);
     } catch (error) {
-      await this.markFailed(row, store, error instanceof Error ? error.message : String(error));
-      return row;
+      return this.markFailed(row, store, error instanceof Error ? error.message : String(error));
     }
   }
 
-  private async markFailed(row: NotificationRow, store: NotificationStore, error: string) {
-    if (!store.updateMany || !row.processingToken) return;
+  private async markFailed(row: NotificationRow, store: NotificationStore, error: string): Promise<NotificationRow> {
+    if (!store.updateMany || !row.processingToken) return { ...row, status: "FAILED" };
     const attempts = row.attempts ?? 1;
     const delay = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** Math.max(0, attempts - 1));
-    await store.updateMany({
+    const result = await store.updateMany({
       where: { id: row.id, status: "PROCESSING", processingToken: row.processingToken },
       data: { status: "FAILED", error, processingToken: null, processingAt: null, nextAttemptAt: new Date(Date.now() + delay) },
     });
+    return result.count === 1
+      ? { ...row, status: "FAILED", processingToken: null, processingAt: null, nextAttemptAt: new Date(Date.now() + delay) }
+      : row;
   }
 
   private async markSent(row: NotificationRow, store: NotificationStore): Promise<NotificationRow> {

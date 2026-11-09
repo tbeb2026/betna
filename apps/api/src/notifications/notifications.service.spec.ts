@@ -336,4 +336,35 @@ describe("NotificationService", () => {
     expect(sends).toHaveBeenCalledTimes(2);
     expect([...rows.values()][0].status).toBe("SENT");
   });
+
+  it("returns FAILED when a durable provider attempt fails", async () => {
+    const rows = new Map<string, any>();
+    const sends = vi.fn().mockRejectedValue(new Error("provider unavailable"));
+    const prisma = {
+      notification: {
+        findUnique: vi.fn(async ({ where }: any) => rows.get(where.idempotencyKey) ?? null),
+        create: vi.fn(async ({ data }: any) => {
+          const row = { id: "notification-failure", ...data };
+          rows.set(row.idempotencyKey, row);
+          return row;
+        }),
+        updateMany: vi.fn(async ({ where, data }: any) => {
+          const row = [...rows.values()].find((candidate) => candidate.id === where.id && candidate.processingToken === where.processingToken);
+          if (!row) return { count: 0 };
+          Object.assign(row, data);
+          return { count: 1 };
+        }),
+      },
+    };
+    const service = new NotificationService(prisma as any, [{ channel: "EMAIL", send: sends }]);
+
+    const [delivery] = await service.enqueue({
+      type: "OWNER_EMAIL_VERIFICATION",
+      recipients: [{ email: "owner@example.com" }],
+      channels: ["EMAIL"],
+    });
+
+    expect(delivery.status).toBe("FAILED");
+    expect([...rows.values()][0].status).toBe("FAILED");
+  });
 });

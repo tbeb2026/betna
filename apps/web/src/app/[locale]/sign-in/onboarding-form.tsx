@@ -3,26 +3,41 @@
 import { useActionState } from "react";
 import { onboardOwner, requestWhatsAppOtp, requestOwnerEmailVerification } from "./actions";
 
-export function OnboardingForm({ locale }: { locale: string }) {
+type OnboardingLabels = {
+  firstNameLabel: string;
+  lastNameLabel: string;
+  emailLabel: string;
+  phoneLabel: string;
+  requestWhatsAppCode: string;
+  whatsappCodeLabel: string;
+  requestEmailVerification: string;
+  emailVerificationCodeLabel: string;
+  passwordLabel: string;
+  authorizationAttestation: string;
+  createOwnerAccount: string;
+  creatingOwnerAccount: string;
+};
+
+export function OnboardingForm({ locale, labels }: { locale: string; labels: OnboardingLabels }) {
   const [state, action, pending] = useActionState(onboardOwner, {});
   const [phoneState, phoneAction, phonePending] = useActionState(requestWhatsAppOtp, {});
   const [emailState, emailAction, emailPending] = useActionState(requestOwnerEmailVerification, {});
   return (
     <form className="auth-form" action={action}>
       <input type="hidden" name="locale" value={locale} />
-      <label>First name<input name="firstName" required /></label>
-      <label>Last name<input name="lastName" required /></label>
-      <label>Email address<input name="email" type="email" required /></label>
-      <label>Phone or WhatsApp<input name="phone" type="tel" required /></label>
-      <button className="button" type="submit" formAction={phoneAction} formNoValidate disabled={phonePending}>Request WhatsApp code</button>
+      <label>{labels.firstNameLabel}<input name="firstName" required /></label>
+      <label>{labels.lastNameLabel}<input name="lastName" required /></label>
+      <label>{labels.emailLabel}<input name="email" type="email" required /></label>
+      <label>{labels.phoneLabel}<input name="phone" type="tel" required /></label>
+      <button className="button" type="submit" formAction={phoneAction} formNoValidate disabled={phonePending}>{labels.requestWhatsAppCode}</button>
       {phoneState.message ? <p role="status">{phoneState.message}</p> : null}
-      <label>WhatsApp verification code<input name="otpCode" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required /></label>
-      <button className="button" type="submit" formAction={emailAction} formNoValidate disabled={emailPending}>Request email verification</button>
+      <label>{labels.whatsappCodeLabel}<input name="otpCode" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required /></label>
+      <button className="button" type="submit" formAction={emailAction} formNoValidate disabled={emailPending}>{labels.requestEmailVerification}</button>
       {emailState.message ? <p role="status">{emailState.message}</p> : null}
-      <label>Email verification code<input name="emailVerificationCode" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required /></label>
-      <label>Password<input name="password" type="password" minLength={8} required /></label>
-      <label className="check-label"><input name="authorizationAttested" type="checkbox" required /> I confirm that I own or am authorized to list my places.</label>
-      <button className="button primary" type="submit" disabled={pending}>{pending ? "Creating account…" : "Create owner account"}</button>
+      <label>{labels.emailVerificationCodeLabel}<input name="emailVerificationCode" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required /></label>
+      <label>{labels.passwordLabel}<input name="password" type="password" minLength={8} required /></label>
+      <label className="check-label"><input name="authorizationAttested" type="checkbox" required /> {labels.authorizationAttestation}</label>
+      <button className="button primary" type="submit" disabled={pending}>{pending ? labels.creatingOwnerAccount : labels.createOwnerAccount}</button>
       {state.message ? <p className="form-error" role="alert">{state.message}</p> : null}
     </form>
   );

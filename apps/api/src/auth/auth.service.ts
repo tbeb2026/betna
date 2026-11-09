@@ -62,6 +62,7 @@ export class AuthService {
   private readonly sessionService: SessionService;
   private readonly emailChallenges = new Map<string, EmailChallenge>();
   private readonly emailRequestTimes = new Map<string, number[]>();
+  private readonly emailVerifyLocks = new Map<string, Promise<void>>();
 
   async signInWithPassword(
     email: string,
@@ -134,7 +135,9 @@ export class AuthService {
     });
     if (
       Array.isArray(deliveries) &&
-      deliveries.some((delivery) => delivery?.status === "FAILED")
+      deliveries.some((delivery) =>
+        delivery?.status && !["SENT", "QUEUED"].includes(delivery.status),
+      )
     ) {
       throw new Error("Email verification could not be delivered");
     }
@@ -159,6 +162,21 @@ export class AuthService {
 
   async confirmOwnerEmailVerification(emailInput: string, code: string): Promise<{ verified: true }> {
     const email = this.normalizeEmail(emailInput);
+    const previous = this.emailVerifyLocks.get(email) ?? Promise.resolve();
+    let release!: () => void;
+    const lock = new Promise<void>((resolve) => { release = resolve; });
+    const queued = previous.then(() => lock);
+    this.emailVerifyLocks.set(email, queued);
+    await previous;
+    try {
+      return await this.confirmOwnerEmailVerificationLocked(email, code);
+    } finally {
+      release();
+      if (this.emailVerifyLocks.get(email) === queued) this.emailVerifyLocks.delete(email);
+    }
+  }
+
+  private async confirmOwnerEmailVerificationLocked(email: string, code: string): Promise<{ verified: true }> {
     const store = (this.prisma as any).emailVerificationChallenge;
     const challenge = store?.findFirst
       ? await store.findFirst({ where: { email, consumedAt: null }, orderBy: { requestedAt: "desc" } })
@@ -170,7 +188,25 @@ export class AuthService {
     const actual = Buffer.from(this.hashChallenge(code, challenge.salt), "hex");
     const valid = expected.length === actual.length && timingSafeEqual(expected, actual);
     const attempts = challenge.attempts + 1;
-    if (store?.update && challenge.id) {
+    if (store?.updateMany && challenge.id) {
+      const result = await store.updateMany({
+        where: {
+          id: challenge.id,
+          consumedAt: null,
+          expiresAt: { gt: new Date() },
+          attempts: { lt: challenge.maxAttempts },
+        },
+        data: {
+          attempts: { increment: 1 },
+          ...(valid
+            ? { confirmedAt: new Date(), consumedAt: new Date() }
+            : attempts >= challenge.maxAttempts
+              ? { consumedAt: new Date() }
+              : {}),
+        },
+      });
+      if (result.count !== 1) throw new BadRequestException("Email verification code is invalid or expired");
+    } else if (store?.update && challenge.id) {
       await store.update({
         where: { id: challenge.id },
         data: {

@@ -52,6 +52,55 @@ describe("AuthService", () => {
       .rejects.toThrow(/email.*deliver/i);
   });
 
+  it("does not create an email challenge while durable delivery is still processing", async () => {
+    const create = vi.fn();
+    const auth = new AuthService(
+      { emailVerificationChallenge: { create } } as never,
+      undefined,
+      undefined,
+      { enqueue: vi.fn().mockResolvedValue([{ status: "PROCESSING" }]) } as never,
+    );
+
+    await expect(auth.requestOwnerEmailVerification("processing@example.com"))
+      .rejects.toThrow(/email.*deliver/i);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("persists email challenges and atomically caps confirmation attempts", async () => {
+    let row: any;
+    let sentCode = "";
+    const store = {
+      count: vi.fn().mockResolvedValue(0),
+      create: vi.fn(async ({ data }: any) => { row = { ...data, attempts: 0, consumedAt: null, confirmedAt: null }; return row; }),
+      findFirst: vi.fn(async () => row),
+      updateMany: vi.fn(async ({ where, data }: any) => {
+        if (!row || row.id !== where.id || row.consumedAt || row.attempts >= where.attempts.lt) return { count: 0 };
+        row.attempts += data.attempts.increment;
+        if (data.confirmedAt) row.confirmedAt = data.confirmedAt;
+        if (data.consumedAt) row.consumedAt = data.consumedAt;
+        return { count: 1 };
+      }),
+    };
+    const auth = new AuthService(
+      { emailVerificationChallenge: store } as never,
+      undefined,
+      undefined,
+      { enqueue: vi.fn(async (event: { body?: string }) => { sentCode = event.body?.match(/\b\d{6}\b/)?.[0] ?? ""; return [{ status: "SENT" }]; }) } as never,
+    );
+
+    await auth.requestOwnerEmailVerification("persisted@example.com");
+    await expect(auth.confirmOwnerEmailVerification("persisted@example.com", "000000"))
+      .rejects.toThrow(/invalid/i);
+    await expect(auth.confirmOwnerEmailVerification("persisted@example.com", sentCode))
+      .resolves.toEqual({ verified: true });
+
+    expect(store.count).toHaveBeenCalled();
+    expect(store.create).toHaveBeenCalledWith({ data: expect.objectContaining({ email: "persisted@example.com" }) });
+    expect(store.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ consumedAt: null, attempts: { lt: 5 } }),
+    }));
+  });
+
   it("does not activate an owner until email verification is confirmed", async () => {
     let sentEmail = "";
     const otp = {

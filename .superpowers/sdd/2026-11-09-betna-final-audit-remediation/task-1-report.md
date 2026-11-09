@@ -43,3 +43,38 @@ and review.
 The Playwright browser run could not start its Next server in this restricted
 environment (`listen EPERM` on ports 3000/3100). The test file parses and lists
 correctly, but an actual browser execution remains an environment/CI gate.
+
+## Fix round 1 — final-audit findings
+
+The follow-up audit findings are addressed as follows:
+
+- Notification provider failures now return a durable `FAILED` delivery row
+  from `NotificationService`; onboarding rejects every non-terminal delivery
+  status instead of treating `PROCESSING` as success. Failed delivery does not
+  create an email challenge, so a retry does not consume the email request
+  limit.
+- Checklist review loads the exact persisted definition identified by
+  `inspection.checklistVersion`, including historical unpublished versions.
+  Missing persistence or a missing/invalid category definition now raises an
+  explicit configuration error; the production path has no baseline in-memory
+  fallback. Test repositories now provide persisted fake definitions.
+- OTP and email challenge confirmation use conditional atomic `updateMany`
+  operations (`consumedAt IS NULL`, `attempts < maxAttempts`, and expiry
+  checks), with per-instance serialization for mocked/in-memory stores. OTP
+  challenges are removed when a provider fails after persistence.
+- Owner onboarding labels, action messages, success messages, and known API
+  errors now come from both `en` and `ti` message catalogs.
+- The onboarding Playwright test now performs browser-side request fixtures for
+  WhatsApp OTP request, email request/confirmation failure and success, failed
+  activation, and successful activation, alongside real form interaction.
+
+### Fix-round verification
+
+- `pnpm test` — passed, 26 files / 155 tests.
+- `pnpm typecheck` — passed for all workspace packages.
+- `pnpm --filter @betna/api lint` — passed.
+- `pnpm --filter @betna/web lint` — passed.
+- `pnpm --filter @betna/web exec playwright test e2e/auth-onboarding.spec.ts --list` — passed; two browser tests discovered.
+- `git diff --check` — passed.
+- An actual Playwright run remains blocked by the restricted environment: Next
+  cannot bind its web-server port (`listen EPERM`), matching the existing caveat.

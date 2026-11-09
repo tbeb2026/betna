@@ -239,6 +239,7 @@ export class InspectionsService {
     const inspection = await this.findInspection(inspectionId);
     const definition = await this.checklist.getPersisted(
       String(inspection.property?.category ?? "residential"),
+      inspection.checklistVersion,
     );
     const answers = (inspection.checklist ?? {}) as Record<string, unknown>;
     const missingChecklistItems = definition.required.filter(
