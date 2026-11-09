@@ -78,3 +78,25 @@ The follow-up audit findings are addressed as follows:
 - `git diff --check` — passed.
 - An actual Playwright run remains blocked by the restricted environment: Next
   cannot bind its web-server port (`listen EPERM`), matching the existing caveat.
+
+## Fix round 2 — re-review findings
+
+- Email verification requests now accept only a confirmed `SENT` notification
+  delivery. Retryable `QUEUED`/`PROCESSING`/other nonterminal statuses fail the
+  request before the challenge is persisted or the email rate-limit budget is
+  recorded, so the owner can retry without consuming a verification attempt.
+- The onboarding browser test now drives the visible request buttons and the
+  create-account form through Next server actions. It asserts the localized
+  failure state, successful redirect, and `httpOnly` session cookie. A small
+  Playwright web-server mock provides deterministic auth API responses and
+  proxies unrelated API traffic; the test no longer calls `fetch` through
+  `page.evaluate`.
+
+### Fix-round 2 verification
+
+- `pnpm vitest run apps/api/src/auth/auth.service.spec.ts apps/web/src/lib/api-client.test.ts` — passed, 22 tests.
+- `pnpm --filter @betna/web exec playwright test e2e/auth-onboarding.spec.ts --list` — passed; two browser tests discovered.
+- `node --check apps/web/e2e/mock-auth-api.mjs` — passed.
+- `git diff --check` — passed.
+- An actual Playwright run remains blocked by this restricted environment:
+  the mock server cannot bind `127.0.0.1:4400` (`listen EPERM`).

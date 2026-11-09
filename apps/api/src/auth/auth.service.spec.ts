@@ -66,6 +66,29 @@ describe("AuthService", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it("does not consume the email budget or create a challenge while delivery is queued", async () => {
+    const create = vi.fn().mockResolvedValue(undefined);
+    const count = vi.fn().mockResolvedValue(0);
+    const enqueue = vi.fn()
+      .mockResolvedValueOnce([{ status: "QUEUED" }])
+      .mockResolvedValueOnce([{ status: "SENT" }]);
+    const auth = new AuthService(
+      { emailVerificationChallenge: { count, create } } as never,
+      undefined,
+      undefined,
+      { enqueue } as never,
+    );
+
+    await expect(auth.requestOwnerEmailVerification("queued@example.com"))
+      .rejects.toThrow(/email.*deliver/i);
+    expect(create).not.toHaveBeenCalled();
+
+    await expect(auth.requestOwnerEmailVerification("queued@example.com"))
+      .resolves.toEqual({ expiresAt: expect.any(Date) });
+    expect(count).toHaveBeenCalledTimes(2);
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
   it("persists email challenges and atomically caps confirmation attempts", async () => {
     let row: any;
     let sentCode = "";

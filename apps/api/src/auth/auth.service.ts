@@ -136,7 +136,7 @@ export class AuthService {
     if (
       Array.isArray(deliveries) &&
       deliveries.some((delivery) =>
-        delivery?.status && !["SENT", "QUEUED"].includes(delivery.status),
+        delivery?.status !== undefined && delivery.status !== "SENT",
       )
     ) {
       throw new Error("Email verification could not be delivered");
