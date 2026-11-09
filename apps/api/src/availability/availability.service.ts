@@ -22,7 +22,7 @@ export class AvailabilityService {
     @Optional() private readonly notifications?: NotificationService,
   ) {}
 
-  async confirmInquiryAndBlockDates(inquiryId: string, ownerId: string) {
+  async confirmInquiryAndBlockDates(inquiryId: string, ownerId: string, ownerResponseMessage?: string) {
     if (!inquiryId || !ownerId) throw new BadRequestException("Inquiry and owner are required");
     const result = await this.withTransaction(async (tx: any) => {
       const inquiry = await this.findInquiry(tx, inquiryId);
@@ -44,7 +44,7 @@ export class AvailabilityService {
         const updated = inquiry.status === "OWNER_CONFIRMED"
           ? inquiry
           : await tx.inquiry.update({ where: { id: inquiryId }, data: { status: "OWNER_CONFIRMED" } });
-        await this.audit?.record({ id: ownerId }, "INQUIRY_OWNER_CONFIRMED", { type: "Inquiry", id: inquiryId });
+        await this.recordAudit(tx, { id: ownerId }, "INQUIRY_OWNER_CONFIRMED", { type: "Inquiry", id: inquiryId });
         return { inquiry: updated, blocked: false, declinedInquiryIds: [] };
       }
 
@@ -65,6 +65,28 @@ export class AvailabilityService {
       const conflictingBlock = existingBlocks.find((block: any) => block.inquiryId !== inquiryId);
       if (conflictingBlock) throw new ConflictException("Those dates are no longer available");
 
+      const unavailableStore = tx.unavailableDate;
+      const unavailableDates = typeof unavailableStore?.findMany === "function"
+        ? await unavailableStore.findMany({
+            where: {
+              propertyId: inquiry.propertyId,
+              startDate: { lt: endDate },
+              endDate: { gt: startDate },
+            },
+          })
+        : typeof unavailableStore?.findFirst === "function"
+          ? [await unavailableStore.findFirst({
+              where: {
+                propertyId: inquiry.propertyId,
+                startDate: { lt: endDate },
+                endDate: { gt: startDate },
+              },
+            })].filter(Boolean)
+          : [];
+      if (unavailableDates.length > 0) {
+        throw new ConflictException("Those dates are unavailable");
+      }
+
       let block = existingBlocks.find((candidate: any) => candidate.inquiryId === inquiryId);
       if (!block) {
         try {
@@ -79,9 +101,12 @@ export class AvailabilityService {
         }
       }
 
-      const updated = inquiry.status === "OWNER_CONFIRMED"
+      const responseData = ownerResponseMessage?.trim()
+        ? { ownerResponseMessage: ownerResponseMessage.trim() }
+        : {};
+      const updated = inquiry.status === "OWNER_CONFIRMED" && !Object.keys(responseData).length
         ? inquiry
-        : await tx.inquiry.update({ where: { id: inquiryId }, data: { status: "OWNER_CONFIRMED" } });
+        : await tx.inquiry.update({ where: { id: inquiryId }, data: { status: "OWNER_CONFIRMED", ...responseData } });
       const overlapping = await this.findOverlappingPending(tx, inquiry, startDate, endDate);
       const declinedInquiryIds: string[] = [];
       const declinedInquiries: any[] = [];
@@ -96,12 +121,12 @@ export class AvailabilityService {
           declinedInquiries.push(candidate);
         }
       }
-      await this.audit?.record({ id: ownerId }, "INQUIRY_DATES_BLOCKED", {
+      await this.recordAudit(tx, { id: ownerId }, "INQUIRY_DATES_BLOCKED", {
         type: "Inquiry",
         id: inquiryId,
         metadata: { startDate, endDate, declinedInquiryIds },
       });
-      await this.audit?.record({ id: ownerId }, "INQUIRY_OWNER_CONFIRMED", { type: "Inquiry", id: inquiryId });
+      await this.recordAudit(tx, { id: ownerId }, "INQUIRY_OWNER_CONFIRMED", { type: "Inquiry", id: inquiryId });
       return { inquiry: updated, block, blocked: true, declinedInquiryIds, declinedInquiries };
     });
     await this.notifyAutoDeclines(result.declinedInquiries ?? [], result.inquiry);
@@ -114,7 +139,7 @@ export class AvailabilityService {
       this.assertOwner(inquiry, ownerId);
       if (!PENDING_INQUIRY_STATUSES.includes(inquiry.status)) throw new ConflictException("Inquiry has already been decided");
       const updated = await tx.inquiry.update({ where: { id: inquiryId }, data: { status: "OWNER_DECLINED" } });
-      await this.audit?.record({ id: ownerId }, "INQUIRY_OWNER_DECLINED", { type: "Inquiry", id: inquiryId });
+      await this.recordAudit(tx, { id: ownerId }, "INQUIRY_OWNER_DECLINED", { type: "Inquiry", id: inquiryId });
       return updated;
     });
   }
@@ -145,11 +170,16 @@ export class AvailabilityService {
   ) {
     const { propertyId, startDate, endDate } = this.validateUnavailableInput(input);
     await this.assertPropertyOwner(propertyId, ownerId);
-    const store = (this.prisma as any).unavailableDate;
-    if (!store?.create) return { propertyId, startDate, endDate, reason: input.reason?.trim() || null };
-    const overlap = await store.findFirst?.({ where: { propertyId, startDate: { lt: endDate }, endDate: { gt: startDate } } });
-    if (overlap) throw new ConflictException("Those dates are already unavailable");
-    return store.create({ data: { propertyId, startDate, endDate, reason: input.reason?.trim() || null } });
+    return this.withTransaction(async (tx: any) => {
+      await this.lockProperty(tx, propertyId);
+      const store = tx.unavailableDate;
+      if (!store?.create) return { propertyId, startDate, endDate, reason: input.reason?.trim() || null };
+      const overlap = await store.findFirst?.({ where: { propertyId, startDate: { lt: endDate }, endDate: { gt: startDate } } });
+      if (overlap) throw new ConflictException("Those dates are already unavailable");
+      const created = await store.create({ data: { propertyId, startDate, endDate, reason: input.reason?.trim() || null } });
+      if (created?.id) await this.recordAudit(tx, { id: ownerId }, "UNAVAILABLE_DATE_CREATED", { type: "UnavailableDate", id: created.id });
+      return created;
+    });
   }
 
   async updateUnavailableDate(
@@ -157,20 +187,30 @@ export class AvailabilityService {
     id: string,
     input: { startDate?: string | Date; endDate?: string | Date; reason?: string },
   ) {
-    const store = (this.prisma as any).unavailableDate;
-    const existing = await store?.findUnique?.({ where: { id }, include: { property: true } });
-    if (!existing || existing.property?.ownerId !== ownerId) throw new NotFoundException("Unavailable date not found");
-    const values = this.validateUnavailableInput({ propertyId: existing.propertyId, startDate: input.startDate ?? existing.startDate, endDate: input.endDate ?? existing.endDate });
-    const overlap = await store.findFirst?.({ where: { id: { not: id }, propertyId: existing.propertyId, startDate: { lt: values.endDate }, endDate: { gt: values.startDate } } });
-    if (overlap) throw new ConflictException("Those dates are already unavailable");
-    return store.update({ where: { id }, data: { startDate: values.startDate, endDate: values.endDate, ...(input.reason !== undefined ? { reason: input.reason?.trim() || null } : {}) } });
+    return this.withTransaction(async (tx: any) => {
+      const store = tx.unavailableDate;
+      const existing = await store?.findUnique?.({ where: { id }, include: { property: true } });
+      if (!existing || existing.property?.ownerId !== ownerId) throw new NotFoundException("Unavailable date not found");
+      await this.lockProperty(tx, existing.propertyId);
+      const values = this.validateUnavailableInput({ propertyId: existing.propertyId, startDate: input.startDate ?? existing.startDate, endDate: input.endDate ?? existing.endDate });
+      const overlap = await store.findFirst?.({ where: { id: { not: id }, propertyId: existing.propertyId, startDate: { lt: values.endDate }, endDate: { gt: values.startDate } } });
+      if (overlap) throw new ConflictException("Those dates are already unavailable");
+      const updated = await store.update({ where: { id }, data: { startDate: values.startDate, endDate: values.endDate, ...(input.reason !== undefined ? { reason: input.reason?.trim() || null } : {}) } });
+      await this.recordAudit(tx, { id: ownerId }, "UNAVAILABLE_DATE_UPDATED", { type: "UnavailableDate", id });
+      return updated;
+    });
   }
 
   async deleteUnavailableDate(ownerId: string, id: string) {
-    const store = (this.prisma as any).unavailableDate;
-    const existing = await store?.findUnique?.({ where: { id }, include: { property: true } });
-    if (!existing || existing.property?.ownerId !== ownerId) throw new NotFoundException("Unavailable date not found");
-    return store.delete({ where: { id } });
+    return this.withTransaction(async (tx: any) => {
+      const store = tx.unavailableDate;
+      const existing = await store?.findUnique?.({ where: { id }, include: { property: true } });
+      if (!existing || existing.property?.ownerId !== ownerId) throw new NotFoundException("Unavailable date not found");
+      await this.lockProperty(tx, existing.propertyId);
+      const deleted = await store.delete({ where: { id } });
+      await this.recordAudit(tx, { id: ownerId }, "UNAVAILABLE_DATE_DELETED", { type: "UnavailableDate", id });
+      return deleted;
+    });
   }
 
   private async findInquiry(tx: any, inquiryId: string) {
@@ -247,5 +287,28 @@ export class AvailabilityService {
   private async withTransaction<T>(work: (tx: any) => Promise<T>) {
     if (typeof (this.prisma as any).$transaction === "function") return (this.prisma as any).$transaction(work);
     return work(this.prisma as any);
+  }
+
+  private async recordAudit(tx: any, actor: { id: string }, action: string, entity: any) {
+    if (this.audit?.record) {
+      return this.audit.record(tx, { actor, action, entity });
+    }
+    if (typeof tx.auditEvent?.create === "function") {
+      return tx.auditEvent.create({
+        data: {
+          actorId: actor.id,
+          action,
+          entityType: entity.type ?? entity.entityType,
+          entityId: entity.id ?? entity.entityId,
+          metadata: entity.metadata ?? {},
+        },
+      });
+    }
+  }
+
+  private async lockProperty(tx: any, propertyId: string) {
+    if (typeof tx.$queryRaw === "function") {
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Property" WHERE "id" = ${propertyId} FOR UPDATE`);
+    }
   }
 }

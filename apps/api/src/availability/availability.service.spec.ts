@@ -85,6 +85,50 @@ function makePrisma() {
 }
 
 describe("AvailabilityService", () => {
+  it("rejects confirmation when owner unavailable dates overlap the requested stay", async () => {
+    const { prisma, blocks } = makePrisma();
+    prisma.unavailableDate = {
+      findMany: vi.fn().mockResolvedValue([
+        {
+          propertyId: "property-1",
+          startDate: new Date("2026-12-09"),
+          endDate: new Date("2026-12-15"),
+        },
+      ]),
+    };
+    const service = new AvailabilityService(prisma);
+
+    await expect(service.confirmInquiryAndBlockDates("inquiry-winner", "owner-1"))
+      .rejects.toBeInstanceOf(ConflictException);
+    expect(blocks).toHaveLength(0);
+  });
+
+  it("rolls back inquiry and block state when an audit write fails", async () => {
+    const { prisma, inquiries, blocks } = makePrisma();
+    const audit = { record: vi.fn().mockRejectedValue(new Error("audit unavailable")) };
+    const beforeInquiries = structuredClone(inquiries);
+    const beforeBlocks = structuredClone(blocks);
+    prisma.$transaction = vi.fn(async (work: any) => {
+      try {
+        return await work(prisma);
+      } catch (error) {
+        inquiries.splice(0, inquiries.length, ...beforeInquiries);
+        blocks.splice(0, blocks.length, ...beforeBlocks);
+        throw error;
+      }
+    });
+    const service = new AvailabilityService(prisma, audit as any);
+
+    await expect(service.confirmInquiryAndBlockDates("inquiry-winner", "owner-1"))
+      .rejects.toThrow("audit unavailable");
+    expect(inquiries).toEqual(beforeInquiries);
+    expect(blocks).toEqual(beforeBlocks);
+    expect(audit.record).toHaveBeenCalledWith(
+      prisma,
+      expect.objectContaining({ action: "INQUIRY_DATES_BLOCKED" }),
+    );
+  });
+
   it("atomically blocks confirmed dates and declines overlapping pending inquiries", async () => {
     const { prisma, inquiries, blocks } = makePrisma();
     const service = new AvailabilityService(prisma);

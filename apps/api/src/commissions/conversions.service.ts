@@ -38,7 +38,7 @@ export class ConversionsService {
         const existing = inquiry.conversion ?? await tx.conversion.findUnique?.({ where: { inquiryId: report.inquiryId } });
         if (existing) return existing;
         created = true;
-        return tx.conversion.create({
+        const conversion = await tx.conversion.create({
           data: {
             inquiryId: report.inquiryId,
             propertyId: inquiry.propertyId,
@@ -49,6 +49,12 @@ export class ConversionsService {
             paymentEvidence: report.paymentEvidence?.trim() || null,
           },
         });
+        await this.recordAudit(tx, { id: report.ownerId }, "CONVERSION_REPORTED", {
+          type: "Conversion",
+          id: conversion.id,
+          metadata: { inquiryId: report.inquiryId },
+        });
+        return conversion;
       });
     } catch (error: any) {
       if (error?.code !== "P2002") throw error;
@@ -56,33 +62,35 @@ export class ConversionsService {
       if (!conversion) throw error;
       created = false;
     }
-    if (created) {
-      await this.audit?.record({ id: report.ownerId }, "CONVERSION_REPORTED", { type: "Conversion", id: conversion.id, metadata: { inquiryId: report.inquiryId } });
-    }
     return conversion;
   }
 
   async verifyEvidence(conversionId: string, staffId: string, input?: string | { paymentEvidence?: string; approved?: boolean }) {
     await this.assertStaff(staffId);
-    const conversion = await (this.prisma as any).conversion.findUnique({ where: { id: conversionId } });
-    if (!conversion) throw new NotFoundException("Conversion not found");
-    if (conversion.status === "VERIFIED") return conversion;
-    if (conversion.status === "CANCELLED") throw new ConflictException("Cancelled conversion cannot be verified");
-    const evidence = typeof input === "string" ? input : input?.paymentEvidence;
-    const approved = typeof input === "object" ? input?.approved !== false : true;
-    if (!approved) {
-      const cancelled = await (this.prisma as any).conversion.update({ where: { id: conversionId }, data: { status: "CANCELLED", verifiedAt: null, verifiedBy: null } });
-      await this.audit?.record({ id: staffId }, "CONVERSION_EVIDENCE_REJECTED", { type: "Conversion", id: conversionId });
-      return cancelled;
-    }
-    const finalEvidence = evidence?.trim() || conversion.paymentEvidence?.trim();
-    if (!finalEvidence) throw new BadRequestException("Staff-verified payment evidence is required");
-    const verified = await (this.prisma as any).conversion.update({
-      where: { id: conversionId },
-      data: { status: "VERIFIED", paymentEvidence: finalEvidence, verifiedAt: new Date(), verifiedBy: staffId },
+    return this.withTransaction(async (tx: any) => {
+      if (typeof tx.$queryRaw === "function") {
+        await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Conversion" WHERE "id" = ${conversionId} FOR UPDATE`);
+      }
+      const conversion = await tx.conversion.findUnique({ where: { id: conversionId } });
+      if (!conversion) throw new NotFoundException("Conversion not found");
+      if (conversion.status === "VERIFIED") return conversion;
+      if (conversion.status === "CANCELLED") throw new ConflictException("Cancelled conversion cannot be verified");
+      const evidence = typeof input === "string" ? input : input?.paymentEvidence;
+      const approved = typeof input === "object" ? input?.approved !== false : true;
+      if (!approved) {
+        const cancelled = await tx.conversion.update({ where: { id: conversionId }, data: { status: "CANCELLED", verifiedAt: null, verifiedBy: null } });
+        await this.recordAudit(tx, { id: staffId }, "CONVERSION_EVIDENCE_REJECTED", { type: "Conversion", id: conversionId });
+        return cancelled;
+      }
+      const finalEvidence = evidence?.trim() || conversion.paymentEvidence?.trim();
+      if (!finalEvidence) throw new BadRequestException("Staff-verified payment evidence is required");
+      const verified = await tx.conversion.update({
+        where: { id: conversionId },
+        data: { status: "VERIFIED", paymentEvidence: finalEvidence, verifiedAt: new Date(), verifiedBy: staffId },
+      });
+      await this.recordAudit(tx, { id: staffId }, "CONVERSION_EVIDENCE_VERIFIED", { type: "Conversion", id: conversionId });
+      return verified;
     });
-    await this.audit?.record({ id: staffId }, "CONVERSION_EVIDENCE_VERIFIED", { type: "Conversion", id: conversionId });
-    return verified;
   }
 
   async listForAdmin(staffId: string) {
@@ -125,6 +133,19 @@ export class ConversionsService {
   private async withTransaction<T>(work: (tx: any) => Promise<T>) {
     if (typeof (this.prisma as any).$transaction === "function") return (this.prisma as any).$transaction(work);
     return work(this.prisma as any);
+  }
+
+  private async recordAudit(tx: any, actor: { id: string }, action: string, entity: any) {
+    if (this.audit?.record) return this.audit.record(tx, { actor, action, entity });
+    if (typeof tx.auditEvent?.create === "function") {
+      return tx.auditEvent.create({ data: {
+        actorId: actor.id,
+        action,
+        entityType: entity.type ?? entity.entityType,
+        entityId: entity.id ?? entity.entityId,
+        metadata: entity.metadata ?? {},
+      } });
+    }
   }
 
   private async withLock<T>(key: string, work: () => Promise<T>): Promise<T> {

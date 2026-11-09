@@ -29,60 +29,73 @@ export class CommissionsService {
     if (!conversionId) throw new BadRequestException("Conversion is required");
     await this.assertStaff(staffId);
     return this.withLock(`conversion:${conversionId}`, async () => {
-      let transitioned = false;
       let commission: any;
       try {
         commission = await this.withTransaction(async (tx: any) => {
-        if (typeof tx.$queryRaw === "function") await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Conversion" WHERE "id" = ${conversionId} FOR UPDATE`);
-        const conversion = await tx.conversion.findUnique({ where: { id: conversionId }, include: { commission: true } });
-        if (!conversion) throw new NotFoundException("Conversion not found");
-        const existingCommission = conversion.commission ?? await tx.commission.findUnique?.({ where: { conversionId } });
-        if (existingCommission) {
-          if (["COMMISSION_DUE", "PAID"].includes(existingCommission.status)) return existingCommission;
-          if (["WAIVED", "DISPUTED"].includes(existingCommission.status)) throw new ConflictException(`Illegal commission transition from ${existingCommission.status}`);
-        }
-        if (conversion.status !== "VERIFIED" || !conversion.verifiedAt || !conversion.verifiedBy || !conversion.paymentEvidence || conversion.firstPaymentAmount == null || !conversion.firstPaymentCurrency) {
-          throw new ConflictException("Commission requires staff-verified first-payment evidence");
-        }
-        const percentage = this.percentage();
-        const firstPaymentAmount = this.money(conversion.firstPaymentAmount, "First payment amount");
-        const amountDue = firstPaymentAmount.times(percentage).dividedBy(100).toDecimalPlaces(2);
-        if (!amountDue.gt(0)) throw new BadRequestException("Commission amount is invalid");
-        const existing = existingCommission;
-        if (existing?.status === "CONFIRMED") {
-          transitioned = true;
-          const data = { status: "COMMISSION_DUE", percentage, firstPaymentAmount, amountDue, currency: conversion.firstPaymentCurrency, evidence: conversion.paymentEvidence };
-          if (tx.commission.updateMany) {
-            const result = await tx.commission.updateMany({ where: { id: existing.id, status: "CONFIRMED" }, data });
-            if (result.count !== 1) {
-              const current = await tx.commission.findUnique({ where: { id: existing.id } });
-              if (current?.status === "COMMISSION_DUE" || current?.status === "PAID") return current;
-              throw new ConflictException("Commission was changed by another reviewer");
-            }
-            return tx.commission.findUnique({ where: { id: existing.id } });
+          if (typeof tx.$queryRaw === "function") await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Conversion" WHERE "id" = ${conversionId} FOR UPDATE`);
+          const conversion = await tx.conversion.findUnique({ where: { id: conversionId }, include: { commission: true } });
+          if (!conversion) throw new NotFoundException("Conversion not found");
+          const existingCommission = conversion.commission ?? await tx.commission.findUnique?.({ where: { conversionId } });
+          if (existingCommission) {
+            if (["COMMISSION_DUE", "PAID"].includes(existingCommission.status)) return existingCommission;
+            if (["WAIVED", "DISPUTED"].includes(existingCommission.status)) throw new ConflictException(`Illegal commission transition from ${existingCommission.status}`);
           }
-          return tx.commission.update({ where: { id: existing.id }, data });
-        }
-        transitioned = true;
-        return tx.commission.create({ data: {
-          conversionId,
-          ownerId: conversion.ownerId,
-          status: "COMMISSION_DUE",
-          percentage,
-          firstPaymentAmount,
-          amountDue,
-          currency: conversion.firstPaymentCurrency,
-          evidence: conversion.paymentEvidence,
-        } });
-      });
+          if (conversion.status !== "VERIFIED" || !conversion.verifiedAt || !conversion.verifiedBy || !conversion.paymentEvidence || conversion.firstPaymentAmount == null || !conversion.firstPaymentCurrency) {
+            throw new ConflictException("Commission requires staff-verified first-payment evidence");
+          }
+          const percentage = this.percentage();
+          const firstPaymentAmount = this.money(conversion.firstPaymentAmount, "First payment amount");
+          const amountDue = firstPaymentAmount.times(percentage).dividedBy(100).toDecimalPlaces(2);
+          if (!amountDue.gt(0)) throw new BadRequestException("Commission amount is invalid");
+          const existing = existingCommission;
+          if (existing?.status === "CONFIRMED") {
+            const data = { status: "COMMISSION_DUE", percentage, firstPaymentAmount, amountDue, currency: conversion.firstPaymentCurrency, evidence: conversion.paymentEvidence };
+            if (tx.commission.updateMany) {
+              const result = await tx.commission.updateMany({ where: { id: existing.id, status: "CONFIRMED" }, data });
+              if (result.count !== 1) {
+                const current = await tx.commission.findUnique({ where: { id: existing.id } });
+                if (current?.status === "COMMISSION_DUE" || current?.status === "PAID") return current;
+                throw new ConflictException("Commission was changed by another reviewer");
+              }
+              const updated = await tx.commission.findUnique({ where: { id: existing.id } });
+              await this.recordAudit(tx, { id: staffId }, "COMMISSION_MARKED_DUE", {
+                type: "Commission",
+                id: updated.id,
+                metadata: { conversionId, percentage: updated.percentage },
+              });
+              return updated;
+            }
+            const updated = await tx.commission.update({ where: { id: existing.id }, data });
+            await this.recordAudit(tx, { id: staffId }, "COMMISSION_MARKED_DUE", {
+              type: "Commission",
+              id: updated.id,
+              metadata: { conversionId, percentage: updated.percentage },
+            });
+            return updated;
+          }
+          const created = await tx.commission.create({ data: {
+            conversionId,
+            ownerId: conversion.ownerId,
+            status: "COMMISSION_DUE",
+            percentage,
+            firstPaymentAmount,
+            amountDue,
+            currency: conversion.firstPaymentCurrency,
+            evidence: conversion.paymentEvidence,
+          } });
+          await this.recordAudit(tx, { id: staffId }, "COMMISSION_MARKED_DUE", {
+            type: "Commission",
+            id: created.id,
+            metadata: { conversionId, percentage: created.percentage },
+          });
+          return created;
+        });
       } catch (error: any) {
         if (error?.code !== "P2002") throw error;
         commission = await (this.prisma as any).commission.findUnique({ where: { conversionId } });
         if (!commission) throw error;
         if (!["COMMISSION_DUE", "PAID"].includes(commission.status)) throw new ConflictException(`Illegal commission transition from ${commission.status}`);
-        transitioned = false;
       }
-      if (transitioned) await this.audit?.record({ id: staffId }, "COMMISSION_MARKED_DUE", { type: "Commission", id: commission.id, metadata: { conversionId, percentage: commission.percentage } });
       return commission;
     });
   }
@@ -109,14 +122,12 @@ export class CommissionsService {
     if (!commissionId) throw new BadRequestException("Commission is required");
     await this.assertStaff(staffId);
     return this.withLock(`commission:${commissionId}`, async () => {
-      let transitioned = false;
       const updated = await this.withTransaction(async (tx: any) => {
         if (typeof tx.$queryRaw === "function") await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Commission" WHERE "id" = ${commissionId} FOR UPDATE`);
         const commission = await tx.commission.findUnique({ where: { id: commissionId } });
         if (!commission) throw new NotFoundException("Commission not found");
         if (commission.status === next) return commission;
         if (!this.canTransition(commission.status, next)) throw new ConflictException(`Illegal commission transition from ${commission.status} to ${next}`);
-        transitioned = true;
         const data = { status: next, ...extra };
         if (tx.commission.updateMany) {
           const result = await tx.commission.updateMany({ where: { id: commissionId, status: commission.status }, data });
@@ -125,11 +136,14 @@ export class CommissionsService {
             if (current?.status === next) return current;
             throw new ConflictException(`Illegal commission transition to ${next}`);
           }
-          return tx.commission.findUnique({ where: { id: commissionId } });
+          const updated = await tx.commission.findUnique({ where: { id: commissionId } });
+          await this.recordAudit(tx, { id: staffId }, action, { type: "Commission", id: commissionId });
+          return updated;
         }
-        return tx.commission.update({ where: { id: commissionId }, data });
+        const updated = await tx.commission.update({ where: { id: commissionId }, data });
+        await this.recordAudit(tx, { id: staffId }, action, { type: "Commission", id: commissionId });
+        return updated;
       });
-      if (transitioned) await this.audit?.record({ id: staffId }, action, { type: "Commission", id: commissionId });
       return updated;
     });
   }
@@ -176,5 +190,18 @@ export class CommissionsService {
   private async withTransaction<T>(work: (tx: any) => Promise<T>) {
     if (typeof (this.prisma as any).$transaction === "function") return (this.prisma as any).$transaction(work);
     return work(this.prisma as any);
+  }
+
+  private async recordAudit(tx: any, actor: { id: string }, action: string, entity: any) {
+    if (this.audit?.record) return this.audit.record(tx, { actor, action, entity });
+    if (typeof tx.auditEvent?.create === "function") {
+      return tx.auditEvent.create({ data: {
+        actorId: actor.id,
+        action,
+        entityType: entity.type ?? entity.entityType,
+        entityId: entity.id ?? entity.entityId,
+        metadata: entity.metadata ?? {},
+      } });
+    }
   }
 }

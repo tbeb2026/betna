@@ -11,9 +11,10 @@ import { TranslationService } from "./translation.service";
 import { ListingLifecycleJob } from "./listing-lifecycle.job";
 import { PublicPropertiesController } from "./public-properties.controller";
 import { SearchService } from "./search.service";
+import { AuditModule } from "../audit/audit.module";
 
 @Module({
-  imports: [PrismaModule, AuthModule, UsersModule],
+  imports: [PrismaModule, AuthModule, UsersModule, AuditModule],
   controllers: [PropertiesController, PublishingController, PublicPropertiesController],
   providers: [
     PropertiesService,

@@ -189,6 +189,14 @@ export class LocationReleaseService {
   }
 
   private async recordAudit(tx: any, actor: { id?: string }, action: string, inquiryId: string, metadata: Record<string, unknown>) {
+    if (this.audit?.record) {
+      await this.audit.record(tx, {
+        actor,
+        action,
+        entity: { type: "Inquiry", id: inquiryId, metadata: metadata as Prisma.InputJsonValue },
+      });
+      return;
+    }
     if (typeof tx.auditEvent?.create === "function") {
       await tx.auditEvent.create({ data: { actorId: actor.id ?? null, action, entityType: "Inquiry", entityId: inquiryId, metadata: metadata as Prisma.InputJsonValue } });
       return;

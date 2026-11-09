@@ -33,6 +33,68 @@ function makePrisma() {
 }
 
 describe("ConversionsService and CommissionsService", () => {
+  it("rolls back a reported conversion when its audit write fails", async () => {
+    const { prisma, conversions } = makePrisma();
+    const before = structuredClone(conversions);
+    const audit = { record: vi.fn().mockRejectedValue(new Error("audit unavailable")) };
+    prisma.$transaction = vi.fn(async (work: any) => {
+      try {
+        return await work(prisma);
+      } catch (error) {
+        conversions.splice(0, conversions.length, ...before);
+        throw error;
+      }
+    });
+    const service = new ConversionsService(prisma, audit as any);
+
+    await expect(service.report({
+      inquiryId: "inquiry-1",
+      ownerId: "owner-1",
+      firstPaymentAmount: 800,
+      firstPaymentCurrency: "KES",
+      paymentEvidence: "receipt-ref-1",
+    })).rejects.toThrow("audit unavailable");
+    expect(conversions).toEqual([]);
+    expect(audit.record).toHaveBeenCalledWith(
+      prisma,
+      expect.objectContaining({ action: "CONVERSION_REPORTED" }),
+    );
+  });
+
+  it("rolls back a commission transition when its audit write fails", async () => {
+    const { prisma, conversions, commissions } = makePrisma();
+    const conversionsService = new ConversionsService(prisma);
+    const reported = await conversionsService.report({
+      inquiryId: "inquiry-1",
+      ownerId: "owner-1",
+      firstPaymentAmount: 800,
+      firstPaymentCurrency: "KES",
+      paymentEvidence: "receipt-ref-1",
+    });
+    await conversionsService.verifyEvidence(reported.id, "staff-1", {
+      paymentEvidence: "staff-checked-receipt-1",
+    });
+    const before = structuredClone(commissions);
+    const audit = { record: vi.fn().mockRejectedValue(new Error("audit unavailable")) };
+    prisma.$transaction = vi.fn(async (work: any) => {
+      try {
+        return await work(prisma);
+      } catch (error) {
+        commissions.splice(0, commissions.length, ...before);
+        throw error;
+      }
+    });
+    const service = new CommissionsService(prisma, audit as any, { commissionPercentage: 12.5 });
+
+    await expect(service.markDue(reported.id, "staff-1")).rejects.toThrow("audit unavailable");
+    expect(commissions).toEqual(before);
+    expect(audit.record).toHaveBeenCalledWith(
+      prisma,
+      expect.objectContaining({ action: "COMMISSION_MARKED_DUE" }),
+    );
+    expect(conversions).toHaveLength(1);
+  });
+
   it("reports a conversion, verifies payment evidence, and snapshots the configured commission percentage", async () => {
     const { prisma, conversions, commissions } = makePrisma();
     const conversionsService = new ConversionsService(prisma);

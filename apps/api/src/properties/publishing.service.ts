@@ -73,10 +73,9 @@ export class PublishingService {
     }
 
     const snapshot = await this.publicSnapshot(property);
-    this.approvedSnapshots.set(propertyId, snapshot);
-    return this.withTransaction(async (tx: any) => {
+    const published = await this.withTransaction(async (tx: any) => {
       await this.createApprovedVersion(propertyId, snapshot, actor, tx);
-      const published = await tx.property.update({
+      const next = await tx.property.update({
         where: { id: propertyId },
         data: { status: "PUBLISHED" },
         include: this.propertyInclude(),
@@ -84,8 +83,10 @@ export class PublishingService {
       await this.recordAudit(tx, actor, "PROPERTY_PUBLISHED", propertyId, {
         status: "PUBLISHED",
       });
-      return published;
+      return next;
     });
+    this.approvedSnapshots.set(propertyId, snapshot);
+    return published;
   }
 
   /** Put a changed listing back through review without withdrawing its old copy. */
@@ -112,7 +113,6 @@ export class PublishingService {
       throw new ConflictException("Only a published listing can be edited");
     }
     const material = this.isMaterialEdit(patch);
-    if (material) await this.ensureApprovedSnapshot(property, actor);
     const data: Record<string, unknown> = {
       status: material ? "PENDING_REVIEW" : property.status,
     };
@@ -121,11 +121,29 @@ export class PublishingService {
     this.addOfferingPatch(data, patch);
     this.addMediaPatch(data, patch);
     this.addMaterialFactsPatch(data, property, patch);
-    return this.prisma.property.update({
-      where: { id: propertyId },
-      data,
-      include: this.propertyInclude(),
+    let snapshotForCache: Listing | undefined;
+    const result = await this.withTransaction(async (tx: any) => {
+      if (material) {
+        let snapshot = this.approvedSnapshots.get(propertyId) ?? (await this.findApprovedSnapshot(propertyId, tx));
+        if (!snapshot) {
+          snapshot = await this.publicSnapshot(property);
+          await this.createApprovedVersion(propertyId, snapshot, actor, tx);
+        }
+        snapshotForCache = snapshot;
+      }
+      const updated = await tx.property.update({
+        where: { id: propertyId },
+        data,
+        include: this.propertyInclude(),
+      });
+      await this.recordAudit(tx, actor, material ? "PROPERTY_MATERIAL_EDIT_REVIEW_CREATED" : "PROPERTY_EDITED", propertyId, {
+        status: updated.status,
+        material,
+      });
+      return updated;
     });
+    if (snapshotForCache) this.approvedSnapshots.set(propertyId, snapshotForCache);
+    return result;
   }
 
   /** Reported fraud is removed from every public projection in the same write. */
@@ -274,21 +292,9 @@ export class PublishingService {
     return property;
   }
 
-  private async ensureApprovedSnapshot(property: Listing, actor?: Actor) {
-    if (this.approvedSnapshots.has(property.id)) return;
-    const persisted = await this.findApprovedSnapshot(property.id);
-    if (persisted) {
-      this.approvedSnapshots.set(property.id, persisted);
-      return;
-    }
-    const snapshot = await this.publicSnapshot(property);
-    this.approvedSnapshots.set(property.id, snapshot);
-    await this.createApprovedVersion(property.id, snapshot, actor);
-  }
-
-  private async findApprovedSnapshot(propertyId: string): Promise<Listing | null> {
-    if (!this.prisma.propertyVersion?.findFirst) return null;
-    const version = await this.prisma.propertyVersion.findFirst({
+  private async findApprovedSnapshot(propertyId: string, db: any = this.prisma): Promise<Listing | null> {
+    if (!db.propertyVersion?.findFirst) return null;
+    const version = await db.propertyVersion.findFirst({
       where: { propertyId, isApproved: true },
       orderBy: { version: "desc" },
     });
@@ -332,6 +338,14 @@ export class PublishingService {
 
   private async recordAudit(tx: any, actor: Actor | undefined, action: string, entityId: string, metadata: Record<string, unknown>) {
     const actorId = typeof actor === "string" ? actor : actor?.id;
+    if (this.audit?.record) {
+      await this.audit.record(tx, {
+        actor: actorId,
+        action,
+        entity: { type: "Property", id: entityId, metadata: metadata as any },
+      });
+      return;
+    }
     if (typeof tx.auditEvent?.create === "function") {
       await tx.auditEvent.create({ data: { actorId, action, entityType: "Property", entityId, metadata } });
       return;

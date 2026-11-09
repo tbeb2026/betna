@@ -31,6 +31,7 @@ const recentGuestSubmissions = new Map<string, number[]>();
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_SUBMISSIONS = 5;
 const MAX_RATE_KEYS = 10_000;
+const PENDING_OWNER_RESPONSE_STATUSES = ["NEW", "CONTACTED", "LOCATION_APPROVED"];
 
 @Injectable()
 export class InquiriesService {
@@ -64,7 +65,7 @@ export class InquiriesService {
     const offering = this.resolveOffering(property.offerings, input);
     const inquiry = await this.withTransaction(async (tx: any) => {
       await this.assertRateLimit(input, tx);
-      return tx.inquiry.create({
+      const inquiry = await tx.inquiry.create({
         data: {
           reference: this.reference(), propertyId: input.propertyId,
           offeringId: input.offeringId ?? offering?.id, status: "NEW",
@@ -74,6 +75,12 @@ export class InquiriesService {
           endDate: this.optionalDate(input.endDate, "endDate"), guests: input.guests,
         },
       });
+      await this.recordAudit(tx, null, "INQUIRY_CREATED", {
+        type: "Inquiry",
+        id: inquiry.id,
+        metadata: { propertyId: input.propertyId, status: inquiry.status },
+      });
+      return inquiry;
     });
 
     const owner = property.owner ?? (property.ownerId ? await this.findUser(property.ownerId) : null);
@@ -116,13 +123,10 @@ export class InquiriesService {
       throw new ConflictException("Inquiry has already been decided");
     }
     if (decision === "CONFIRMED" && this.availability && (inquiry.offering?.mode === "SHORT_STAY" || inquiry.startDate || inquiry.endDate)) {
-      const blocked = await this.availability.confirmInquiryAndBlockDates(inquiryId, ownerId);
-      if (typeof response === "object" && response.message?.trim()) {
-        blocked.inquiry = await (this.prisma as any).inquiry.update({
-          where: { id: inquiryId },
-          data: { ownerResponseMessage: response.message.trim() },
-        });
-      }
+      const message = typeof response === "object" ? response.message?.trim() : undefined;
+      const blocked = message
+        ? await this.availability.confirmInquiryAndBlockDates(inquiryId, ownerId, message)
+        : await this.availability.confirmInquiryAndBlockDates(inquiryId, ownerId);
       await this.notifications.enqueue({
         type: "INQUIRY_OWNER_CONFIRMED",
         idempotencyKey: `inquiry-owner:${inquiryId}:CONFIRMED`,
@@ -135,20 +139,38 @@ export class InquiriesService {
       return this.publicInquiry(blocked.inquiry);
     }
     const status = decision === "CONFIRMED" ? "OWNER_CONFIRMED" : "OWNER_DECLINED";
-    const updated = await (this.prisma as any).inquiry.update({
-      where: { id: inquiryId },
-      data: {
-        status,
-        ownerResponseMessage:
-          typeof response === "object" && response.message?.trim()
-            ? response.message.trim()
-            : undefined,
-      },
-      include: { property: true },
-    });
-    await this.audit?.record({ id: ownerId }, `INQUIRY_OWNER_${decision}`, {
-      type: "Inquiry",
-      id: inquiryId,
+    const updated = await this.withTransaction(async (tx: any) => {
+      if (typeof tx.$queryRaw === "function") {
+        await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Inquiry" WHERE "id" = ${inquiryId} FOR UPDATE`);
+      }
+      const current = await tx.inquiry.findUnique({
+        where: { id: inquiryId },
+        include: { property: { include: { owner: true } }, offering: true },
+      });
+      if (!current) throw new NotFoundException("Inquiry not found");
+      if (current.property?.ownerId !== ownerId && current.property?.owner?.id !== ownerId) {
+        throw new ForbiddenException("Only the property owner can respond");
+      }
+      if (!PENDING_OWNER_RESPONSE_STATUSES.includes(current.status)) {
+        throw new ConflictException("Inquiry has already been decided");
+      }
+      return tx.inquiry.update({
+        where: { id: inquiryId },
+        data: {
+          status,
+          ownerResponseMessage:
+            typeof response === "object" && response.message?.trim()
+              ? response.message.trim()
+              : undefined,
+        },
+        include: { property: true },
+      }).then(async (next: any) => {
+        await this.recordAudit(tx, { id: ownerId }, `INQUIRY_OWNER_${decision}`, {
+          type: "Inquiry",
+          id: inquiryId,
+        });
+        return next;
+      });
     });
     await this.notifications.enqueue({
       type: `INQUIRY_OWNER_${decision}`,
@@ -361,6 +383,19 @@ export class InquiriesService {
   private async withTransaction<T>(work: (tx: any) => Promise<T>): Promise<T> {
     if (typeof (this.prisma as any).$transaction === "function") return (this.prisma as any).$transaction(work);
     return work(this.prisma as any);
+  }
+
+  private async recordAudit(tx: any, actor: { id: string } | null, action: string, entity: any) {
+    if (this.audit?.record) return this.audit.record(tx, { actor, action, entity });
+    if (typeof tx.auditEvent?.create === "function") {
+      return tx.auditEvent.create({ data: {
+        actorId: actor?.id ?? null,
+        action,
+        entityType: entity.type ?? entity.entityType,
+        entityId: entity.id ?? entity.entityId,
+        metadata: entity.metadata ?? {},
+      } });
+    }
   }
 
   private normalizePhone(phone: string) { return `+${phone.replace(/\D/g, "")}`; }

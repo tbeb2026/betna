@@ -418,6 +418,14 @@ export class InspectionsService {
     entityId: string,
     metadata: Record<string, unknown>,
   ) {
+    if (this.audit?.record) {
+      await this.audit.record(tx, {
+        actor: actor.id,
+        action,
+        entity: { type: "Inspection", id: entityId, metadata: metadata as any },
+      });
+      return;
+    }
     if (typeof tx.auditEvent?.create === "function") {
       await tx.auditEvent.create({
         data: { actorId: actor.id, action, entityType: "Inspection", entityId, metadata },
