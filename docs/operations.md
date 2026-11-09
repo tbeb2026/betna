@@ -9,12 +9,19 @@
 
 The API emits one JSON object per log line. Include `service=betna-api`, level, timestamp, status, method, and path in dashboards. Do not add request bodies or credentials to logs.
 
-The database migration `20261109070000_property_currency_integrity` is the
+The database migrations `20261109070000_property_currency_integrity` and
+`20261109100000_property_currency_integrity_commission_serialization` are the
 authoritative currency guard: PostgreSQL rejects direct writes to offerings,
 conversions, and commissions when their currency does not match the related
-property country (Kenya/KES or Uganda/UGX). Apply migrations before starting
-the API and treat a migration failure caused by existing mismatches as a data
-correction incident; do not bypass the trigger with application-side writes.
+property country (Kenya/KES or Uganda/UGX). A conversion property move or
+first-payment-currency update also checks every linked commission. The
+conversion trigger and commission trigger acquire locks in conversion-then-
+property/country order. If transaction A moves a conversion while transaction
+B inserts or updates its commission, B waits on the conversion row and then
+checks A's committed destination, so no stale-currency commission can commit.
+Apply migrations before starting the API and treat a migration failure caused
+by existing mismatches as a data correction incident; do not bypass the trigger
+with application-side writes.
 
 ## Deployment
 

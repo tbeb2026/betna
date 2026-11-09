@@ -8,6 +8,12 @@ const migrationPath = resolve(
     ? "prisma/migrations/20261109070000_property_currency_integrity/migration.sql"
     : "apps/api/prisma/migrations/20261109070000_property_currency_integrity/migration.sql",
 );
+const followOnMigrationPath = resolve(
+  process.cwd(),
+  process.cwd().endsWith("/apps/api")
+    ? "prisma/migrations/20261109100000_property_currency_integrity_commission_serialization/migration.sql"
+    : "apps/api/prisma/migrations/20261109100000_property_currency_integrity_commission_serialization/migration.sql",
+);
 
 describe("property currency integrity migration", () => {
   it("installs an idempotent database trigger for every monetary record path", () => {
@@ -31,5 +37,16 @@ describe("property currency integrity migration", () => {
     expect(sql).toContain('BEFORE INSERT OR UPDATE OF "conversionId", "currency" ON "Commission"');
     expect(sql).toContain('BEFORE UPDATE OF "countryId" ON "Property"');
     expect(sql).toContain('BEFORE UPDATE OF "code", "currency" ON "Country"');
+  });
+
+  it("serializes conversion changes with linked commission writes", () => {
+    const sql = readFileSync(followOnMigrationPath, "utf8");
+
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION enforce_property_currency_consistency()");
+    expect(sql).toContain('FOR KEY SHARE OF v, p, c');
+    expect(sql).toContain('FROM "Commission" m');
+    expect(sql).toContain('m."conversionId" = NEW."id"');
+    expect(sql).toContain('m."currency" IS DISTINCT FROM expected_currency');
+    expect(sql).toContain('Conversion %s linked Commission %s currency');
   });
 });
