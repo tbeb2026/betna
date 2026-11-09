@@ -40,9 +40,12 @@ const visible = {
 function makePrisma() {
   const rows = [structuredClone(visible), { ...structuredClone(visible), id: "paused", slug: "paused-home", status: "PAUSED" }, { ...structuredClone(visible), id: "fraud", slug: "fraud-home", status: "FRAUD_REVIEW" }];
   const prisma: any = {
-    property: {
+      property: {
       findMany: vi.fn(async ({ where }: any = {}) => rows.filter((row) => {
-        if (where.status && row.status !== where.status) return false;
+        if (where.status) {
+          const statuses = where.status.in ?? [where.status];
+          if (!statuses.includes(row.status)) return false;
+        }
         if (where.country?.code && row.country.code !== where.country.code) return false;
         if (where.city?.slug && row.city.slug !== where.city.slug) return false;
         if (where.category && row.category !== where.category) return false;
@@ -51,7 +54,10 @@ function makePrisma() {
       })),
       findFirst: vi.fn(async ({ where }: any) => rows.find((row) => {
         if (row.slug !== where.slug) return false;
-        if (where.status && row.status !== where.status) return false;
+        if (where.status) {
+          const statuses = where.status.in ?? [where.status];
+          if (!statuses.includes(row.status)) return false;
+        }
         if (where.verificationValidUntil?.gt && !(row.verificationValidUntil && row.verificationValidUntil > where.verificationValidUntil.gt)) return false;
         return true;
       }) ?? null),
@@ -115,6 +121,73 @@ describe("public property discovery", () => {
     const results = await service.search({});
 
     expect(results.map((property) => property.slug)).toEqual(["verified-kilimani-home"]);
+  });
+
+  it("keeps a pending-review listing discoverable through its approved snapshot", async () => {
+    const { prisma, rows } = makePrisma();
+    const pending = {
+      ...structuredClone(visible),
+      id: "pending-home",
+      slug: "pending-home",
+      status: "PENDING_REVIEW",
+    };
+    rows.push(pending as any);
+    const publishing = {
+      getPublicProjection: vi.fn(async (id: string, locale = "en") => {
+        const source = rows.find((row) => row.id === id);
+        if (!source || !["PUBLISHED", "PENDING_REVIEW"].includes(source.status)) return null;
+        return {
+          id: source.id,
+          slug: source.slug,
+          title: source.title,
+          status: "PUBLISHED",
+          locale,
+          verificationValidUntil: source.verificationValidUntil,
+          offerings: source.offerings,
+          media: [],
+        };
+      }),
+    };
+    const service = new SearchService(prisma, publishing as any);
+
+    await expect(service.search({})).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ slug: "pending-home", status: "PUBLISHED" })]),
+    );
+    await expect(service.findBySlug("pending-home")).resolves.toMatchObject({
+      slug: "pending-home",
+      status: "PUBLISHED",
+    });
+  });
+
+  it("excludes pending-review listings without an approved snapshot or with expired verification", async () => {
+    const { prisma, rows } = makePrisma();
+    rows.push(
+      {
+        ...structuredClone(visible),
+        id: "pending-no-snapshot",
+        slug: "pending-no-snapshot",
+        status: "PENDING_REVIEW",
+      } as any,
+      {
+        ...structuredClone(visible),
+        id: "pending-expired",
+        slug: "pending-expired",
+        status: "PENDING_REVIEW",
+        verificationValidUntil: new Date("2020-01-01T00:00:00.000Z"),
+      } as any,
+    );
+    const publishing = {
+      getPublicProjection: vi.fn(async (id: string) => {
+        if (id === "pending-no-snapshot") return null;
+        if (id === "pending-expired") return null;
+        return { id, slug: rows.find((row) => row.id === id)?.slug, status: "PUBLISHED", verificationValidUntil: new Date("2027-01-01T00:00:00.000Z"), offerings: [], media: [] };
+      }),
+    };
+    const service = new SearchService(prisma, publishing as any);
+
+    const result = await service.search({});
+    expect(result.map((property) => property.slug)).toEqual(["verified-kilimani-home"]);
+    await expect(service.findBySlug("pending-no-snapshot")).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it("looks up a public property by slug and rejects missing listings", async () => {

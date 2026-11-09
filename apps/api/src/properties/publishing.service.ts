@@ -78,7 +78,7 @@ export class PublishingService {
         throw new ConflictException("Verification has expired");
       }
 
-      const snapshot = await this.publicSnapshot(property);
+      const snapshot = await this.publicSnapshot(property, "en", "PUBLISHED", true);
       await this.createApprovedVersion(propertyId, snapshot, actor, tx);
       const transition = typeof tx.property.updateMany === "function"
         ? await tx.property.updateMany({
@@ -139,13 +139,17 @@ export class PublishingService {
       this.addPublicLocationPatchFields(data, patch);
       this.addExactLocationPatchFields(data, patch);
       this.addOfferingPatch(data, patch);
+      const mediaIds = this.mediaIdsFromPatch(patch);
+      if (mediaIds) {
+        await this.assertMaterialEditMedia(tx, propertyId, mediaIds);
+      }
       this.addMediaPatch(data, patch);
       this.addMaterialFactsPatch(data, property, patch);
       if (material) {
         let snapshot = await this.findApprovedSnapshot(propertyId, tx);
         if (!snapshot && !tx.propertyVersion?.findFirst) snapshot = this.approvedSnapshots.get(propertyId);
         if (!snapshot) {
-          snapshot = await this.publicSnapshot(property);
+          snapshot = await this.publicSnapshot(property, "en", "PUBLISHED", true);
           await this.createApprovedVersion(propertyId, snapshot, actor, tx);
         }
         snapshotForCache = snapshot;
@@ -394,7 +398,12 @@ export class PublishingService {
     await this.audit?.record(actorId, action, { type: "Property", id: entityId, metadata: metadata as any });
   }
 
-  private async publicSnapshot(property: Listing, locale = "en", status = "PUBLISHED") {
+  private async publicSnapshot(
+    property: Listing,
+    locale = "en",
+    status = "PUBLISHED",
+    persistableMedia = false,
+  ) {
     const requestedLocale = locale.toLowerCase().startsWith("ti") ? "ti" : "en";
     const translation = this.translations
       ? await this.translations.getPublicContent(property.id, requestedLocale)
@@ -447,11 +456,20 @@ export class PublishingService {
         leaseDurationMonths: offering.leaseDurationMonths,
       })),
       media: await Promise.all((property.media ?? [])
-        .filter((media: Listing) => media.isPublic && media.status === "CLEAN")
+        .filter((media: Listing) => this.isProjectablePublicMedia(media, property.id))
         .map(async (media: Listing) => ({
           id: media.id,
           objectKey: media.objectKey,
           url: await this.mediaUrl(media.objectKey),
+          ...(persistableMedia
+            ? {
+                propertyId: media.propertyId,
+                purpose: media.purpose,
+                status: media.status,
+                isPublic: media.isPublic,
+                projectable: true,
+              }
+            : {}),
         }))),
     };
   }
@@ -479,6 +497,94 @@ export class PublishingService {
 
   private isMaterialEdit(patch: Record<string, unknown>): boolean {
     return Object.keys(patch).some((key) => MATERIAL_EDIT_FIELDS.has(key));
+  }
+
+  private mediaIdsFromPatch(patch: Record<string, unknown>): unknown[] | null {
+    const media = patch.mediaIds ?? patch.corePhotos ?? patch.media;
+    if (!Array.isArray(media)) return null;
+    return media;
+  }
+
+  /**
+   * Media references are part of the material-edit transaction. Looking them
+   * up and checking every persisted invariant before building the relation
+   * update prevents a foreign listing or private evidence object from being
+   * attached through an otherwise valid edit request.
+   */
+  private async assertMaterialEditMedia(
+    tx: any,
+    propertyId: string,
+    mediaIds: unknown[],
+  ) {
+    if (mediaIds.some((id) => typeof id !== "string" || !id.trim())) {
+      throw new BadRequestException("Media IDs must be unique, non-empty strings");
+    }
+    const stringMediaIds = mediaIds as string[];
+    const uniqueMediaIds = [...new Set(stringMediaIds)];
+    if (uniqueMediaIds.length !== stringMediaIds.length) {
+      throw new BadRequestException("Media IDs must be unique, non-empty strings");
+    }
+    if (typeof tx.media?.findMany !== "function") {
+      throw new BadRequestException("Media references cannot be validated");
+    }
+    const media = await tx.media.findMany({
+      where: { id: { in: uniqueMediaIds }, propertyId },
+      select: {
+        id: true,
+        propertyId: true,
+        purpose: true,
+        status: true,
+        isPublic: true,
+        objectKey: true,
+      },
+    });
+    if (
+      !Array.isArray(media) ||
+      media.length !== uniqueMediaIds.length ||
+      media.some((entry: Listing) =>
+        entry.propertyId !== propertyId ||
+        entry.purpose !== "LISTING" ||
+        entry.status !== "CLEAN" ||
+        entry.isPublic !== true ||
+        !this.isProjectablePublicMedia(entry, propertyId)
+      )
+    ) {
+      throw new BadRequestException("Every material-edit media ID must be a clean public listing image");
+    }
+  }
+
+  private isProjectablePublicMedia(
+    media: Listing,
+    propertyId: string,
+  ): boolean {
+    const objectKey = typeof media?.objectKey === "string" ? media.objectKey : "";
+    const prefix = `public/listings/${propertyId}/`;
+    if (
+      !media?.id ||
+      media.propertyId !== propertyId ||
+      media.purpose !== "LISTING" ||
+      media.status !== "CLEAN" ||
+      media.isPublic !== true ||
+      media.projectable === false ||
+      !objectKey.startsWith(prefix) ||
+      objectKey.includes("..") ||
+      objectKey.startsWith("/")
+    ) {
+      return false;
+    }
+    try {
+      const variants = typeof (this.storage as any)?.responsiveVariants === "function"
+        ? (this.storage as any).responsiveVariants(objectKey)
+        : [320, 640, 1280].map((width) => ({ key: `${objectKey}.w${width}` }));
+      return Array.isArray(variants) && variants.length > 0 && variants.every((variant: any) =>
+        typeof variant?.key === "string" &&
+        variant.key.startsWith(prefix) &&
+        !variant.key.includes("..") &&
+        !variant.key.startsWith("/"),
+      );
+    } catch {
+      return false;
+    }
   }
 
   private addScalarPatchFields(

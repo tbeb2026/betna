@@ -17,6 +17,8 @@ export type PublicDiscoveryFilters = {
 
 type PublicProperty = Record<string, any>;
 
+const DISCOVERABLE_STATUSES = ["PUBLISHED", "PENDING_REVIEW"] as const;
+
 /** Indexed discovery over published rows, followed by the Task 8 public projection boundary. */
 @Injectable()
 export class SearchService {
@@ -59,7 +61,7 @@ export class SearchService {
     const row = await this.prisma.property.findFirst({
       where: {
         slug,
-        status: "PUBLISHED",
+        status: { in: [...DISCOVERABLE_STATUSES] },
         verificationValidUntil: { gt: new Date() },
       },
       include: {
@@ -96,7 +98,7 @@ export class SearchService {
     if (maxPrice !== undefined) offering.basePrice = { ...(offering.basePrice as object), lte: maxPrice };
 
     return {
-      status: "PUBLISHED",
+      status: { in: [...DISCOVERABLE_STATUSES] },
       ...(filters.country ? { country: { code: filters.country.toUpperCase() } } : {}),
       ...(filters.city ? { city: { slug: filters.city.toLowerCase() } } : {}),
       ...(filters.category ? { category: filters.category } : {}),

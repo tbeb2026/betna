@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ConflictException, ForbiddenException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { PrismaService } from "../prisma/prisma.service";
 import { PropertiesModule } from "./properties.module";
@@ -33,6 +33,16 @@ function makePrisma() {
     any
   >;
   const versions: any[] = [];
+  const mediaRows = [
+    {
+      id: "media-1",
+      propertyId: "property-1",
+      purpose: "LISTING",
+      status: "CLEAN",
+      isPublic: true,
+      objectKey: "public/listings/property-1/media-1/original.jpg",
+    },
+  ];
   const translations = new Map<string, any>();
   const prisma: any = {
     property: {
@@ -92,6 +102,9 @@ function makePrisma() {
       findUnique: vi.fn(async ({ where }: any) =>
         translations.get(`${where.propertyId_locale.propertyId}:${where.propertyId_locale.locale}`) ?? null,
       ),
+    },
+    media: {
+      findMany: vi.fn(async ({ where }: any) => mediaRows.filter((media) => where.id.in.includes(media.id))),
     },
     $transaction: vi.fn(async (callback: any) => callback(prisma)),
   };
@@ -237,6 +250,45 @@ describe("PublishingService", () => {
         }),
       }),
     );
+  });
+
+  it("rejects material-edit media that is missing, foreign, private, or inspection evidence before updating", async () => {
+    const { prisma, rows } = makePrisma();
+    const service = new PublishingService(prisma);
+    await service.publish("property-1");
+    const updateCallsBefore = prisma.property.update.mock.calls.length;
+
+    for (const media of [
+      [],
+      [{ id: "media-foreign", propertyId: "property-2", purpose: "LISTING", status: "CLEAN", isPublic: true, objectKey: "public/listings/property-2/media-foreign/original.jpg" }],
+      [{ id: "media-evidence", propertyId: "property-1", purpose: "INSPECTION_EVIDENCE", status: "CLEAN", isPublic: false, objectKey: "private/inspection-evidence/property-1/media-evidence/original.jpg" }],
+      [{ id: "media-private", propertyId: "property-1", purpose: "LISTING", status: "CLEAN", isPublic: false, objectKey: "public/listings/property-1/media-private/original.jpg" }],
+    ]) {
+      prisma.media.findMany.mockResolvedValueOnce(media as any);
+      await expect(
+        service.createMaterialEditReview("property-1", { mediaIds: [media[0]?.id ?? "missing-media"] }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(rows.get("property-1")?.status).toBe("PUBLISHED");
+    }
+    expect(prisma.property.update.mock.calls.length).toBe(updateCallsBefore);
+  });
+
+  it("projects only safe same-property listing media from an approved snapshot", async () => {
+    const { prisma, rows, versions } = makePrisma();
+    const service = new PublishingService(prisma);
+    await service.publish("property-1");
+    versions[0].snapshot.media = [
+      { id: "safe", propertyId: "property-1", purpose: "LISTING", status: "CLEAN", isPublic: true, objectKey: "public/listings/property-1/safe/original.jpg" },
+      { id: "foreign", propertyId: "property-2", purpose: "LISTING", status: "CLEAN", isPublic: true, objectKey: "public/listings/property-2/foreign/original.jpg" },
+      { id: "evidence", propertyId: "property-1", purpose: "INSPECTION_EVIDENCE", status: "CLEAN", isPublic: false, objectKey: "private/inspection-evidence/property-1/evidence/original.jpg" },
+      { id: "dirty", propertyId: "property-1", purpose: "LISTING", status: "REJECTED", isPublic: true, objectKey: "public/listings/property-1/dirty/original.jpg" },
+    ];
+    rows.get("property-1")!.status = "PENDING_REVIEW";
+
+    await expect(service.getPublicProjection("property-1")).resolves.toMatchObject({
+      status: "PUBLISHED",
+      media: [expect.objectContaining({ id: "safe" })],
+    });
   });
 
   it("maps nested publicLocation edits and sends the listing back through material review", async () => {
