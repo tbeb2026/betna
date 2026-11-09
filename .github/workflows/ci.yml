@@ -82,6 +82,8 @@ jobs:
         env:
           CI: true
           BETNA_CRITICAL_FLOW_E2E: "1"
+          # The API was migrated and seeded above; guest inquiry is a required
+          # browser path and is intentionally not environment-skipped.
           NEXT_PUBLIC_API_URL: http://127.0.0.1:4000
           BETNA_E2E_PROPERTY_SLUG: verified-kilimani-home
       - run: pnpm audit --audit-level=high

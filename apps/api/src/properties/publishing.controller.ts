@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards, BadRequestException } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
 import { Type } from "class-transformer";
 import { IsArray, IsBoolean, IsIn, IsNumber, IsOptional, IsString, Max, MaxLength, Min, ValidateIf, ValidateNested } from "class-validator";
 import { AuthSessionGuard, Roles, RolesGuard } from "../auth/guards";
@@ -109,6 +109,7 @@ export class MaterialEditDto {
   basePrice?: number;
 
   @ValidateIf((_, value) => value !== undefined)
+  @IsArray()
   @ValidateNested({ each: true })
   @Type(() => MaterialEditOfferingDto)
   offerings?: MaterialEditOfferingDto[];
@@ -211,7 +212,6 @@ export class PublishingController {
     @Param("id") id: string,
     @Body() body: FraudReportDto,
   ) {
-    assertMutationBody(body);
     return this.publishing.reportFraud(id, body, request.user.id);
   }
 
@@ -221,7 +221,6 @@ export class PublishingController {
     @Param("id") id: string,
     @Body() body: MaterialEditDto,
   ) {
-    assertMutationBody(body);
     return this.publishing.createMaterialEditReview(
       id,
       body as unknown as Record<string, unknown>,
@@ -235,7 +234,6 @@ export class PublishingController {
     @Param("id") id: string,
     @Body() body: OwnershipChangeDto,
   ) {
-    assertMutationBody(body);
     return this.publishing.reverifyOwnershipChange(
       id,
       body?.newOwnerId,
@@ -255,7 +253,6 @@ export class PublishingController {
     @Param("locale") locale: string,
     @Body() body: TranslationApprovalDto,
   ) {
-    assertMutationBody(body);
     return this.translations.upsertApprovedTranslation(
       propertyId,
       locale,
@@ -264,20 +261,4 @@ export class PublishingController {
       request.user.id,
     );
   }
-}
-
-function assertMutationBody(body: unknown): asserts body is object {
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    throw new BadRequestException("Request body must be an object");
-  }
-  if (containsNull(body)) {
-    throw new BadRequestException("Request body contains an invalid null value");
-  }
-}
-
-function containsNull(value: unknown): boolean {
-  if (value === null) return true;
-  if (Array.isArray(value)) return value.some(containsNull);
-  if (typeof value !== "object") return false;
-  return Object.values(value as Record<string, unknown>).some(containsNull);
 }

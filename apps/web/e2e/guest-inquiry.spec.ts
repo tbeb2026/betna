@@ -1,7 +1,6 @@
 import { expect, test } from "@playwright/test";
 
 test("shows account-free inquiry and prefilled contact actions on a public property", async ({ page }) => {
-  test.skip(process.env.BETNA_GUEST_INQUIRY_E2E !== "1", "requires a running API fixture with a published property");
   await page.goto("/en/property/verified-kilimani-home");
 
   await expect(page.getByRole("heading", { name: "Ask about this place" })).toBeVisible();

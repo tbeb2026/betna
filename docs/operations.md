@@ -35,6 +35,12 @@ database is unavailable. Run the browser release gate separately with
 `pnpm test:playwright`, or run both API and browser end-to-end suites with
 `pnpm test:e2e` after the required services are available.
 
+The browser gate always runs `apps/web/e2e/guest-inquiry.spec.ts` against the
+seeded `verified-kilimani-home` fixture; it does not use an environment flag to
+silently skip the required guest path. The critical inquiry-to-commission flow
+is a separate credentialed path and runs when `BETNA_CRITICAL_FLOW_E2E=1` (as
+configured in CI); local runs must provide the seeded API and role sessions.
+
 ## SLO starting points
 
 Target 99.5% monthly availability for public search and inquiry submission, with API readiness as the primary availability signal. Page on-call for a sustained 5xx rate above 2%, readiness unavailable for 2 minutes, or a queue older than 15 minutes. Product owners decide whether a degraded inquiry path is acceptable during an incident.

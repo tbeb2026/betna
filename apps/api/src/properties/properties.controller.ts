@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -43,7 +42,6 @@ export class PropertiesController {
     @Req() request: { user: { id: string } },
     @Body() body: CreatePropertyDto,
   ) {
-    assertMutationBody(body);
     return this.properties.createDraft(request.user.id, body);
   }
 
@@ -58,7 +56,6 @@ export class PropertiesController {
     @Param("id") id: string,
     @Body() body: UpdatePropertyDto,
   ) {
-    assertMutationBody(body);
     return this.properties.updateDraft(id, request.user.id, body);
   }
 
@@ -66,20 +63,4 @@ export class PropertiesController {
   submit(@Req() request: { user: { id: string } }, @Param("id") id: string) {
     return this.properties.submit(id, request.user.id);
   }
-}
-
-function assertMutationBody(body: unknown): asserts body is object {
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    throw new BadRequestException("Request body must be an object");
-  }
-  if (containsNull(body)) {
-    throw new BadRequestException("Request body contains an invalid null value");
-  }
-}
-
-function containsNull(value: unknown): boolean {
-  if (value === null) return true;
-  if (Array.isArray(value)) return value.some(containsNull);
-  if (typeof value !== "object") return false;
-  return Object.values(value as Record<string, unknown>).some(containsNull);
 }

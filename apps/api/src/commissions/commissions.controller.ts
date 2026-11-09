@@ -1,4 +1,4 @@
-import { Body, BadRequestException, Controller, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
 import { Transform } from "class-transformer";
 import { IsBoolean, IsString, Length, Matches, MaxLength, ValidateIf } from "class-validator";
 import { AuthSessionGuard, Roles, RolesGuard } from "../auth/guards";
@@ -49,7 +49,6 @@ export class CommissionsController {
   @Post("owner/conversions")
   @Roles("OWNER")
   report(@Req() request: { user: { id: string } }, @Body() body: ConversionReportDto) {
-    assertMutationBody(body);
     return this.conversions.report({ ...body, ownerId: request.user.id });
   }
 
@@ -68,7 +67,6 @@ export class CommissionsController {
     @Param("id") id: string,
     @Body() body: VerifyEvidenceDto,
   ) {
-    assertMutationBody(body);
     return this.conversions.verifyEvidence(id, request.user.id, body);
   }
 
@@ -87,20 +85,4 @@ export class CommissionsController {
   @Post("admin/commissions/:id/dispute")
   @Roles("ADMIN")
   dispute(@Req() request: { user: { id: string } }, @Param("id") id: string) { return this.commissions.dispute(id, request.user.id); }
-}
-
-function assertMutationBody(body: unknown): asserts body is object {
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    throw new BadRequestException("Request body must be an object");
-  }
-  if (containsNull(body)) {
-    throw new BadRequestException("Request body contains an invalid null value");
-  }
-}
-
-function containsNull(value: unknown): boolean {
-  if (value === null) return true;
-  if (Array.isArray(value)) return value.some(containsNull);
-  if (typeof value !== "object") return false;
-  return Object.values(value as Record<string, unknown>).some(containsNull);
 }
