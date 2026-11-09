@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AssignmentsService } from "../verification/assignments.service";
 import { ChecklistService } from "../verification/checklist.service";
 import { InspectionsService } from "../verification/inspections.service";
+import { TaxonomyService } from "./taxonomy.service";
 import { PropertiesService } from "./properties.service";
 
 const owner = { id: "owner-1", roles: [{ role: { name: "OWNER" } }] };
@@ -31,6 +32,7 @@ const input = {
 function makePrisma() {
   const properties: any[] = [];
   const inspections: any[] = [];
+  const inspectionEvidence: any[] = [];
   const users = new Map([
     [owner.id, owner],
     [admin.id, admin],
@@ -56,7 +58,7 @@ function makePrisma() {
     property: {
       create: vi.fn(async ({ data }: any) => {
         const property = {
-          id: propertyId,
+          id: `property-${properties.length + 1}`,
           ...data,
           offerings: data.offerings?.create ?? [],
         };
@@ -113,7 +115,9 @@ function makePrisma() {
       ),
       findUnique: vi.fn(async ({ where }: any) =>
         inspections.find((entry) =>
-          where.id ? entry.id === where.id : entry.submissionRequestKey === where.submissionRequestKey,
+          where.id
+            ? entry.id === where.id
+            : entry.ownerSubmissionKey === where.ownerSubmissionKey,
         ) ?? null,
       ),
       findMany: vi.fn(async ({ where }: any) =>
@@ -138,7 +142,7 @@ function makePrisma() {
         return inspection;
       }),
       upsert: vi.fn(async ({ where, create, include }: any) => {
-        const existing = inspections.find((entry) => entry.submissionRequestKey === where.submissionRequestKey);
+        const existing = inspections.find((entry) => entry.ownerSubmissionKey === where.ownerSubmissionKey);
         if (existing) return existing;
         return prisma.inspection.create({ data: create, include });
       }),
@@ -148,9 +152,65 @@ function makePrisma() {
         return inspection;
       }),
     },
-    $transaction: vi.fn(async (callback: (tx: any) => unknown) => callback(prisma)),
+    inspectionEvidence: {
+      findMany: vi.fn(async ({ where }: any) =>
+        inspectionEvidence.filter((entry) =>
+          where.inspectionId
+            ? entry.inspectionId === where.inspectionId
+            : where.mediaId?.in?.includes(entry.mediaId),
+        ),
+      ),
+      deleteMany: vi.fn(async ({ where }: any) => {
+        for (let index = inspectionEvidence.length - 1; index >= 0; index -= 1) {
+          if (inspectionEvidence[index].inspectionId === where.inspectionId) {
+            inspectionEvidence.splice(index, 1);
+          }
+        }
+      }),
+      createMany: vi.fn(async ({ data }: any) => {
+        inspectionEvidence.push(...data);
+      }),
+    },
+    media: {
+      findUnique: vi.fn(async ({ where }: any) =>
+        where.id === "media-1"
+          ? { id: "media-1", purpose: "INSPECTION_EVIDENCE", status: "CLEAN", propertyId }
+          : null,
+      ),
+    },
+    checklistDefinition: {
+      findFirst: vi.fn(async () => ({
+        category: "residential",
+        version: 1,
+        isPublished: true,
+        definition: { required: ["identityAuthorization"] },
+      })),
+    },
+    $transaction: vi.fn(async (callback: (tx: any) => unknown) => {
+      const propertiesSnapshot = structuredClone(properties);
+      const inspectionsSnapshot = structuredClone(inspections);
+      const evidenceSnapshot = structuredClone(inspectionEvidence);
+      try {
+        return await callback(prisma);
+      } catch (error) {
+        properties.splice(0, properties.length, ...propertiesSnapshot);
+        inspections.splice(0, inspections.length, ...inspectionsSnapshot);
+        inspectionEvidence.splice(0, inspectionEvidence.length, ...evidenceSnapshot);
+        throw error;
+      }
+    }),
   };
   return { prisma, properties, inspections };
+}
+
+function makePropertiesService(prisma: any, inspectionsService: InspectionsService, audit?: any) {
+  return new PropertiesService(
+    prisma,
+    new TaxonomyService(),
+    inspectionsService,
+    undefined,
+    audit,
+  );
 }
 
 describe("owner submission inspection workflow", () => {
@@ -161,7 +221,7 @@ describe("owner submission inspection workflow", () => {
       new AssignmentsService(prisma),
       new ChecklistService(prisma),
     );
-    const properties = new PropertiesService(prisma, undefined, undefined, inspectionService);
+    const properties = makePropertiesService(prisma, inspectionService);
     const draft = await properties.createDraft(owner.id, input);
 
     const [submitted] = await Promise.all([
@@ -185,5 +245,121 @@ describe("owner submission inspection workflow", () => {
       inspectionService.assign(inspections[0].id, verifier.id, { id: admin.id, roles: ["ADMIN"] }),
     ).resolves.toMatchObject({ verifierId: verifier.id, status: "DRAFT" });
     await expect(inspectionService.listForVerifier(verifier.id)).resolves.toEqual(inspections);
+  });
+
+  it("keeps owner submission idempotency separate from verifier report request keys", async () => {
+    const { prisma, inspections } = makePrisma();
+    const inspectionService = new InspectionsService(
+      prisma,
+      new AssignmentsService(prisma),
+      new ChecklistService(prisma),
+    );
+    const properties = makePropertiesService(prisma, inspectionService);
+    const draft = await properties.createDraft(owner.id, input);
+    await properties.submit(draft.id, owner.id);
+    await inspectionService.assign(inspections[0].id, verifier.id, {
+      id: admin.id,
+      roles: ["ADMIN"],
+    });
+
+    const report = await inspectionService.submitPendingUpload(inspections[0].id, verifier.id, {
+      checklist: { identityAuthorization: true },
+      evidence: [{ mediaId: "media-1" }],
+      requestKey: "verifier-report-1",
+    });
+
+    expect(report).not.toBeNull();
+    expect(inspections[0]).toMatchObject({
+      ownerSubmissionKey: `owner-submit:${draft.id}`,
+      reportRequestKey: "verifier-report-1",
+    });
+    await expect(properties.submit(draft.id, owner.id)).resolves.toMatchObject({
+      id: draft.id,
+      status: "PENDING_REVIEW",
+    });
+  });
+
+  it("rejects an owner retry when a guessed key belongs to another property's inspection", async () => {
+    const { prisma, inspections, properties: rows } = makePrisma();
+    const inspectionService = new InspectionsService(
+      prisma,
+      new AssignmentsService(prisma),
+      new ChecklistService(prisma),
+    );
+    const properties = makePropertiesService(prisma, inspectionService);
+    const first = await properties.createDraft(owner.id, input);
+    const second = await properties.createDraft(owner.id, { ...input, title: "Second home" });
+    rows[0].status = "PENDING_REVIEW";
+    inspections.push({
+      id: "inspection-foreign",
+      propertyId: second.id,
+      ownerSubmissionKey: `owner-submit:${first.id}`,
+      reportRequestKey: null,
+      status: "DRAFT",
+    });
+
+    await expect(properties.submit(first.id, owner.id)).rejects.toThrow(/inspection|draft/i);
+  });
+
+  it("rolls back the property transition when draft inspection creation fails", async () => {
+    const { prisma, properties: rows } = makePrisma();
+    const inspectionService = new InspectionsService(
+      prisma,
+      new AssignmentsService(prisma),
+      new ChecklistService(prisma),
+    );
+    vi.spyOn(inspectionService, "createDraftForSubmission").mockRejectedValueOnce(
+      new Error("inspection persistence failed"),
+    );
+    const properties = makePropertiesService(prisma, inspectionService);
+    const draft = await properties.createDraft(owner.id, input);
+
+    await expect(properties.submit(draft.id, owner.id)).rejects.toThrow(/inspection persistence failed/);
+    expect(rows[0].status).toBe("DRAFT");
+  });
+
+  it("rolls back the property transition when audit persistence fails", async () => {
+    const { prisma, properties: rows } = makePrisma();
+    const inspectionService = new InspectionsService(
+      prisma,
+      new AssignmentsService(prisma),
+      new ChecklistService(prisma),
+    );
+    const audit = { record: vi.fn().mockRejectedValue(new Error("audit persistence failed")) };
+    const properties = makePropertiesService(prisma, inspectionService, audit);
+    const draft = await properties.createDraft(owner.id, input);
+
+    await expect(properties.submit(draft.id, owner.id)).rejects.toThrow(/audit persistence failed/);
+    expect(rows[0].status).toBe("DRAFT");
+  });
+
+  it("recovers the exact inspection after a concurrent unique conflict", async () => {
+    const { prisma, inspections } = makePrisma();
+    const inspectionService = new InspectionsService(
+      prisma,
+      new AssignmentsService(prisma),
+      new ChecklistService(prisma),
+    );
+    const properties = makePropertiesService(prisma, inspectionService);
+    const draft = await properties.createDraft(owner.id, input);
+    const existing = {
+      id: "inspection-concurrent",
+      propertyId: draft.id,
+      ownerSubmissionKey: `owner-submit:${draft.id}`,
+      reportRequestKey: null,
+      status: "DRAFT",
+      cityId,
+      territoryId: "territory-nairobi",
+    };
+    inspections.push(existing);
+    prisma.inspection.upsert.mockRejectedValueOnce(
+      Object.assign(new Error("unique conflict"), { code: "P2002" }),
+    );
+
+    await expect(properties.submit(draft.id, owner.id)).resolves.toMatchObject({
+      id: draft.id,
+      status: "PENDING_REVIEW",
+    });
+    expect(inspections).toContain(existing);
   });
 });

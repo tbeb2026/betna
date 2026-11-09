@@ -72,32 +72,50 @@ export class InspectionsService {
     });
     if (!property) throw new NotFoundException("Property not found");
 
-    const submissionRequestKey = `owner-submit:${propertyId}`;
+    const ownerSubmissionKey = `owner-submit:${propertyId}`;
     const data = {
       propertyId,
       territoryId: property.city?.territoryId ?? null,
       cityId: property.cityId,
       status: "DRAFT" as const,
       checklist: {},
-      submissionRequestKey,
+      ownerSubmissionKey,
     };
 
     if (typeof db.inspection.upsert === "function") {
-      return db.inspection.upsert({
-        where: { submissionRequestKey },
-        create: data,
-        update: {},
-        include: { evidence: true, property: true },
-      });
+      try {
+        return await db.inspection.upsert({
+          where: { ownerSubmissionKey },
+          create: data,
+          update: {},
+          include: { evidence: true, property: true },
+        });
+      } catch (error) {
+        // A concurrent transaction may win the unique owner-key insert. Read
+        // back only that property's row; never turn a foreign row into a
+        // successful owner submission.
+        if ((error as { code?: string })?.code !== "P2002") throw error;
+        const existing = await db.inspection.findFirst?.({
+          where: { propertyId, ownerSubmissionKey },
+          include: { evidence: true, property: true },
+        });
+        if (existing) return existing;
+        throw error;
+      }
     }
 
-    const existing = typeof db.inspection.findUnique === "function"
-      ? await db.inspection.findUnique({
-          where: { submissionRequestKey },
+    const existing = typeof db.inspection.findFirst === "function"
+      ? await db.inspection.findFirst({
+          where: { propertyId, ownerSubmissionKey },
           include: { evidence: true, property: true },
         })
-      : null;
-    if (existing) return existing;
+      : typeof db.inspection.findUnique === "function"
+        ? await db.inspection.findUnique({
+            where: { ownerSubmissionKey },
+            include: { evidence: true, property: true },
+          })
+        : null;
+    if (existing?.propertyId === propertyId) return existing;
     return db.inspection.create({
       data,
       include: { evidence: true, property: true },
@@ -133,10 +151,10 @@ export class InspectionsService {
   ) {
     const inspection = await this.findInspection(inspectionId);
     await this.assertVerifierAccess(inspection, verifierId);
-    const requestKey = input.requestKey?.trim() || undefined;
+    const reportRequestKey = input.requestKey?.trim() || undefined;
     if (
-      requestKey &&
-      inspection.submissionRequestKey === requestKey &&
+      reportRequestKey &&
+      inspection.reportRequestKey === reportRequestKey &&
       inspection.status !== "REJECTED"
     ) {
       return inspection;
@@ -169,7 +187,7 @@ export class InspectionsService {
         inspectedAt: new Date(),
         requiredEvidenceSynced: false,
         checklistVersion: definition.version,
-        submissionRequestKey: requestKey,
+        reportRequestKey,
       },
       include: { evidence: true, property: true },
     });

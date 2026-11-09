@@ -379,7 +379,10 @@ model Inspection {
   requiredEvidenceSynced Boolean              @default(false)
   checklist              Json                 @default("{}")
   checklistVersion       Int                  @default(1)
-  submissionRequestKey   String?              @unique @db.VarChar(128)
+  /// Immutable idempotency key for the owner's initial property submission.
+  ownerSubmissionKey     String?              @unique @db.VarChar(128)
+  /// Retry key for a verifier's inspection report, scoped to this inspection.
+  reportRequestKey       String?              @db.VarChar(128)
   createdAt              DateTime             @default(now())
   updatedAt              DateTime             @updatedAt
   property               Property             @relation(fields: [propertyId], references: [id], onDelete: Cascade)

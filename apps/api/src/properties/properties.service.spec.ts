@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PropertiesService } from "./properties.service";
+import { TaxonomyService } from "./taxonomy.service";
 
 const owner = {
   id: "owner-1",
@@ -115,10 +116,22 @@ function makePrisma() {
   return { prisma, properties };
 }
 
+function makeService(prisma: any, inspections?: any) {
+  const workflow = inspections ?? {
+    createDraftForSubmission: vi.fn(async (propertyId: string) => ({
+      id: "inspection-1",
+      propertyId,
+      ownerSubmissionKey: `owner-submit:${propertyId}`,
+      status: "DRAFT",
+    })),
+  };
+  return new PropertiesService(prisma, new TaxonomyService(), workflow);
+}
+
 describe("PropertiesService", () => {
   it("lets one individual owner create multiple drafts with separate rental offerings", async () => {
     const { prisma } = makePrisma();
-    const service = new PropertiesService(prisma);
+    const service = makeService(prisma);
 
     const first = await service.createDraft(owner.id, baseInput);
     const second = await service.createDraft(owner.id, {
@@ -139,7 +152,7 @@ describe("PropertiesService", () => {
 
   it("requires a public local-currency price before creating a draft", async () => {
     const { prisma } = makePrisma();
-    const service = new PropertiesService(prisma);
+    const service = makeService(prisma);
 
     await expect(
       service.createDraft(owner.id, {
@@ -152,7 +165,7 @@ describe("PropertiesService", () => {
 
   it("rejects an offering currency that does not match the property country", async () => {
     const { prisma } = makePrisma();
-    const service = new PropertiesService(prisma);
+    const service = makeService(prisma);
 
     await expect(
       service.createDraft(owner.id, {
@@ -165,7 +178,7 @@ describe("PropertiesService", () => {
 
   it("rejects unsupported rental modes before persistence", async () => {
     const { prisma } = makePrisma();
-    const service = new PropertiesService(prisma);
+    const service = makeService(prisma);
 
     await expect(
       service.createDraft(owner.id, {
@@ -178,7 +191,7 @@ describe("PropertiesService", () => {
 
   it("rejects a public pin that exposes the exact location", async () => {
     const { prisma } = makePrisma();
-    const service = new PropertiesService(prisma);
+    const service = makeService(prisma);
 
     await expect(
       service.createDraft(owner.id, {
@@ -194,7 +207,7 @@ describe("PropertiesService", () => {
 
   it("rejects a public pin that is only trivially separated from the exact location", async () => {
     const { prisma } = makePrisma();
-    const service = new PropertiesService(prisma);
+    const service = makeService(prisma);
 
     await expect(
       service.createDraft(owner.id, {
@@ -211,7 +224,7 @@ describe("PropertiesService", () => {
 
   it("rejects a city that belongs to a different country", async () => {
     const { prisma } = makePrisma();
-    const service = new PropertiesService(prisma);
+    const service = makeService(prisma);
 
     await expect(
       service.createDraft(owner.id, {
@@ -224,7 +237,7 @@ describe("PropertiesService", () => {
 
   it("rejects an unknown city id before persistence", async () => {
     const { prisma } = makePrisma();
-    const service = new PropertiesService(prisma);
+    const service = makeService(prisma);
 
     await expect(
       service.createDraft(owner.id, {
@@ -238,7 +251,7 @@ describe("PropertiesService", () => {
   it("rejects a malformed city id as a bad request before Prisma lookup", async () => {
     const { prisma } = makePrisma();
     prisma.city.findUnique.mockRejectedValueOnce(new Error("invalid UUID"));
-    const service = new PropertiesService(prisma);
+    const service = makeService(prisma);
 
     await expect(
       service.createDraft(owner.id, {
@@ -252,7 +265,7 @@ describe("PropertiesService", () => {
 
   it("rejects a country id that does not match the submitted country code", async () => {
     const { prisma } = makePrisma();
-    const service = new PropertiesService(prisma);
+    const service = makeService(prisma);
 
     await expect(
       service.createDraft(owner.id, {
@@ -265,7 +278,7 @@ describe("PropertiesService", () => {
 
   it("requires a managed subcategory for every property draft", async () => {
     const { prisma } = makePrisma();
-    const service = new PropertiesService(prisma);
+    const service = makeService(prisma);
 
     await expect(
       service.createDraft(owner.id, {
@@ -278,7 +291,7 @@ describe("PropertiesService", () => {
 
   it("accepts Prisma decimal prices when updating an existing draft", async () => {
     const { prisma } = makePrisma();
-    const service = new PropertiesService(prisma);
+    const service = makeService(prisma);
     const draft = await service.createDraft(owner.id, baseInput);
     draft.offerings = draft.offerings.map((offering: any) => ({
       ...offering,
@@ -294,7 +307,7 @@ describe("PropertiesService", () => {
 
   it("preserves an Uganda draft country when updating without a country patch", async () => {
     const { prisma } = makePrisma();
-    const service = new PropertiesService(prisma);
+    const service = makeService(prisma);
     const draft = await service.createDraft(owner.id, {
       ...baseInput,
       countryCode: "UG",
@@ -324,7 +337,7 @@ describe("PropertiesService", () => {
         cities: [{ id: "city-ke-nairobi", name: "Nairobi", slug: "nairobi" }],
       },
     ]);
-    const service = new PropertiesService(prisma);
+    const service = makeService(prisma);
 
     await expect(service.listGeography()).resolves.toEqual([
       {
@@ -338,7 +351,7 @@ describe("PropertiesService", () => {
 
   it("keeps exact location private and requires attestation to submit", async () => {
     const { prisma } = makePrisma();
-    const service = new PropertiesService(prisma);
+    const service = makeService(prisma);
     const draft = await service.createDraft(owner.id, baseInput);
 
     expect(draft.publicLocationLabel).toBe(baseInput.publicLocation.label);
@@ -362,7 +375,7 @@ describe("PropertiesService", () => {
       id: "agent-1",
       roles: [{ role: { name: "AGENT" } }],
     });
-    const service = new PropertiesService(prisma);
+    const service = makeService(prisma);
 
     await expect(
       service.createDraft("agent-1", baseInput),

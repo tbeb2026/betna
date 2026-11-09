@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
   Optional,
 } from "@nestjs/common";
@@ -30,9 +31,9 @@ const UUID_PATTERN =
 export class PropertiesService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly taxonomy: TaxonomyService = new TaxonomyService(),
-    private readonly publishing?: PublishingService,
-    @Optional() private readonly inspections?: InspectionsService,
+    private readonly taxonomy: TaxonomyService,
+    private readonly inspections: InspectionsService,
+    @Optional() private readonly publishing?: PublishingService,
     @Optional() private readonly audit?: AuditService,
   ) {}
 
@@ -165,18 +166,33 @@ export class PropertiesService {
 
   async submit(propertyId: string, ownerId: string): Promise<PropertyRecord> {
     await this.assertIndividualOwner(ownerId);
+    if (!this.inspections) {
+      throw new InternalServerErrorException(
+        "Inspection workflow is not configured",
+      );
+    }
     return this.withTransaction(async (tx: any) => {
       const property = await this.findOwnedProperty(propertyId, ownerId, tx);
       if (property.status !== "DRAFT") {
         // A retry after the lifecycle transition must return the same
         // submission rather than creating a second inspection or bypassing
         // the owner-only boundary.
-        if (property.status === "PENDING_REVIEW" && this.inspections) {
-          const requestKey = `owner-submit:${propertyId}`;
-          const existing = typeof tx.inspection?.findUnique === "function"
-            ? await tx.inspection.findUnique({ where: { submissionRequestKey: requestKey } })
+        if (property.status === "PENDING_REVIEW") {
+          const ownerSubmissionKey = `owner-submit:${propertyId}`;
+          const existing = typeof tx.inspection?.findFirst === "function"
+            ? await tx.inspection.findFirst({
+                where: { propertyId, ownerSubmissionKey },
+              })
             : null;
-          if (!existing) throw new ConflictException("Only drafts can be submitted");
+          if (
+            !existing ||
+            existing.propertyId !== propertyId ||
+            existing.ownerSubmissionKey !== ownerSubmissionKey
+          ) {
+            throw new ConflictException(
+              "Only drafts can be submitted without an exact inspection",
+            );
+          }
           return property;
         }
         throw new ConflictException("Only drafts can be submitted");
@@ -214,9 +230,17 @@ export class PropertiesService {
         transitioned = true;
       }
 
-      const inspection = this.inspections
-        ? await this.inspections.createDraftForSubmission(propertyId, tx)
-        : null;
+      const inspection = await this.inspections.createDraftForSubmission(propertyId, tx);
+      if (
+        !inspection ||
+        inspection.propertyId !== propertyId ||
+        inspection.status !== "DRAFT" ||
+        inspection.ownerSubmissionKey !== `owner-submit:${propertyId}`
+      ) {
+        throw new InternalServerErrorException(
+          "Inspection workflow did not create the exact draft inspection",
+        );
+      }
       const updated = transition
         ? await this.findOwnedProperty(propertyId, ownerId, tx)
         : await tx.property.findFirst({
