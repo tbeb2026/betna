@@ -26,17 +26,17 @@ class ChecklistDefinitionDto {
   rules?: Record<string, string>;
 }
 
-class AssignInspectionDto {
-  @IsUUID()
+export class AssignInspectionDto {
+  @IsUUID("4")
   verifierId!: string;
 }
 
-class InspectionEvidenceDto {
-  @IsUUID()
+export class InspectionEvidenceDto {
+  @IsUUID("4")
   mediaId!: string;
 }
 
-class SubmitInspectionDto {
+export class SubmitInspectionDto {
   @IsObject()
   checklist!: Record<string, unknown>;
 

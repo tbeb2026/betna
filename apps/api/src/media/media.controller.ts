@@ -13,16 +13,16 @@ import { AuthSessionGuard, Roles, RolesGuard } from "../auth/guards";
 import { MediaPurpose, MediaService } from "./media.service";
 
 type RequestWithUser = { user: { id: string; roles: string[] } };
-class CreateUploadTargetBody {
+export class CreateUploadTargetBody {
   @IsIn(["LISTING", "INSPECTION_EVIDENCE"])
   purpose!: MediaPurpose;
 
   @IsOptional()
-  @IsUUID()
+  @IsUUID("4")
   propertyId?: string;
 
   @IsOptional()
-  @IsUUID()
+  @IsUUID("4")
   inspectionId?: string;
 
   @IsOptional()

@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Req, UseGuards } from "@nestjs/common";
 import { Type } from "class-transformer";
-import { IsArray, IsBoolean, IsIn, IsNumber, IsOptional, IsString, Max, MaxLength, Min, ValidateIf, ValidateNested } from "class-validator";
+import { IsArray, IsBoolean, IsIn, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateIf, ValidateNested } from "class-validator";
 import { AuthSessionGuard, Roles, RolesGuard } from "../auth/guards";
 import { PublishingService } from "./publishing.service";
 import { TranslationService } from "./translation.service";
@@ -137,17 +137,17 @@ export class MaterialEditDto {
 
   @ValidateIf((_, value) => value !== undefined)
   @IsArray()
-  @IsString({ each: true })
+  @IsUUID("4", { each: true })
   media?: string[];
 
   @ValidateIf((_, value) => value !== undefined)
   @IsArray()
-  @IsString({ each: true })
+  @IsUUID("4", { each: true })
   mediaIds?: string[];
 
   @ValidateIf((_, value) => value !== undefined)
   @IsArray()
-  @IsString({ each: true })
+  @IsUUID("4", { each: true })
   corePhotos?: string[];
 
   @ValidateIf((_, value) => value !== undefined)
@@ -193,8 +193,7 @@ export class MaterialEditDto {
 }
 
 export class OwnershipChangeDto {
-  @IsString()
-  @MaxLength(100)
+  @IsUUID("4")
   newOwnerId!: string;
 }
 

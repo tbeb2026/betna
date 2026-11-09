@@ -6,6 +6,7 @@ import {
   IsIn,
   IsNumber,
   IsString,
+  IsUUID,
   Matches,
   Max,
   MaxLength,
@@ -91,17 +92,14 @@ export class CreatePropertyDto {
   countryCode!: CountryCode;
 
   @ValidateIf((_, value) => value !== undefined)
-  @IsString()
-  @MaxLength(100)
+  @IsUUID("4")
   countryId?: string;
 
-  @IsString()
-  @MaxLength(100)
+  @IsUUID("4")
   cityId!: string;
 
   @ValidateIf((_, value) => value !== undefined)
-  @IsString()
-  @MaxLength(100)
+  @IsUUID("4")
   neighborhoodId?: string;
 
   @IsString()
@@ -155,18 +153,15 @@ export class UpdatePropertyDto {
   countryCode?: CountryCode;
 
   @ValidateIf((_, value) => value !== undefined)
-  @IsString()
-  @MaxLength(100)
+  @IsUUID("4")
   countryId?: string;
 
   @ValidateIf((_, value) => value !== undefined)
-  @IsString()
-  @MaxLength(100)
+  @IsUUID("4")
   cityId?: string;
 
   @ValidateIf((_, value) => value !== undefined)
-  @IsString()
-  @MaxLength(100)
+  @IsUUID("4")
   neighborhoodId?: string;
 
   @ValidateIf((_, value) => value !== undefined)

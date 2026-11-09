@@ -1,13 +1,12 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Req, UseGuards } from "@nestjs/common";
 import { Transform } from "class-transformer";
-import { IsBoolean, IsString, Length, Matches, MaxLength, ValidateIf } from "class-validator";
+import { IsBoolean, IsString, IsUUID, Length, Matches, MaxLength, ValidateIf } from "class-validator";
 import { AuthSessionGuard, Roles, RolesGuard } from "../auth/guards";
 import { CommissionsService } from "./commissions.service";
 import { ConversionsService } from "./conversions.service";
 
 export class ConversionReportDto {
-  @IsString()
-  @MaxLength(100)
+  @IsUUID("4")
   inquiryId!: string;
 
   @Transform(({ value }) => typeof value === "number" ? String(value) : value)

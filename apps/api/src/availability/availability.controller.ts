@@ -3,8 +3,8 @@ import { IsDateString, IsOptional, IsString, IsUUID, MaxLength } from "class-val
 import { AuthSessionGuard, Roles, RolesGuard } from "../auth/guards";
 import { AvailabilityService } from "./availability.service";
 
-class CreateUnavailableDateDto {
-  @IsUUID()
+export class CreateUnavailableDateDto {
+  @IsUUID("4")
   propertyId!: string;
 
   @IsDateString()

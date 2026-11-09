@@ -1,11 +1,11 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
-import { IsEmail, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateIf } from "class-validator";
+import { IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateIf } from "class-validator";
 import { AuthSessionGuard, Roles, RolesGuard } from "../auth/guards";
 import { InquiriesService } from "./inquiries.service";
 
-class GuestInquiryDto {
-  @IsString() @MaxLength(100) propertyId!: string;
-  @IsOptional() @IsString() @MaxLength(100) offeringId?: string;
+export class GuestInquiryDto {
+  @IsUUID("4") propertyId!: string;
+  @IsOptional() @IsUUID("4") offeringId?: string;
   @IsIn(["SHORT_STAY", "LONG_TERM"]) mode!: "SHORT_STAY" | "LONG_TERM";
   @IsString() @MaxLength(160) name!: string;
   @IsEmail() email!: string;
@@ -18,8 +18,8 @@ class GuestInquiryDto {
   @IsOptional() @IsString() @MaxLength(128) fingerprint?: string;
 }
 
-class ContactClickDto {
-  @IsString() @MaxLength(100) propertyId!: string;
+export class ContactClickDto {
+  @IsUUID("4") propertyId!: string;
   @IsIn(["BETNA", "OWNER"]) target!: "BETNA" | "OWNER";
   @IsIn(["WHATSAPP", "EMAIL"]) channel!: "WHATSAPP" | "EMAIL";
 }
