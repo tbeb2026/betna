@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  InternalServerErrorException,
   Injectable,
   NotFoundException,
   Optional,
@@ -26,6 +27,7 @@ import {
   normalizeNotificationLocale,
   notificationMessage,
 } from "../i18n/messages";
+import { getPublicApiOrigin } from "../runtime";
 
 export type GuestInquiryRequest = GuestInquiryInput & {
   honeypot?: string;
@@ -46,6 +48,48 @@ const PENDING_OWNER_RESPONSE_STATUSES = [
   "CONTACTED",
   "LOCATION_APPROVED",
 ];
+
+const OWNER_INQUIRY_SELECT = {
+  id: true,
+  reference: true,
+  status: true,
+  guestName: true,
+  guestEmail: true,
+  guestPhone: true,
+  guestLocale: true,
+  message: true,
+  ownerResponseMessage: true,
+  startDate: true,
+  endDate: true,
+  guests: true,
+  createdAt: true,
+  updatedAt: true,
+  property: {
+    select: {
+      id: true,
+      title: true,
+      slug: true,
+      description: true,
+      category: true,
+      subcategory: true,
+      amenities: true,
+      status: true,
+      publicLocationLabel: true,
+    },
+  },
+  offering: {
+    select: {
+      id: true,
+      mode: true,
+      currency: true,
+      basePrice: true,
+      negotiable: true,
+      minimumNights: true,
+      moveInDate: true,
+      leaseDurationMonths: true,
+    },
+  },
+} as const;
 
 @Injectable()
 export class InquiriesService {
@@ -282,6 +326,9 @@ export class InquiriesService {
     actor: InquiryActor,
     reason?: string,
   ) {
+    // Validate this before changing release state so a misconfigured
+    // production instance cannot approve a release and then fail to notify.
+    const publicApiOrigin = this.publicApiOrigin();
     const released = await this.locationRelease.release(
       inquiryId,
       actor,
@@ -292,7 +339,7 @@ export class InquiriesService {
     // and completed without creating a duplicate message.
     await this.notifications.enqueue({
       type: "INQUIRY_LOCATION_APPROVED",
-      idempotencyKey: `inquiry-location-approved:${inquiryId}:${released.releaseId}`,
+      idempotencyKey: `inquiry-location-approved:${inquiryId}:${released.releaseVersion}`,
       inquiryId,
       reference: released.inquiry.reference,
       recipients: [
@@ -304,7 +351,10 @@ export class InquiriesService {
       ],
       messageKey: "inquiry.locationApproved",
       messageValues: {
-        redemptionUrl: this.locationRedemptionUrl(released.releaseToken),
+        redemptionUrl: this.locationRedemptionUrl(
+          released.releaseToken,
+          publicApiOrigin,
+        ),
         expiresAt: new Date(
           released.inquiry.locationReleaseExpiresAt,
         ).toISOString(),
@@ -314,26 +364,7 @@ export class InquiriesService {
     // The release action is not an exact-location read. Keep the sensitive
     // location and bearer token out of the admin/API response; the visitor
     // receives the token only through their own notification channels.
-    const {
-      location: _location,
-      releaseToken: _releaseToken,
-      ...safeRelease
-    } = released;
-    if (safeRelease.inquiry?.property) {
-      const property = Object.fromEntries(
-        Object.entries(safeRelease.inquiry.property).filter(
-          ([key]) =>
-            ![
-              "exactAddress",
-              "exactLatitude",
-              "exactLongitude",
-              "exactLocationGeometry",
-            ].includes(key),
-        ),
-      );
-      safeRelease.inquiry = { ...safeRelease.inquiry, property };
-    }
-    return safeRelease;
+    return this.adminReleaseResponse(released);
   }
 
   async revokeLocation(
@@ -353,29 +384,107 @@ export class InquiriesService {
   }
 
   async listForOwner(ownerId: string) {
-    return (this.prisma as any).inquiry.findMany({
+    const inquiries = await (this.prisma as any).inquiry.findMany({
       where: { property: { ownerId } },
-      include: { property: true, offering: true },
+      select: OWNER_INQUIRY_SELECT,
       orderBy: { createdAt: "desc" },
     });
+    return inquiries.map((inquiry: any) => this.ownerInquiryResponse(inquiry));
   }
 
-  private locationRedemptionUrl(token: string | null | undefined) {
+  private locationRedemptionUrl(
+    token: string | null | undefined,
+    publicApiOrigin = this.publicApiOrigin(),
+  ) {
     if (!token)
       throw new ConflictException("Location release token is unavailable");
-    const base = (
-      process.env.PUBLIC_API_URL?.trim() ||
-      process.env.NEXT_PUBLIC_API_URL?.trim() ||
-      "http://localhost:4000"
-    ).replace(/\/$/, "");
-    return `${base}/public/inquiries/released-location?token=${encodeURIComponent(token)}`;
+    return `${publicApiOrigin}/public/inquiries/released-location?token=${encodeURIComponent(token)}`;
+  }
+
+  private publicApiOrigin() {
+    try {
+      return getPublicApiOrigin();
+    } catch (error) {
+      throw new InternalServerErrorException(
+        error instanceof Error ? error.message : "Public API origin is unavailable",
+      );
+    }
+  }
+
+  private adminReleaseResponse(released: any) {
+    const inquiry = released.inquiry;
+    return {
+      inquiry: {
+        id: inquiry.id,
+        reference: inquiry.reference,
+        status: inquiry.status,
+        createdAt: inquiry.createdAt,
+        locationApprovedAt: inquiry.locationApprovedAt,
+        locationReleaseExpiresAt: inquiry.locationReleaseExpiresAt,
+        property: inquiry.property
+          ? {
+              id: inquiry.property.id,
+              title: inquiry.property.title,
+              slug: inquiry.property.slug,
+              status: inquiry.property.status,
+              publicLocationLabel: inquiry.property.publicLocationLabel,
+            }
+          : null,
+      },
+      idempotent: Boolean(released.idempotent),
+    };
+  }
+
+  private ownerInquiryResponse(inquiry: any) {
+    return {
+      id: inquiry.id,
+      reference: inquiry.reference,
+      status: inquiry.status,
+      guestName: inquiry.guestName,
+      guestEmail: inquiry.guestEmail,
+      guestPhone: inquiry.guestPhone,
+      guestLocale: inquiry.guestLocale,
+      message: inquiry.message,
+      ownerResponseMessage: inquiry.ownerResponseMessage,
+      startDate: inquiry.startDate,
+      endDate: inquiry.endDate,
+      guests: inquiry.guests,
+      createdAt: inquiry.createdAt,
+      updatedAt: inquiry.updatedAt,
+      property: inquiry.property
+        ? {
+            id: inquiry.property.id,
+            title: inquiry.property.title,
+            slug: inquiry.property.slug,
+            description: inquiry.property.description,
+            category: inquiry.property.category,
+            subcategory: inquiry.property.subcategory,
+            amenities: inquiry.property.amenities,
+            status: inquiry.property.status,
+            publicLocationLabel: inquiry.property.publicLocationLabel,
+          }
+        : null,
+      offering: inquiry.offering
+        ? {
+            id: inquiry.offering.id,
+            mode: inquiry.offering.mode,
+            currency: inquiry.offering.currency,
+            basePrice: inquiry.offering.basePrice,
+            negotiable: inquiry.offering.negotiable,
+            minimumNights: inquiry.offering.minimumNights,
+            moveInDate: inquiry.offering.moveInDate,
+            leaseDurationMonths: inquiry.offering.leaseDurationMonths,
+          }
+        : null,
+    };
   }
 
   async listForAdmin() {
-    return (this.prisma as any).inquiry.findMany({
-      include: { property: true, offering: true },
+    const inquiries = await (this.prisma as any).inquiry.findMany({
+      select: OWNER_INQUIRY_SELECT,
       orderBy: { createdAt: "desc" },
     });
+    return inquiries.map((inquiry: any) => this.ownerInquiryResponse(inquiry));
   }
 
   async logContactClick(input: {

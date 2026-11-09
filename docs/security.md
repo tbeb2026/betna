@@ -9,7 +9,7 @@
 
 ## Secrets and configuration
 
-Production startup rejects missing, placeholder, or short values for `DATABASE_URL`, `REDIS_URL`, `SESSION_SECRET`, `JWT_SECRET`, `MEDIA_SIGNING_SECRET`, and `API_CORS_ORIGINS`. Inject them through the deployment secret manager, not an image layer, `.env` file, or command-line argument. Rotate session/signing secrets with a planned session invalidation window.
+Production startup rejects missing, placeholder, or short values for `DATABASE_URL`, `REDIS_URL`, `SESSION_SECRET`, `JWT_SECRET`, `MEDIA_SIGNING_SECRET`, `API_CORS_ORIGINS`, and `PUBLIC_API_URL`. `PUBLIC_API_URL` must be the explicit HTTPS API origin used in visitor location-redemption links; production never falls back to localhost. Inject them through the deployment secret manager, not an image layer, `.env` file, or command-line argument. Rotate session/signing secrets with a planned session invalidation window.
 
 `API_CORS_ORIGINS` must be an explicit allow-list of HTTPS browser origins. Do not use `*` with credentials. Keep `API_INTERNAL_URL` private to the web runtime; only `NEXT_PUBLIC_API_URL` is browser-visible.
 

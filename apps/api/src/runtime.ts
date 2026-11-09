@@ -3,6 +3,7 @@ export type ApiRuntimeEnvironment = {
   API_PORT?: string;
   PORT?: string;
   API_CORS_ORIGINS?: string;
+  PUBLIC_API_URL?: string;
   NODE_ENV?: string;
   DATABASE_URL?: string;
   REDIS_URL?: string;
@@ -40,6 +41,7 @@ const productionRequiredEnvironment = [
   "JWT_SECRET",
   "MEDIA_SIGNING_SECRET",
   "API_CORS_ORIGINS",
+  "PUBLIC_API_URL",
   "EMAIL_PROVIDER",
   "EMAIL_FROM",
   "WHATSAPP_PROVIDER",
@@ -76,6 +78,7 @@ export function validateRuntimeEnvironment(
       `Missing or unsafe production environment variables: ${missing.join(", ")}`,
     );
   }
+  getPublicApiOrigin(environment);
   const emailProvider = environment.EMAIL_PROVIDER?.trim().toLowerCase();
   if (emailProvider === "resend" && !environment.RESEND_API_KEY?.trim()) missing.push("RESEND_API_KEY");
   if (emailProvider !== "resend") throw new Error("EMAIL_PROVIDER must be resend in production");
@@ -87,6 +90,41 @@ export function validateRuntimeEnvironment(
   const storageProvider = environment.MEDIA_STORAGE_PROVIDER?.trim().toLowerCase();
   if (storageProvider !== "s3" && storageProvider !== "minio") throw new Error("MEDIA_STORAGE_PROVIDER must be s3 or minio in production");
   if (missing.length) throw new Error(`Missing or unsafe production environment variables: ${[...new Set(missing)].join(", ")}`);
+}
+
+/** Resolve the public API origin used in visitor-facing redemption URLs. */
+export function getPublicApiOrigin(
+  environment: ApiRuntimeEnvironment = process.env,
+): string {
+  const configured = environment.PUBLIC_API_URL?.trim();
+  const value = configured ||
+    (environment.NODE_ENV === "production" ? undefined : "http://localhost:4000");
+  if (!value) throw new Error("PUBLIC_API_URL is required in production");
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`Invalid PUBLIC_API_URL: ${value}`);
+  }
+  if (
+    !parsed.hostname ||
+    parsed.username ||
+    parsed.password ||
+    parsed.pathname !== "/" ||
+    parsed.search ||
+    parsed.hash ||
+    !["http:", "https:"].includes(parsed.protocol)
+  ) {
+    throw new Error("PUBLIC_API_URL must be an HTTP(S) origin without a path");
+  }
+  if (
+    environment.NODE_ENV === "production" &&
+    parsed.protocol !== "https:"
+  ) {
+    throw new Error("Production PUBLIC_API_URL must use HTTPS");
+  }
+  return parsed.origin;
 }
 
 /** Resolve the API listener from the documented API_PORT, defaulting to 4000. */

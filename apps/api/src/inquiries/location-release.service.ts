@@ -6,7 +6,7 @@ import {
   NotFoundException,
   Injectable,
 } from "@nestjs/common";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -84,7 +84,6 @@ export class LocationReleaseService {
             inquiry.id,
             {
               channel: "admin-release",
-              releaseId: inquiry.locationReleaseId,
             },
           );
           return {
@@ -92,10 +91,8 @@ export class LocationReleaseService {
             location: this.location(inquiry.property),
             releaseToken: inquiry.locationReleaseId,
             idempotent: true,
-            releaseId:
-              inquiry.locationReleaseId ??
-              inquiry.locationApprovedAt?.toISOString() ??
-              inquiry.id,
+            releaseVersion:
+              this.releaseVersion(inquiry.locationReleaseId, inquiry.id),
           };
         }
         await this.revokeWithinTransaction(
@@ -149,7 +146,6 @@ export class LocationReleaseService {
             current.id,
             {
               channel: "admin-release",
-              releaseId: current.locationReleaseId,
             },
           );
           return {
@@ -157,10 +153,8 @@ export class LocationReleaseService {
             location: this.location(current.property),
             releaseToken: current.locationReleaseId,
             idempotent: true,
-            releaseId:
-              current.locationReleaseId ??
-              current.locationApprovedAt?.toISOString() ??
-              current.id,
+            releaseVersion:
+              this.releaseVersion(current.locationReleaseId, current.id),
           };
         }
         throw new ConflictException(
@@ -170,18 +164,16 @@ export class LocationReleaseService {
       const updated = await this.findInquiry(tx, inquiryId);
       await this.recordAudit(tx, actor, "EXACT_LOCATION_RELEASED", inquiryId, {
         reason: reason?.trim() || "admin-approved inquiry",
-        releaseId,
       });
       await this.recordAudit(tx, actor, "EXACT_LOCATION_VIEWED", inquiryId, {
         channel: "admin-release",
-        releaseId,
       });
       return {
         inquiry: updated,
         location: this.location(updated.property),
         releaseToken: releaseId,
         idempotent: false,
-        releaseId,
+        releaseVersion: this.releaseVersion(releaseId, inquiryId),
       };
     });
     return result;
@@ -235,7 +227,6 @@ export class LocationReleaseService {
       }
       await this.recordAudit(tx, actor, "EXACT_LOCATION_VIEWED", inquiry.id, {
         channel: "admin",
-        releaseId: inquiry.locationReleaseId,
       });
       return this.location(inquiry.property);
     });
@@ -271,7 +262,6 @@ export class LocationReleaseService {
         throw new NotFoundException("Released location not found");
       }
       await this.recordAudit(tx, {}, "EXACT_LOCATION_VIEWED", inquiry.id, {
-        releaseId: token,
         channel: "visitor-token",
       });
       return {
@@ -383,5 +373,11 @@ export class LocationReleaseService {
 
   private numberOrNull(value: unknown) {
     return value == null ? null : Number(value);
+  }
+
+  private releaseVersion(token: string | null | undefined, fallback: string) {
+    return token
+      ? createHash("sha256").update(token).digest("hex")
+      : fallback;
   }
 }

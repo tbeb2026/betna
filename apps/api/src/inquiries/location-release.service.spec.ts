@@ -94,6 +94,9 @@ describe("LocationReleaseService", () => {
         entityId: "inquiry-idempotent",
       }),
     }));
+    expect(JSON.stringify(auditCreate.mock.calls)).not.toContain(
+      "release-idempotent",
+    );
   });
 
   it("audits an exact location returned after a concurrent release claim loses its race", async () => {
@@ -133,6 +136,9 @@ describe("LocationReleaseService", () => {
     expect(auditCreate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ action: "EXACT_LOCATION_VIEWED", entityId: "inquiry-claimed" }),
     }));
+    expect(JSON.stringify(auditCreate.mock.calls)).not.toContain(
+      "release-claimed",
+    );
   });
 
   it("revalidates a token after locking when a concurrent revoke commits first", async () => {
@@ -224,5 +230,37 @@ describe("LocationReleaseService", () => {
     const service = new LocationReleaseService(prisma);
 
     await expect(service.getReleasedLocationByToken(token)).rejects.toThrow("audit store unavailable");
+  });
+
+  it("does not persist visitor redemption tokens in audit metadata", async () => {
+    const token = "44444444-4444-4444-8444-444444444444";
+    const inquiry: any = {
+      id: "inquiry-visitor-audit",
+      status: "LOCATION_APPROVED",
+      reference: "BTN-VISITOR-AUDIT",
+      locationReleaseId: token,
+      locationReleaseExpiresAt: new Date(Date.now() + 60_000),
+      locationRevokedAt: null,
+      property: { exactAddress: "Private lane", exactLatitude: -1.2, exactLongitude: 36.8 },
+    };
+    const auditCreate = vi.fn().mockResolvedValue({ id: "audit-visitor" });
+    const prisma: any = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      $transaction: vi.fn(async (work: any) => work(prisma)),
+      inquiry: { findUnique: vi.fn(async () => ({ ...inquiry, property: { ...inquiry.property } })) },
+      auditEvent: { create: auditCreate },
+    };
+    const service = new LocationReleaseService(prisma);
+
+    await service.getReleasedLocationByToken(token);
+
+    expect(auditCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        action: "EXACT_LOCATION_VIEWED",
+        entityId: inquiry.id,
+        metadata: { channel: "visitor-token" },
+      }),
+    }));
+    expect(JSON.stringify(auditCreate.mock.calls)).not.toContain(token);
   });
 });

@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  InternalServerErrorException,
 } from "@nestjs/common";
 import { InquiriesService } from "./inquiries.service";
 import { AuditService } from "../audit/audit.service";
@@ -189,6 +190,8 @@ describe("InquiriesService", () => {
     });
     expect(released).not.toHaveProperty("location");
     expect(released).not.toHaveProperty("releaseToken");
+    expect(released).not.toHaveProperty("releaseId");
+    expect(released.inquiry).not.toHaveProperty("locationReleaseId");
     expect(released.inquiry.property).not.toHaveProperty("exactAddress");
     expect(released.inquiry.property).not.toHaveProperty("exactLatitude");
     expect(released.inquiry.property).not.toHaveProperty("exactLongitude");
@@ -199,7 +202,9 @@ describe("InquiriesService", () => {
     const { prisma, inquiries } = makePrisma();
     const enqueue = vi.fn().mockResolvedValue(undefined);
     const previousPublicApiUrl = process.env.PUBLIC_API_URL;
+    const previousNodeEnv = process.env.NODE_ENV;
     process.env.PUBLIC_API_URL = "https://api.betna.test";
+    process.env.NODE_ENV = "production";
     try {
       const service = new InquiriesService(prisma, { enqueue } as any);
       const created = await service.createGuestInquiry({
@@ -251,7 +256,80 @@ describe("InquiriesService", () => {
     } finally {
       if (previousPublicApiUrl === undefined) delete process.env.PUBLIC_API_URL;
       else process.env.PUBLIC_API_URL = previousPublicApiUrl;
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnv;
     }
+  });
+
+  it("fails closed instead of using localhost for a production redemption URL", async () => {
+    const { prisma } = makePrisma();
+    const previousPublicApiUrl = process.env.PUBLIC_API_URL;
+    const previousNodeEnv = process.env.NODE_ENV;
+    delete process.env.PUBLIC_API_URL;
+    process.env.NODE_ENV = "production";
+    try {
+      const service = new InquiriesService(prisma, { enqueue: vi.fn() } as any);
+      const created = await service.createGuestInquiry({
+        propertyId: "property-1",
+        mode: "SHORT_STAY",
+        name: "Production URL Guest",
+        email: "production-url@example.com",
+        phone: "+254711111122",
+        message: "Please release the address.",
+        ...shortStayDates,
+      });
+      await expect(
+        service.adminReleaseLocation(created.inquiry.id, {
+          id: "admin-1",
+          roles: ["ADMIN"],
+        }),
+      ).rejects.toBeInstanceOf(InternalServerErrorException);
+    } finally {
+      if (previousPublicApiUrl === undefined) delete process.env.PUBLIC_API_URL;
+      else process.env.PUBLIC_API_URL = previousPublicApiUrl;
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnv;
+    }
+  });
+
+  it("projects owner inquiries without exact location or release credentials", async () => {
+    const { prisma, inquiries } = makePrisma();
+    inquiries.push({
+      id: "inquiry-owner-safe",
+      reference: "BTNA-SAFE",
+      status: "LOCATION_APPROVED",
+      guestName: "Guest",
+      guestEmail: "guest@example.com",
+      guestPhone: "+254700000002",
+      guestLocale: "en",
+      message: "Please confirm.",
+      locationReleaseId: "11111111-1111-4111-8111-111111111111",
+      locationReleaseExpiresAt: new Date("2026-12-01T00:00:00.000Z"),
+      property,
+      offering: { id: "offering-1", mode: "SHORT_STAY", basePrice: 100 },
+    });
+    const service = new InquiriesService(prisma, { enqueue: vi.fn() } as any);
+
+    const result = await service.listForOwner("owner-1");
+
+    expect(result[0]).not.toHaveProperty("locationReleaseId");
+    expect(result[0]).not.toHaveProperty("locationReleaseExpiresAt");
+    expect(result[0].property).toMatchObject({
+      id: "property-1",
+    });
+    expect(result[0].property).not.toHaveProperty("exactAddress");
+    expect(result[0].property).not.toHaveProperty("exactLatitude");
+    expect(result[0].property).not.toHaveProperty("exactLongitude");
+    expect(result[0].property).not.toHaveProperty("exactLocationGeometry");
+    expect(prisma.inquiry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { property: { ownerId: "owner-1" } },
+        select: expect.objectContaining({
+          property: expect.objectContaining({ select: expect.any(Object) }),
+          offering: expect.objectContaining({ select: expect.any(Object) }),
+        }),
+      }),
+    );
   });
 
   it("logs a prefilled contact click without exposing conversation contents", async () => {

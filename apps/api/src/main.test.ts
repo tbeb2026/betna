@@ -3,6 +3,7 @@ import {
   API_CORS_METHODS,
   getApiCorsOrigins,
   getApiPort,
+  getPublicApiOrigin,
   validateRuntimeEnvironment,
 } from "./runtime";
 
@@ -60,6 +61,7 @@ describe("production runtime validation", () => {
       validateRuntimeEnvironment({
         NODE_ENV: "production",
         API_CORS_ORIGINS: "https://betna.example",
+        PUBLIC_API_URL: "https://api.betna.example",
         DATABASE_URL: "postgresql://db/betna",
         REDIS_URL: "redis://redis:6379",
         SESSION_SECRET: "session-secret-that-is-long-enough",
@@ -86,6 +88,7 @@ describe("production runtime validation", () => {
     expect(() => validateRuntimeEnvironment({
       NODE_ENV: "production",
       API_CORS_ORIGINS: "https://betna.example",
+      PUBLIC_API_URL: "https://api.betna.example",
       DATABASE_URL: "postgresql://db/betna",
       REDIS_URL: "redis://redis:6379",
       SESSION_SECRET: "session-secret-that-is-long-enough",
@@ -102,5 +105,23 @@ describe("production runtime validation", () => {
       S3_PRIVATE_BUCKET: "private",
       MEDIA_STORAGE_PROVIDER: "fake",
     })).toThrow(/EMAIL_PROVIDER/);
+  });
+
+  it("requires a configured HTTPS public API origin", () => {
+    expect(() => getPublicApiOrigin({ NODE_ENV: "production" })).toThrow(
+      /PUBLIC_API_URL/,
+    );
+    expect(() =>
+      getPublicApiOrigin({
+        NODE_ENV: "production",
+        PUBLIC_API_URL: "http://localhost:4000",
+      }),
+    ).toThrow(/HTTPS/);
+    expect(
+      getPublicApiOrigin({
+        NODE_ENV: "production",
+        PUBLIC_API_URL: "https://api.betna.example/",
+      }),
+    ).toBe("https://api.betna.example");
   });
 });
