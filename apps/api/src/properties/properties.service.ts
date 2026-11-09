@@ -115,7 +115,8 @@ export class PropertiesService {
         ownerId,
       );
     }
-    if (existing.status !== "DRAFT") {
+    const renewingExpired = existing.status === "PAUSED";
+    if (existing.status !== "DRAFT" && !renewingExpired) {
       throw new ConflictException("Only drafts can be edited");
     }
 
@@ -127,41 +128,79 @@ export class PropertiesService {
     );
     await this.assertManagedCity(merged.cityId, countryId);
     await this.assertManagedNeighborhood(merged.neighborhoodId, merged.cityId);
-    return this.prisma.property.update({
-      where: { id: propertyId },
-      data: {
-        countryId,
-        cityId: merged.cityId,
-        neighborhoodId: merged.neighborhoodId,
-        title: merged.title.trim(),
-        description: merged.description.trim(),
-        category: merged.category,
-        subcategory: merged.subcategory,
-        amenities: merged.amenities ?? [],
-        publicLocationLabel: merged.publicLocation.label.trim(),
-        publicLatitude: merged.publicLocation.latitude,
-        publicLongitude: merged.publicLocation.longitude,
-        exactAddress: merged.exactLocation.address.trim(),
-        exactLatitude: merged.exactLocation.latitude,
-        exactLongitude: merged.exactLocation.longitude,
-        authorizationAttested: merged.authorizationAttested === true,
-        offerings: {
-          deleteMany: {},
-          create: normalized.map((offering) => ({
-            mode: offering.mode,
-            currency: offering.currency,
-            basePrice: offering.basePrice,
-            negotiable: offering.negotiable ?? false,
-            minimumNights: offering.minimumNights,
-            moveInDate: offering.moveInDate
-              ? new Date(offering.moveInDate)
-              : undefined,
-            leaseDurationMonths: offering.leaseDurationMonths,
-          })),
-        },
+    const data = {
+      countryId,
+      cityId: merged.cityId,
+      neighborhoodId: merged.neighborhoodId,
+      title: merged.title.trim(),
+      description: merged.description.trim(),
+      category: merged.category,
+      subcategory: merged.subcategory,
+      amenities: merged.amenities ?? [],
+      publicLocationLabel: merged.publicLocation.label.trim(),
+      publicLatitude: merged.publicLocation.latitude,
+      publicLongitude: merged.publicLocation.longitude,
+      exactAddress: merged.exactLocation.address.trim(),
+      exactLatitude: merged.exactLocation.latitude,
+      exactLongitude: merged.exactLocation.longitude,
+      authorizationAttested: merged.authorizationAttested === true,
+      offerings: {
+        deleteMany: {},
+        create: normalized.map((offering) => ({
+          mode: offering.mode,
+          currency: offering.currency,
+          basePrice: offering.basePrice,
+          negotiable: offering.negotiable ?? false,
+          minimumNights: offering.minimumNights,
+          moveInDate: offering.moveInDate
+            ? new Date(offering.moveInDate)
+            : undefined,
+          leaseDurationMonths: offering.leaseDurationMonths,
+        })),
       },
-      include: { offerings: true },
+      ...(renewingExpired
+        ? {
+            status: "DRAFT" as const,
+            verificationValidUntil: null,
+            lastInspectedAt: null,
+          }
+        : {}),
+    };
+    if (!renewingExpired) {
+      return this.prisma.property.update({
+        where: { id: propertyId },
+        data,
+        include: { offerings: true },
+      });
+    }
+
+    const renewed = await this.withTransaction(async (tx: any) => {
+      const transition = typeof tx.property.updateMany === "function"
+        ? await tx.property.updateMany({
+            where: { id: propertyId, ownerId, status: "PAUSED" },
+            data,
+          })
+        : null;
+      if (transition && transition.count !== 1) {
+        throw new ConflictException("Property lifecycle changed during renewal");
+      }
+      if (!transition) {
+        await tx.property.update({ where: { id: propertyId }, data });
+      }
+      if (typeof tx.propertyVersion?.updateMany === "function") {
+        await tx.propertyVersion.updateMany({
+          where: { propertyId, isApproved: true },
+          data: { isApproved: false },
+        });
+      }
+      await this.recordAudit(tx, ownerId, "PROPERTY_RENEWAL_STARTED", propertyId, {
+        previousStatus: "PAUSED",
+        status: "DRAFT",
+      });
+      return this.findOwnedProperty(propertyId, ownerId, tx);
     });
+    this.publishing?.invalidateApprovedSnapshot(propertyId);
+    return renewed;
   }
 
   async submit(propertyId: string, ownerId: string): Promise<PropertyRecord> {

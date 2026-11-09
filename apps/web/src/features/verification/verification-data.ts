@@ -8,8 +8,15 @@ export type VerificationInspection = {
   propertyId: string;
   territoryId?: string | null;
   status: string;
+  verifierId?: string | null;
   notes?: string | null;
   property?: { id: string; title?: string; category?: string };
+};
+
+export type EligibleVerifier = {
+  id: string;
+  name: string;
+  email?: string | null;
 };
 
 async function verificationApi() {
@@ -49,6 +56,20 @@ export async function getAdminReviewQueue() {
   try {
     return await api.get<VerificationInspection[]>(
       "/verification/inspections/review",
+    );
+  } catch {
+    return [];
+  }
+}
+
+export async function getEligibleVerifiers(
+  inspectionId: string,
+): Promise<EligibleVerifier[]> {
+  const api = await verificationApi();
+  if (!api) return [];
+  try {
+    return await api.get<EligibleVerifier[]>(
+      `/verification/verifiers?inspectionId=${encodeURIComponent(inspectionId)}`,
     );
   } catch {
     return [];

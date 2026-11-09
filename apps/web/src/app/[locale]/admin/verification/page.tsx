@@ -1,5 +1,8 @@
 import { AdminReviewActions } from "../../../../features/verification/admin-review-actions";
-import { getAdminReviewQueue } from "../../../../features/verification/verification-data";
+import {
+  getAdminReviewQueue,
+  getEligibleVerifiers,
+} from "../../../../features/verification/verification-data";
 import { getSession } from "../../../../lib/auth";
 import { getTranslations } from "next-intl/server";
 
@@ -8,6 +11,16 @@ export default async function AdminVerificationPage({ params }: { params: Promis
   const t = await getTranslations({ locale, namespace: "portal.admin" });
   const categoryT = await getTranslations({ locale, namespace: "portal.categories" });
   const [queue, session] = await Promise.all([getAdminReviewQueue(), getSession()]);
+  const eligibleByInspection = new Map(
+    await Promise.all(
+      queue
+        .filter((inspection) => inspection.status === "DRAFT")
+        .map(async (inspection) => [
+          inspection.id,
+          await getEligibleVerifiers(inspection.id),
+        ] as const),
+    ),
+  );
   return (
     <div className="portal-card">
       <p className="eyebrow">{t("verificationEyebrow")}</p>
@@ -18,11 +31,20 @@ export default async function AdminVerificationPage({ params }: { params: Promis
           {queue.map((inspection) => (
             <article className="property-list-item" key={inspection.id}>
               <div>
-                <p className="eyebrow">{t("readyForReview")}</p>
+                <p className="eyebrow">
+                  {inspection.status === "DRAFT"
+                    ? t("awaitingAssignment")
+                    : t("readyForReview")}
+                </p>
                 <h3>{inspection.property?.title ?? inspection.id}</h3>
                 <p className="form-help">{inspection.property?.category && categoryT.has(inspection.property.category.toLowerCase()) ? categoryT(inspection.property.category.toLowerCase()) : t("verificationEyebrow")}</p>
               </div>
-              <AdminReviewActions inspectionId={inspection.id} />
+              <AdminReviewActions
+                inspectionId={inspection.id}
+                status={inspection.status}
+                verifierId={inspection.verifierId}
+                eligibleVerifiers={eligibleByInspection.get(inspection.id) ?? []}
+              />
             </article>
           ))}
         </div>

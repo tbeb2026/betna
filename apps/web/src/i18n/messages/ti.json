@@ -210,6 +210,7 @@
       "verificationEyebrow": "ግምገማ ምርመራ",
       "verificationTitle": "ዝርዝር ግምገማ ምርመራ",
       "verificationDescription": "ጸብጻባት ኣድለይቲ መልስታት ዝርዝርን ምስማር መርትዖን ምስ ሓለፉ ጥራይ ንግምገማ ይቐርቡ።",
+      "awaitingAssignment": "ምድባ ኣረጋጋጺ ይጽበ",
       "readyForReview": "ንግምገማ ድሉው",
       "emptyVerification": "ንግምገማ ዝጽበ ዝተሰማምዐ ምርመራ የለን።",
       "reviewQueueTitle": "ዝርዝር ግምገማ",
@@ -325,7 +326,8 @@
       "empty": "ንነፍሲ ወከፍ ቦታኻ ረቂቕ ፍጠር። Betna ቅድሚ ህዝባዊ ምውጻእ ኩሉ ምቕራብ ትግምግም።",
       "managedLocation": "ዝተመሓደረ ቦታ",
       "editDraft": "ረቂቕ ኣርም",
-      "requestEdit": "ምምሕያሽ ዝርዝር ሕተት"
+      "requestEdit": "ምምሕያሽ ዝርዝር ሕተት",
+      "renewListing": "ዝርዝር ኣሐድስ"
     },
     "ownerHome": {
       "title": "ዝርዝራት",
@@ -352,7 +354,15 @@
       "rejected": "ምርመራ ተነጺጉ",
       "failed": "ግምገማ ኣይተዓወተን፤ እንደገና ፈትን",
       "approve": "ኣጽድቕ",
-      "reject": "ንጸግ"
+      "reject": "ንጸግ",
+      "unauthorized": "ነዚ ተግባር ክትፍጽም ፍቓድ የብልካን።",
+      "assigned": "ኣረጋጋጺ ተመዲቡ።",
+      "assign": "ኣረጋጋጺ ምድባ",
+      "reassign": "ኣረጋጋጺ እንደገና ምድባ",
+      "verifierLabel": "ናይ መስክ ኣረጋጋጺ",
+      "selectVerifier": "ኣረጋጋጺ ምረጽ",
+      "noEligibleVerifiers": "ኣብዚ ክልል ዝሰማማዑ ኣረጋገጽቲ የለዉን።",
+      "assignedTo": "ናብ {name} ተመዲቡ።"
     },
     "commissionActions": {
       "failed": "ስራሕ ኮሚሽን ኣይተዓወተን",

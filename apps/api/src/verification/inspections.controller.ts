@@ -8,6 +8,7 @@ import {
   Req,
   UseGuards,
   ParseUUIDPipe,
+  Query,
 } from "@nestjs/common";
 import { IsArray, IsBoolean, IsIn, IsObject, IsOptional, IsString, IsUUID, MaxLength } from "class-validator";
 import { Type } from "class-transformer";
@@ -128,6 +129,14 @@ export class InspectionsController {
   @Roles("ADMIN")
   reviewQueue() {
     return this.inspections.listForAdmin();
+  }
+
+  @Get("verifiers")
+  @Roles("ADMIN")
+  verifiers(
+    @Query("inspectionId", new ParseUUIDPipe({ version: "4" })) inspectionId: string,
+  ) {
+    return this.inspections.listEligibleVerifiers(inspectionId);
   }
 
   @Get("inspections/:id")

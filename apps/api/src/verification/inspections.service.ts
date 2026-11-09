@@ -179,6 +179,10 @@ export class InspectionsService {
     });
   }
 
+  listEligibleVerifiers(inspectionId: string) {
+    return this.assignments.listEligibleVerifiers(inspectionId);
+  }
+
   getChecklist(category: string) {
     return this.checklist.getPersisted(category);
   }

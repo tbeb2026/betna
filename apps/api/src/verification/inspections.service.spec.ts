@@ -144,6 +144,7 @@ function makePrisma() {
       findUnique: vi.fn(
         async ({ where, include }: any) => users.get(where.id) ?? null,
       ),
+      findMany: vi.fn(async () => [...users.values()]),
     },
     property: {
       findUnique: vi.fn(async () => ({
@@ -287,6 +288,47 @@ describe("InspectionsService", () => {
       roles: ["ADMIN"],
     });
     expect(assigned.verifierId).toBe("verifier-1");
+  });
+
+  it("lists only active verifiers assigned to the inspection territory", async () => {
+    const { prisma } = makePrisma();
+    prisma.user.findMany.mockResolvedValue([
+      {
+        id: "verifier-1",
+        firstName: "Field",
+        lastName: "Verifier",
+        email: "field@example.com",
+        status: "ACTIVE",
+        roles: [{ role: { name: "VERIFIER" } }],
+        territoryAssignments: [{ territoryId: "territory-1" }],
+      },
+      {
+        id: "verifier-2",
+        firstName: "Other",
+        lastName: "Territory",
+        email: "other@example.com",
+        status: "ACTIVE",
+        roles: [{ role: { name: "VERIFIER" } }],
+        territoryAssignments: [{ territoryId: "territory-2" }],
+      },
+      {
+        id: "verifier-suspended",
+        firstName: "Suspended",
+        lastName: "Verifier",
+        status: "SUSPENDED",
+        roles: [{ role: { name: "VERIFIER" } }],
+        territoryAssignments: [{ territoryId: "territory-1" }],
+      },
+    ]);
+    const service = makeService(prisma);
+
+    await expect(service.listEligibleVerifiers("inspection-1")).resolves.toEqual([
+      {
+        id: "verifier-1",
+        name: "Field Verifier",
+        email: "field@example.com",
+      },
+    ]);
   });
 
   it.each(["APPROVED", "REJECTED", "EXPIRED"] as const)(

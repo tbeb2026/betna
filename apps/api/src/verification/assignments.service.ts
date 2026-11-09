@@ -104,6 +104,41 @@ export class AssignmentsService {
     });
   }
 
+  async listEligibleVerifiers(inspectionId: string) {
+    if (
+      typeof this.prisma.inspection?.findUnique !== "function" ||
+      typeof this.prisma.user?.findMany !== "function"
+    ) {
+      throw new ForbiddenException("Assignment authorization is unavailable");
+    }
+    const inspection = await this.prisma.inspection.findUnique({
+      where: { id: inspectionId },
+      select: { id: true, territoryId: true },
+    });
+    if (!inspection) throw new NotFoundException("Inspection not found");
+    const territoryId = inspection.territoryId;
+    const users = await this.prisma.user.findMany({
+      where: { status: "ACTIVE" },
+      include: {
+        roles: { include: { role: true } },
+        territoryAssignments: true,
+      },
+      orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+    });
+    return (users ?? [])
+      .filter((user: any) =>
+        user.status === "ACTIVE" &&
+        this.roles(user).includes("VERIFIER") &&
+        Boolean(territoryId) &&
+        this.territories(user).includes(territoryId as string),
+      )
+      .map((user: any) => ({
+        id: user.id,
+        name: [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || user.id,
+        email: user.email ?? null,
+      }));
+  }
+
   async createAssignment(inspection: any, verifierId: string) {
     return this.prisma.inspection.update({
       where: { id: inspection.id ?? randomUUID() },

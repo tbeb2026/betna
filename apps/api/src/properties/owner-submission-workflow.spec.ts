@@ -99,7 +99,9 @@ function makePrisma() {
           ),
         );
         if (!property) return { count: 0 };
-        Object.assign(property, data);
+        const next = { ...data };
+        if (data.offerings?.create) next.offerings = data.offerings.create;
+        Object.assign(property, next);
         return { count: 1 };
       }),
       update: vi.fn(async ({ where, data }: any) => {
@@ -217,17 +219,72 @@ function makePrisma() {
   return { prisma, properties, inspections };
 }
 
-function makePropertiesService(prisma: any, inspectionsService: InspectionsService, audit?: any) {
+function makePropertiesService(
+  prisma: any,
+  inspectionsService: InspectionsService,
+  audit?: any,
+  publishing?: PublishingService,
+) {
   return new PropertiesService(
     prisma,
     new TaxonomyService(),
     inspectionsService,
-    undefined,
+    publishing,
     audit,
   );
 }
 
 describe("owner submission inspection workflow", () => {
+  it("renews an expired paused listing through a fresh inspection without exposing its old snapshot", async () => {
+    const { prisma, inspections, properties: rows } = makePrisma();
+    const inspectionService = new InspectionsService(
+      prisma,
+      new AssignmentsService(prisma),
+      new ChecklistService(prisma),
+    );
+    const publishing = new PublishingService(
+      prisma,
+      undefined,
+      undefined,
+      undefined,
+      inspectionService,
+    );
+    const properties = makePropertiesService(prisma, inspectionService, undefined, publishing);
+    const draft = await properties.createDraft(owner.id, input);
+    await properties.submit(draft.id, owner.id);
+    const historicInspection = inspections[0];
+    Object.assign(historicInspection, {
+      status: "READY_FOR_REVIEW",
+      requiredEvidenceSynced: true,
+      checklist: { identityAuthorization: true },
+    });
+    await inspectionService.adminReview(historicInspection.id, admin, "APPROVED");
+    await publishing.publish(draft.id, admin);
+
+    rows[0].verificationValidUntil = new Date("2020-01-01T00:00:00.000Z");
+    await expect(publishing.expireVerification(draft.id)).resolves.toEqual([draft.id]);
+    expect(rows[0].status).toBe("PAUSED");
+    expect(historicInspection).toMatchObject({ status: "EXPIRED", ownerSubmissionKey: null });
+    await expect(publishing.getPublicProjection(draft.id)).resolves.toBeNull();
+
+    const renewed = await properties.updateDraft(draft.id, owner.id, {
+      title: "Renewed garden apartment",
+    } as any);
+    expect(renewed).toMatchObject({ status: "DRAFT", title: "Renewed garden apartment" });
+    expect(rows[0].verificationValidUntil).toBeNull();
+    await expect(publishing.getPublicProjection(draft.id)).resolves.toBeNull();
+
+    await properties.submit(draft.id, owner.id);
+    expect(rows[0].status).toBe("PENDING_REVIEW");
+    expect(inspections).toHaveLength(2);
+    expect(inspections[1]).toMatchObject({
+      propertyId: draft.id,
+      status: "DRAFT",
+      ownerSubmissionKey: `owner-submit:${draft.id}`,
+    });
+    expect(inspections[1].id).not.toBe(historicInspection.id);
+  });
+
   it("creates one contextual draft inspection that admins can assign within its territory", async () => {
     const { prisma, inspections } = makePrisma();
     const inspectionService = new InspectionsService(

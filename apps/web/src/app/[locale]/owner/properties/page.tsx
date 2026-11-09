@@ -55,7 +55,11 @@ export default async function OwnerPropertiesPage({ params }: { params: Promise<
                   className="button secondary"
                   href={`/owner/properties/${property.id}/edit`}
                 >
-                  {property.status === "DRAFT" ? t("editDraft") : t("requestEdit")}
+                  {property.status === "DRAFT"
+                    ? t("editDraft")
+                    : property.status === "PAUSED"
+                      ? t("renewListing")
+                      : t("requestEdit")}
                 </Link>
               ) : null}
             </article>

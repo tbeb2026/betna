@@ -225,6 +225,11 @@ export class PublishingService {
     return expired.map((property) => property.id);
   }
 
+  /** Remove the in-process approved snapshot once an owner starts renewal. */
+  invalidateApprovedSnapshot(propertyId: string) {
+    this.approvedSnapshots.delete(propertyId);
+  }
+
   /** Return properties that should receive a renewal reminder before expiry. */
   async renewalReminderCandidates(now = new Date(), days = 30): Promise<string[]> {
     const until = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
@@ -308,15 +313,32 @@ export class PublishingService {
   }
 
   private async expireOne(propertyId: string, now: Date): Promise<string | null> {
-    return this.withTransaction(async (tx: any) => {
+    const expired = await this.withTransaction(async (tx: any) => {
       await this.lockProperty(tx, propertyId);
       const property = await this.findProperty(propertyId, tx);
       const validUntil = property.verificationValidUntil ? new Date(property.verificationValidUntil) : null;
       if (!validUntil || validUntil.getTime() > now.getTime() || !["PUBLISHED", "VERIFIED", "PENDING_REVIEW"].includes(property.status)) return null;
       await tx.property.update({ where: { id: propertyId }, data: { status: "PAUSED" } });
+      if (typeof tx.inspection?.updateMany === "function") {
+        await tx.inspection.updateMany({
+          where: {
+            propertyId,
+            status: { in: ["DRAFT", "PENDING_UPLOAD", "READY_FOR_REVIEW", "APPROVED"] },
+          },
+          data: { status: "EXPIRED", verifierId: null, ownerSubmissionKey: null },
+        });
+      }
+      if (typeof tx.propertyVersion?.updateMany === "function") {
+        await tx.propertyVersion.updateMany({
+          where: { propertyId, isApproved: true },
+          data: { isApproved: false },
+        });
+      }
       await this.recordAudit(tx, undefined, "PROPERTY_VERIFICATION_EXPIRED", propertyId, { previousStatus: property.status, verificationValidUntil: validUntil.toISOString() });
       return propertyId;
     });
+    if (expired) this.invalidateApprovedSnapshot(propertyId);
+    return expired;
   }
 
   transferOwnership(propertyId: string, newOwnerId: string, actor: Actor) {

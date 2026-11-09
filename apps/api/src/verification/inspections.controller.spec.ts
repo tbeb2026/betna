@@ -23,6 +23,20 @@ describe("InspectionsController", () => {
     );
   });
 
+  it("exposes eligible verifiers through the guarded admin API", async () => {
+    const inspections = {
+      listEligibleVerifiers: vi.fn().mockResolvedValue([
+        { id: "verifier-1", name: "Field Verifier" },
+      ]),
+    };
+    const controller = new InspectionsController(inspections as any, {} as ChecklistService);
+
+    await expect(controller.verifiers("inspection-1")).resolves.toEqual([
+      { id: "verifier-1", name: "Field Verifier" },
+    ]);
+    expect(inspections.listEligibleVerifiers).toHaveBeenCalledWith("inspection-1");
+  });
+
   it("passes the authenticated verifier identity to evidence synchronization", async () => {
     const inspections = {
       markEvidenceSynced: vi.fn().mockResolvedValue({ status: "READY_FOR_REVIEW" }),

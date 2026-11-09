@@ -210,6 +210,7 @@
       "verificationEyebrow": "Verification review",
       "verificationTitle": "Inspection review queue",
       "verificationDescription": "Reports become reviewable only after required checklist answers and evidence synchronization pass.",
+      "awaitingAssignment": "Awaiting verifier assignment",
       "readyForReview": "Ready for review",
       "emptyVerification": "No synchronized inspections are waiting for review.",
       "reviewQueueTitle": "Review queue",
@@ -325,7 +326,8 @@
       "empty": "Create a draft for each place you own. Betna reviews every submission before it appears publicly.",
       "managedLocation": "Managed location",
       "editDraft": "Edit draft",
-      "requestEdit": "Request listing edit"
+      "requestEdit": "Request listing edit",
+      "renewListing": "Renew listing"
     },
     "ownerHome": {
       "title": "Listings",
@@ -352,7 +354,15 @@
       "rejected": "Inspection rejected",
       "failed": "Review failed; retry",
       "approve": "Approve",
-      "reject": "Reject"
+      "reject": "Reject",
+      "unauthorized": "You are not authorized to perform this action.",
+      "assigned": "Verifier assigned.",
+      "assign": "Assign verifier",
+      "reassign": "Reassign verifier",
+      "verifierLabel": "Field verifier",
+      "selectVerifier": "Select a verifier",
+      "noEligibleVerifiers": "No eligible verifiers are available for this territory.",
+      "assignedTo": "Assigned to {name}."
     },
     "commissionActions": {
       "failed": "Commission action failed",
