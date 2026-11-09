@@ -100,3 +100,23 @@ The follow-up audit findings are addressed as follows:
 - `git diff --check` — passed.
 - An actual Playwright run remains blocked by this restricted environment:
   the mock server cannot bind `127.0.0.1:4400` (`listen EPERM`).
+
+## Fix round 3 — notification response validation
+
+- Email verification requests now require `NotificationService.enqueue` to
+  return a non-empty array whose every entry explicitly has
+  `status === "SENT"`. `undefined`, `[]`, `[undefined]`, `[{}]`, and any
+  response containing another status are rejected before the request budget is
+  recorded or an email challenge is created.
+- The rate-limit test and onboarding notification mock now model the real
+  successful delivery response with `[{ status: "SENT" }]` instead of relying
+  on an empty or undefined mock result.
+- Direct regressions cover each malformed response above and a normal response
+  containing only `SENT` entries. Each malformed case retries successfully on
+  the next `SENT` response, proving the failed request did not consume budget.
+
+### Fix-round 3 verification
+
+- `pnpm vitest run apps/api/src/auth/auth.service.spec.ts` — passed, 22 tests.
+- `pnpm test` — passed, 26 files / 161 tests.
+- `git diff --check` — passed.

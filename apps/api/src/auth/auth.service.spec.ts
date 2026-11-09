@@ -28,7 +28,7 @@ describe("AuthService", () => {
   });
 
   it("rate limits repeated owner email verification requests", async () => {
-    const notifications = { enqueue: vi.fn().mockResolvedValue([]) };
+    const notifications = { enqueue: vi.fn().mockResolvedValue([{ status: "SENT" }]) };
     const auth = new AuthService({} as never, undefined, undefined, notifications as never);
 
     await auth.requestOwnerEmailVerification("rate-limited@example.com");
@@ -38,6 +38,100 @@ describe("AuthService", () => {
     await expect(
       auth.requestOwnerEmailVerification("rate-limited@example.com"),
     ).rejects.toMatchObject({ status: 429 });
+  });
+
+  it("rejects an undefined notification delivery response before creating a challenge or consuming budget", async () => {
+    const create = vi.fn();
+    const enqueue = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce([{ status: "SENT" }]);
+    const auth = new AuthService(
+      { emailVerificationChallenge: { count: vi.fn().mockResolvedValue(0), create } } as never,
+      undefined,
+      undefined,
+      { enqueue } as never,
+    );
+
+    await expect(auth.requestOwnerEmailVerification("undefined-delivery@example.com"))
+      .rejects.toThrow(/email.*deliver/i);
+    expect(create).not.toHaveBeenCalled();
+    await expect(auth.requestOwnerEmailVerification("undefined-delivery@example.com"))
+      .resolves.toEqual({ expiresAt: expect.any(Date) });
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects an empty notification delivery response before creating a challenge or consuming budget", async () => {
+    const create = vi.fn();
+    const enqueue = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ status: "SENT" }]);
+    const auth = new AuthService(
+      { emailVerificationChallenge: { count: vi.fn().mockResolvedValue(0), create } } as never,
+      undefined,
+      undefined,
+      { enqueue } as never,
+    );
+
+    await expect(auth.requestOwnerEmailVerification("empty-delivery@example.com"))
+      .rejects.toThrow(/email.*deliver/i);
+    expect(create).not.toHaveBeenCalled();
+    await expect(auth.requestOwnerEmailVerification("empty-delivery@example.com"))
+      .resolves.toEqual({ expiresAt: expect.any(Date) });
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a notification delivery response containing undefined before creating a challenge or consuming budget", async () => {
+    const create = vi.fn();
+    const enqueue = vi.fn()
+      .mockResolvedValueOnce([undefined])
+      .mockResolvedValueOnce([{ status: "SENT" }]);
+    const auth = new AuthService(
+      { emailVerificationChallenge: { count: vi.fn().mockResolvedValue(0), create } } as never,
+      undefined,
+      undefined,
+      { enqueue } as never,
+    );
+
+    await expect(auth.requestOwnerEmailVerification("undefined-entry@example.com"))
+      .rejects.toThrow(/email.*deliver/i);
+    expect(create).not.toHaveBeenCalled();
+    await expect(auth.requestOwnerEmailVerification("undefined-entry@example.com"))
+      .resolves.toEqual({ expiresAt: expect.any(Date) });
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a notification delivery response without an explicit status before creating a challenge or consuming budget", async () => {
+    const create = vi.fn();
+    const enqueue = vi.fn()
+      .mockResolvedValueOnce([{}])
+      .mockResolvedValueOnce([{ status: "SENT" }]);
+    const auth = new AuthService(
+      { emailVerificationChallenge: { count: vi.fn().mockResolvedValue(0), create } } as never,
+      undefined,
+      undefined,
+      { enqueue } as never,
+    );
+
+    await expect(auth.requestOwnerEmailVerification("missing-status@example.com"))
+      .rejects.toThrow(/email.*deliver/i);
+    expect(create).not.toHaveBeenCalled();
+    await expect(auth.requestOwnerEmailVerification("missing-status@example.com"))
+      .resolves.toEqual({ expiresAt: expect.any(Date) });
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts a notification delivery response whose every entry is SENT", async () => {
+    const create = vi.fn().mockResolvedValue(undefined);
+    const auth = new AuthService(
+      { emailVerificationChallenge: { count: vi.fn().mockResolvedValue(0), create } } as never,
+      undefined,
+      undefined,
+      { enqueue: vi.fn().mockResolvedValue([{ status: "SENT" }, { status: "SENT" }]) } as never,
+    );
+
+    await expect(auth.requestOwnerEmailVerification("sent-delivery@example.com"))
+      .resolves.toEqual({ expiresAt: expect.any(Date) });
+    expect(create).toHaveBeenCalledTimes(1);
   });
 
   it("does not report email verification as sent when the notification boundary fails", async () => {
@@ -132,6 +226,7 @@ describe("AuthService", () => {
     const notifications = {
       enqueue: vi.fn().mockImplementation(async (event: { body?: string }) => {
         sentEmail = event.body ?? "";
+        return [{ status: "SENT" }];
       }),
     };
     const prisma = {

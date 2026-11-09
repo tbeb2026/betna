@@ -134,10 +134,9 @@ export class AuthService {
       idempotencyKey: `owner-email-verification:${email}:${expiresAt.getTime()}`,
     });
     if (
-      Array.isArray(deliveries) &&
-      deliveries.some((delivery) =>
-        delivery?.status !== undefined && delivery.status !== "SENT",
-      )
+      !Array.isArray(deliveries) ||
+      deliveries.length === 0 ||
+      deliveries.some((delivery) => delivery?.status !== "SENT")
     ) {
       throw new Error("Email verification could not be delivered");
     }
