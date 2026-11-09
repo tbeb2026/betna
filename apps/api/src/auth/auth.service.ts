@@ -31,6 +31,9 @@ interface AuthUserRecord {
   phone?: string | null;
   passwordHash?: string | null;
   status: string;
+  emailVerified?: boolean;
+  phoneVerified?: boolean;
+  authorizationAttested?: boolean;
   roles?: Array<string | { name?: string; role?: { name?: string } | null }>;
   territoryAssignments?: Array<{ territoryId: string }>;
   territoryIds?: string[];
@@ -84,6 +87,7 @@ export class AuthService {
     ) {
       throw new AuthenticationError("Invalid email or password");
     }
+    this.assertVerifiedIdentity(user);
     return this.issueSession(user);
   }
 
@@ -239,6 +243,7 @@ export class AuthService {
     if (!user || user.status !== "ACTIVE") {
       throw new AuthenticationError("Invalid phone or OTP");
     }
+    this.assertVerifiedIdentity(user, "OTP");
     return this.issueSession(user);
   }
 
@@ -305,6 +310,26 @@ export class AuthService {
       return Boolean(confirmed);
     }
     return Boolean(this.emailChallenges.get(email)?.confirmedAt);
+  }
+
+  private assertVerifiedIdentity(user: AuthUserRecord, method: "PASSWORD" | "OTP" = "PASSWORD") {
+    const roles = this.roles(user);
+    const owner = roles.includes("OWNER");
+    // Persisted users always have these booleans. Undefined remains permissive
+    // for lightweight unit adapters that predate the identity columns.
+    if (user.emailVerified === false || (method === "PASSWORD" && user.emailVerified === undefined && owner === false)) {
+      throw new AuthenticationError("Email verification is required");
+    }
+    if (owner && (user.emailVerified !== true || user.phoneVerified !== true || user.authorizationAttested !== true)) {
+      throw new AuthenticationError("Verified owner identity is required");
+    }
+  }
+
+  private roles(user: AuthUserRecord): string[] {
+    return (user.roles ?? [])
+      .map((entry) => typeof entry === "string" ? entry : entry.role?.name ?? entry.name)
+      .filter((role): role is string => Boolean(role))
+      .map((role) => role.toUpperCase());
   }
 
   private normalizeEmail(email: string): string {

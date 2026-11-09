@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
 import { IsEmail, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateIf } from "class-validator";
 import { AuthSessionGuard, Roles, RolesGuard } from "../auth/guards";
 import { InquiriesService } from "./inquiries.service";
@@ -68,7 +68,7 @@ export class PublicContactController {
 
   @Get("properties/:propertyId/contact-owner")
   async ownerContact(
-    @Param("propertyId") propertyId: string,
+    @Param("propertyId", new ParseUUIDPipe({ version: "4" })) propertyId: string,
     @Res() response: { redirect: (status: number, url: string) => unknown },
   ) {
     const target = await this.inquiries.ownerContactRedirect(propertyId);
@@ -90,7 +90,7 @@ export class OwnerInquiriesController {
   @Post(":id/respond")
   respond(
     @Req() request: { user: { id: string } },
-    @Param("id") id: string,
+    @Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
     @Body() body: OwnerResponseDto,
   ) {
     return this.inquiries.ownerRespond(id, request.user.id, body);
@@ -108,10 +108,18 @@ export class AdminInquiriesController {
     return this.inquiries.listForAdmin();
   }
 
+  @Get(":id/location")
+  exactLocation(
+    @Req() request: { user: { id: string; roles: string[] } },
+    @Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
+  ) {
+    return this.inquiries.getReleasedLocation(id, request.user);
+  }
+
   @Post(":id/location-release")
   release(
     @Req() request: { user: { id: string; roles: string[] } },
-    @Param("id") id: string,
+    @Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
     @Body() body: AdminLocationReleaseDto,
   ) {
     return this.inquiries.adminReleaseLocation(id, request.user, body?.reason);
@@ -120,7 +128,7 @@ export class AdminInquiriesController {
   @Post(":id/location-release/revoke")
   revoke(
     @Req() request: { user: { id: string; roles: string[] } },
-    @Param("id") id: string,
+    @Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
     @Body() body: AdminLocationReleaseDto,
   ) {
     return this.inquiries.revokeLocation(id, request.user, body?.reason);

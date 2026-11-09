@@ -65,7 +65,42 @@ describe("production runtime validation", () => {
         SESSION_SECRET: "session-secret-that-is-long-enough",
         JWT_SECRET: "jwt-secret-that-is-long-enough",
         MEDIA_SIGNING_SECRET: "media-signing-secret-that-is-long-enough",
+        EMAIL_PROVIDER: "resend",
+        EMAIL_FROM: "Betna <noreply@example.com>",
+        RESEND_API_KEY: "re_test",
+        WHATSAPP_PROVIDER: "meta",
+        WHATSAPP_ACCESS_TOKEN: "wa-token",
+        WHATSAPP_PHONE_NUMBER_ID: "phone-id",
+        S3_ENDPOINT: "https://s3.example.com",
+        S3_REGION: "af-south-1",
+        S3_ACCESS_KEY_ID: "access",
+        S3_SECRET_ACCESS_KEY: "secret",
+        S3_PUBLIC_BUCKET: "public",
+        S3_PRIVATE_BUCKET: "private",
+        MEDIA_STORAGE_PROVIDER: "s3",
       }),
     ).not.toThrow();
+  });
+
+  it("rejects production no-op notification and storage configuration", () => {
+    expect(() => validateRuntimeEnvironment({
+      NODE_ENV: "production",
+      API_CORS_ORIGINS: "https://betna.example",
+      DATABASE_URL: "postgresql://db/betna",
+      REDIS_URL: "redis://redis:6379",
+      SESSION_SECRET: "session-secret-that-is-long-enough",
+      JWT_SECRET: "jwt-secret-that-is-long-enough",
+      MEDIA_SIGNING_SECRET: "media-signing-secret-that-is-long-enough",
+      EMAIL_PROVIDER: "log",
+      EMAIL_FROM: "noreply@example.com",
+      WHATSAPP_PROVIDER: "log",
+      S3_ENDPOINT: "https://s3.example.com",
+      S3_REGION: "af-south-1",
+      S3_ACCESS_KEY_ID: "access",
+      S3_SECRET_ACCESS_KEY: "secret",
+      S3_PUBLIC_BUCKET: "public",
+      S3_PRIVATE_BUCKET: "private",
+      MEDIA_STORAGE_PROVIDER: "fake",
+    })).toThrow(/EMAIL_PROVIDER/);
   });
 });

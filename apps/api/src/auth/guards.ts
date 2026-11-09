@@ -79,10 +79,13 @@ export class AuthSessionGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const authorization = request.headers?.authorization;
+    const cookieToken = typeof request.headers?.cookie === "string"
+      ? request.headers.cookie.split(";").map((part: string) => part.trim()).find((part: string) => part.startsWith("betna_session="))?.slice("betna_session=".length)
+      : undefined;
     const token =
       typeof authorization === "string" && authorization.startsWith("Bearer ")
         ? authorization.slice("Bearer ".length).trim()
-        : undefined;
+        : cookieToken;
     if (!token) throw new UnauthorizedException("Authentication required");
     try {
       const session = await this.auth.validateSession(token);

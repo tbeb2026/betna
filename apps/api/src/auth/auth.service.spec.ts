@@ -14,6 +14,9 @@ const user = {
   phone: "+254700000001",
   passwordHash: "",
   status: "ACTIVE",
+  emailVerified: true,
+  phoneVerified: true,
+  authorizationAttested: true,
   roles: [{ role: { name: "OWNER" } }],
 };
 
@@ -368,6 +371,13 @@ describe("AuthService", () => {
 
     expect(result.user.id).toBe(user.id);
     expect(result.session.token).toEqual(expect.any(String));
+  });
+
+  it("denies an owner whose persisted verification flags are incomplete", async () => {
+    const passwordHash = await AuthService.hashPassword("secret123");
+    const prisma = { user: { findUnique: vi.fn().mockResolvedValue({ ...user, passwordHash, phoneVerified: false }) } };
+    const auth = new AuthService(prisma as never);
+    await expect(auth.signInWithPassword("owner@example.com", "secret123")).rejects.toMatchObject({ status: 401 });
   });
 
   it("records an exact-location release as an append-only audit event", async () => {

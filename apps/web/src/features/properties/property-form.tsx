@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { useTranslations } from "next-intl";
 import { OfferingForm } from "./offering-form";
 import {
   saveOwnerProperty,
@@ -29,6 +30,7 @@ export function PropertyForm({
   options,
   initialProperty,
 }: PropertyFormProps) {
+  const t = useTranslations("portal.propertyForm");
   const initialCountry = (initialProperty?.country?.code ??
     initialProperty?.countryCode ??
     "KE") as "KE" | "UG";
@@ -63,17 +65,17 @@ export function PropertyForm({
     <form className="property-form" action={formAction}>
       <input type="hidden" name="propertyId" value={propertyId ?? ""} />
       <fieldset className="form-section">
-        <legend>Place details</legend>
-        <label htmlFor="property-title">Property title</label>
+        <legend>{t("placeDetails")}</legend>
+        <label htmlFor="property-title">{t("title")}</label>
         <input
           id="property-title"
           name="title"
           type="text"
-          placeholder="A clear name for your place"
+          placeholder={t("titlePlaceholder")}
           defaultValue={value(initialProperty?.title)}
           required
         />
-        <label htmlFor="property-description">Description</label>
+        <label htmlFor="property-description">{t("description")}</label>
         <textarea
           id="property-description"
           name="description"
@@ -81,7 +83,7 @@ export function PropertyForm({
           defaultValue={value(initialProperty?.description)}
           required
         />
-        <label htmlFor="property-country">Country</label>
+        <label htmlFor="property-country">{t("country")}</label>
         <select
           id="property-country"
           name="countryCode"
@@ -95,10 +97,10 @@ export function PropertyForm({
             );
           }}
         >
-          <option value="KE">Kenya (KES)</option>
-          <option value="UG">Uganda (UGX)</option>
+          <option value="KE">{t("kenyaCurrency")}</option>
+          <option value="UG">{t("ugandaCurrency")}</option>
         </select>
-        <label htmlFor="property-city">City</label>
+        <label htmlFor="property-city">{t("city")}</label>
         <select
           id="property-city"
           name="cityId"
@@ -112,7 +114,7 @@ export function PropertyForm({
             </option>
           ))}
         </select>
-        <label htmlFor="property-category">Category</label>
+        <label htmlFor="property-category">{t("category")}</label>
         <select
           id="property-category"
           name="category"
@@ -133,7 +135,7 @@ export function PropertyForm({
             </option>
           ))}
         </select>
-        <label htmlFor="property-subcategory">Subcategory</label>
+        <label htmlFor="property-subcategory">{t("subcategory")}</label>
         <select
           id="property-subcategory"
           name="subcategory"
@@ -156,12 +158,11 @@ export function PropertyForm({
       </fieldset>
 
       <fieldset className="form-section">
-        <legend>Location</legend>
+        <legend>{t("location")}</legend>
         <p className="form-help">
-          Visitors see only an approximate area. The exact address stays private
-          for Betna verification.
+          {t("locationHelp")}
         </p>
-        <label htmlFor="public-location">Public area or neighborhood</label>
+        <label htmlFor="public-location">{t("publicLocation")}</label>
         <input
           id="public-location"
           name="publicLocationLabel"
@@ -170,7 +171,7 @@ export function PropertyForm({
           required
         />
         <div className="coordinate-grid">
-          <label htmlFor="public-latitude">Approximate latitude</label>
+          <label htmlFor="public-latitude">{t("approximateLatitude")}</label>
           <input
             id="public-latitude"
             name="publicLatitude"
@@ -181,7 +182,7 @@ export function PropertyForm({
             defaultValue={initialPublicLatitude}
             required
           />
-          <label htmlFor="public-longitude">Approximate longitude</label>
+          <label htmlFor="public-longitude">{t("approximateLongitude")}</label>
           <input
             id="public-longitude"
             name="publicLongitude"
@@ -193,7 +194,7 @@ export function PropertyForm({
             required
           />
         </div>
-        <label htmlFor="exact-address">Exact address (private)</label>
+        <label htmlFor="exact-address">{t("exactAddress")}</label>
         <input
           id="exact-address"
           name="exactAddress"
@@ -202,7 +203,7 @@ export function PropertyForm({
           required
         />
         <div className="coordinate-grid">
-          <label htmlFor="exact-latitude">Exact latitude (private)</label>
+          <label htmlFor="exact-latitude">{t("exactLatitude")}</label>
           <input
             id="exact-latitude"
             name="exactLatitude"
@@ -216,7 +217,7 @@ export function PropertyForm({
             )}
             required
           />
-          <label htmlFor="exact-longitude">Exact longitude (private)</label>
+          <label htmlFor="exact-longitude">{t("exactLongitude")}</label>
           <input
             id="exact-longitude"
             name="exactLongitude"
@@ -236,7 +237,7 @@ export function PropertyForm({
       <OfferingForm currency={currency} initialProperty={initialProperty} />
 
       <fieldset className="form-section">
-        <legend>Authorization</legend>
+        <legend>{t("authorization")}</legend>
         <label className="check-label" htmlFor="authorization-attested">
           <input
             id="authorization-attested"
@@ -245,7 +246,7 @@ export function PropertyForm({
             defaultChecked={Boolean(initialProperty?.authorizationAttested)}
             required
           />
-          I confirm that I own or am authorized to list this place
+          {t("authorizationText")}
         </label>
       </fieldset>
 
@@ -265,7 +266,7 @@ export function PropertyForm({
           value="draft"
           disabled={pending}
         >
-          Save draft
+          {t("saveDraft")}
         </button>
         <button
           className="button primary"
@@ -274,7 +275,7 @@ export function PropertyForm({
           value="submit"
           disabled={pending}
         >
-          Submit for review
+          {t("submitReview")}
         </button>
       </div>
     </form>

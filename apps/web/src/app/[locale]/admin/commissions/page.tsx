@@ -23,7 +23,7 @@ export default async function AdminCommissionsPage({ params }: { params: Promise
                 <h3>{conversion.inquiry?.reference ?? conversion.inquiryId}</h3>
                 <p>{conversion.firstPaymentCurrency} {conversion.firstPaymentAmount ?? "—"} · {conversion.owner?.email ?? conversion.ownerId}</p>
               </div>
-              <AdminCommissionActions conversionId={conversion.id} conversionStatus={conversion.status} commission={conversion.commission} token={session.token ?? ""} />
+              <AdminCommissionActions conversionId={conversion.id} conversionStatus={conversion.status} commission={conversion.commission} />
             </article>
           ))}
         </div>
@@ -32,7 +32,7 @@ export default async function AdminCommissionsPage({ params }: { params: Promise
           {commissions.map((commission) => (
             <article className="property-list-item" key={commission.id}>
               <div><p className="eyebrow">{commission.status}</p><h3>{commission.currency} {commission.amountDue}</h3><p>{commission.percentage}% of first payment</p></div>
-              <AdminCommissionActions conversionId={commission.conversionId} conversionStatus={commission.conversion?.status ?? "VERIFIED"} commission={commission} token={session.token ?? ""} />
+              <AdminCommissionActions conversionId={commission.conversionId} conversionStatus={commission.conversion?.status ?? "VERIFIED"} commission={commission} />
             </article>
           ))}
         </div>

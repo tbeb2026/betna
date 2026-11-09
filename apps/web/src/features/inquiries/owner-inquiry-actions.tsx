@@ -4,14 +4,14 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createApiClient } from "../../lib/api-client";
 
-export function OwnerInquiryActions({ inquiryId, status, token }: { inquiryId: string; status: string; token: string }) {
+export function OwnerInquiryActions({ inquiryId, status }: { inquiryId: string; status: string }) {
   const router = useRouter();
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const decided = ["OWNER_CONFIRMED", "OWNER_DECLINED", "CLOSED"].includes(status);
   async function respond(decision: "CONFIRMED" | "DECLINED") {
     setBusy(true);
-    try { await createApiClient({ token }).post(`/owner/inquiries/${encodeURIComponent(inquiryId)}/respond`, { decision }); setMessage(decision === "CONFIRMED" ? "Inquiry confirmed." : "Inquiry declined."); router.refresh(); }
+    try { const response = await fetch(`/api/bff/owner/inquiries/${encodeURIComponent(inquiryId)}/respond`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision }) }); if (!response.ok) throw new Error("Inquiry action failed"); setMessage(decision === "CONFIRMED" ? "Inquiry confirmed." : "Inquiry declined."); router.refresh(); }
     catch (error) { setMessage(error instanceof Error ? error.message : "Could not update inquiry."); }
     finally { setBusy(false); }
   }

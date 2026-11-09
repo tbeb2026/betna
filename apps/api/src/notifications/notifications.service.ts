@@ -112,12 +112,12 @@ export class NotificationService {
     const work = (async () => {
       const store = this.store();
       if (!store?.create) {
-        if (this.seenKeys.has(idempotencyKey)) return undefined;
+        if (this.seenKeys.has(idempotencyKey)) return { status: "SENT", idempotencyKey };
         const adapter = this.adapters.get(channel);
         if (!adapter) throw new Error(`No adapter configured for ${channel}`);
         await adapter.send(this.message(event, recipient, channel, idempotencyKey));
         this.seenKeys.add(idempotencyKey);
-        return undefined;
+        return { status: "SENT", idempotencyKey };
       }
 
       const existing = await store.findUnique?.({ where: { idempotencyKey } });

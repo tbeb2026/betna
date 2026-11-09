@@ -11,7 +11,7 @@ function makePrisma() {
     id: "inquiry-1",
     status: "OWNER_CONFIRMED",
     propertyId: "property-1",
-    property: { ownerId: "owner-1" },
+    property: { ownerId: "owner-1", country: { currency: "KES" }, offerings: [{ mode: "SHORT_STAY", currency: "KES" }] },
   }];
   const prisma: any = {
     inquiry: { findUnique: vi.fn(async ({ where }: any) => inquiries.find((row) => row.id === where.id) ?? null) },

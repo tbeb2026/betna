@@ -31,9 +31,10 @@ export class ConversionsService {
         if (typeof tx.$queryRaw === "function") {
           await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Inquiry" WHERE "id" = ${report.inquiryId} FOR UPDATE`);
         }
-        const inquiry = await tx.inquiry.findUnique({ where: { id: report.inquiryId }, include: { property: true, conversion: true } });
+        const inquiry = await tx.inquiry.findUnique({ where: { id: report.inquiryId }, include: { property: { include: { country: true, offerings: true } }, conversion: true } });
         if (!inquiry) throw new NotFoundException("Inquiry not found");
         if (inquiry.property?.ownerId !== report.ownerId) throw new ForbiddenException("Only the property owner can report a conversion");
+        this.assertPropertyCurrency(inquiry, report.firstPaymentCurrency);
         if (!["OWNER_CONFIRMED", "CLOSED"].includes(inquiry.status)) throw new ConflictException("Only a confirmed inquiry can become a conversion");
         const existing = inquiry.conversion ?? await tx.conversion.findUnique?.({ where: { inquiryId: report.inquiryId } });
         if (existing) return existing;
@@ -108,6 +109,17 @@ export class ConversionsService {
     if (amount.lte(0)) throw new BadRequestException("First payment amount must be positive");
     if (typeof report.firstPaymentCurrency !== "string" || !/^[A-Za-z]{3}$/.test(report.firstPaymentCurrency)) throw new BadRequestException("First payment currency must be a three-letter code");
     return amount;
+  }
+
+  private assertPropertyCurrency(inquiry: any, currency: string) {
+    const property = inquiry.property;
+    const expected = property?.country?.currency ?? (property?.countryCode === "UG" ? "UGX" : property?.countryCode === "KE" ? "KES" : undefined);
+    if (!expected) throw new BadRequestException("The property country currency is unavailable");
+    const offering = Array.isArray(property?.offerings) ? property.offerings.find((entry: any) => entry.mode === inquiry.mode) ?? property.offerings[0] : undefined;
+    const normalized = currency.toUpperCase();
+    if (normalized !== expected || (offering && offering.currency !== expected)) {
+      throw new BadRequestException(`First payment currency must match the property's ${expected} offering`);
+    }
   }
 
   private money(value: unknown, label: string) {

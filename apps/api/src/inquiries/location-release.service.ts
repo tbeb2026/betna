@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, NotFoundException, Injectable } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, InternalServerErrorException, NotFoundException, Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
@@ -123,14 +123,21 @@ export class LocationReleaseService {
 
   async getReleasedLocation(inquiryId: string, actor: InquiryActor) {
     if (!isAdmin(actor)) throw new ForbiddenException("Only admins can view exact location");
-    const inquiry = await this.findInquiry(this.prisma as any, inquiryId);
-    if (!inquiry) throw new NotFoundException("Inquiry not found");
-    if (inquiry.status !== "LOCATION_APPROVED") return null;
-    if (!inquiry.locationReleaseExpiresAt || new Date(inquiry.locationReleaseExpiresAt).getTime() <= Date.now()) {
-      await this.revoke(inquiryId, actor, inquiry.locationReleaseExpiresAt ? "Location release expired" : "Legacy location release had no expiry");
-      return null;
-    }
-    return this.location(inquiry.property);
+    return this.withTransaction(async (tx: any) => {
+      await this.lockInquiry(tx, inquiryId);
+      const inquiry = await this.findInquiry(tx, inquiryId);
+      if (!inquiry) throw new NotFoundException("Inquiry not found");
+      if (inquiry.status !== "LOCATION_APPROVED") return null;
+      if (!inquiry.locationReleaseExpiresAt || new Date(inquiry.locationReleaseExpiresAt).getTime() <= Date.now()) {
+        await this.revokeWithinTransaction(tx, inquiry, actor, inquiry.locationReleaseExpiresAt ? "Location release expired" : "Legacy location release had no expiry");
+        return null;
+      }
+      if (!this.audit?.record && typeof tx.auditEvent?.create !== "function") {
+        throw new InternalServerErrorException("Exact-location audit persistence is unavailable");
+      }
+      await this.recordAudit(tx, actor, "EXACT_LOCATION_VIEWED", inquiry.id, { channel: "admin", releaseId: inquiry.locationReleaseId });
+      return this.location(inquiry.property);
+    });
   }
 
   /** Visitor read path: an opaque, expiring release token is the only public

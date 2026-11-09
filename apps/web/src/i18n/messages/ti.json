@@ -71,6 +71,38 @@
       "save": "ዓቅብ",
       "submit": "ንግምገማ ስደድ"
     },
+    "propertyForm": {
+      "placeDetails": "ዝርዝር ቦታ",
+      "title": "ኣርእስቲ ንብረት",
+      "titlePlaceholder": "ንቦታኻ ግልጺ ስም",
+      "description": "መግለጺ",
+      "country": "ሃገር",
+      "kenyaCurrency": "ኬንያ (KES)",
+      "ugandaCurrency": "ኡጋንዳ (UGX)",
+      "city": "ከተማ",
+      "category": "ምድብ",
+      "subcategory": "ንኡስ ምድብ",
+      "location": "ቦታ",
+      "locationHelp": "በጻሕቲ ግምታዊ ከባቢ ጥራይ ይርእዩ። ትኽክለኛ ኣድራሻ ንምርመራ Betna ምስጢር እዩ።",
+      "publicLocation": "ህዝባዊ ከባቢ ወይ ሰፈር",
+      "approximateLatitude": "ግምታዊ ኬክሮስ",
+      "approximateLongitude": "ግምታዊ ንውሓት",
+      "exactAddress": "ትኽክለኛ ኣድራሻ (ምስጢር)",
+      "exactLatitude": "ትኽክለኛ ኬክሮስ (ምስጢር)",
+      "exactLongitude": "ትኽክለኛ ንውሓት (ምስጢር)",
+      "authorization": "ስልጣን",
+      "authorizationText": "ነዚ ቦታ ናተይ ከም ዝኾነ ወይ ክዝርዝሮ ስልጣን ከም ዘለኒ አረጋግጽ",
+      "rentalOptions": "ኣማራጺታት ኪራይ",
+      "rentalHelp": "ናይ ሓጺርን ነዊሕን ግዜ ዋጋታት ፈላሊኻ ኣቐምጥ። ዋጋታት ብናይ ከባቢ ገንዘብ ይርኣዩ።",
+      "shortStay": "ሓጺር ግዜ",
+      "longTerm": "ነዊሕ ግዜ",
+      "shortStayPrice": "ህዝባዊ ዋጋ ሓጺር ግዜ ({currency})",
+      "longTermPrice": "ህዝባዊ ዋጋ ነዊሕ ግዜ ({currency})",
+      "minimumNights": "ዝተሓተ ለይቲ",
+      "leaseDuration": "ግዜ ውዕል (ኣዋርሕ)",
+      "saveDraft": "ረቂቕ ዓቅብ",
+      "submitReview": "ንግምገማ ስደድ"
+    },
     "statuses": {
       "DRAFT": "ረቂቕ",
       "PENDING_REVIEW": "ግምገማ ይጽበ",
@@ -90,6 +122,45 @@
       "locationApproved": "Betna ዕቑብ ቦታ ኣጽዲቑ።",
       "verification": "ኩነታት ምርመራኻ ተቐይሩ።"
     }
+  },
+  "publicInquiry": {
+    "eyebrow": "ዝተመሓደረ ሕቶ",
+    "title": "ብዛዕባ እዚ ቦታ ሕተት",
+    "description": "ሒሳብ ኣየድልን። Betna ንሕቶታት ኣብ ዝተወሰነ ሰዓታት ስራሕ ትግምግም።",
+    "name": "ስም",
+    "email": "ኢመይል",
+    "phone": "ስልኪ ወይ WhatsApp",
+    "mode": "ዓይነት ኪራይ",
+    "shortStay": "ሓጺር ግዜ",
+    "longTerm": "ነዊሕ ግዜ",
+    "startDate": "መዓልቲ መጀመርታ",
+    "endDate": "መዓልቲ መወዳእታ",
+    "guests": "በጻሕቲ",
+    "website": "መርበብ ሓበሬታ",
+    "message": "መልእኽቲ",
+    "messagePlaceholder": "እንታይ ክትፈልጥ ትደሊ?",
+    "submit": "ሕቶ ስደድ",
+    "sending": "ሕቶ ይስደድ ኣሎ…",
+    "sent": "ሕቶኻ ተላኢኹ። Betna ኣብ ሰዓታት ስራሕ ክትምለሰልካ እያ።",
+    "sendFailed": "ሕቶ ክስደድ ኣይከኣለን፤ በጃኻ እንደገና ፈትን።",
+    "reference": "መወከሲ {reference}።"
+  },
+  "publicProperty": {
+    "backToDiscovery": "ናብ ምድላይ ተመለስ",
+    "approximateLocation": "ግምታዊ ቦታ ኣብ ከባቢ {label}",
+    "rentalOptions": "ኣማራጺታት ኪራይ",
+    "verification": "ምርግጋጽ Betna",
+    "protectedAddress": "Betna ንርክብ እናመሓደረት ትኽክለኛ ኣድራሻ ምስጢር እዩ።",
+    "contactOptions": "ኣማራጺታት ርክብ",
+    "contactBetnaWhatsApp": "ብ WhatsApp ምስ Betna ተራኸብ",
+    "contactOwnerWhatsApp": "ብ WhatsApp ምስ ባለቤት ተራኸብ",
+    "emailBetna": "ኢመይል Betna"
+    ,"verifiedByBetna": "ብ BETNA ተረጋጊጹ"
+    ,"rentalMode": "ዓይነት ኪራይ"
+    ,"shortStay": "ሓጺር ግዜ"
+    ,"longTerm": "ነዊሕ ግዜ"
+    ,"minimumNights": "ዝተሓተ {count} ለይቲ"
+    ,"leaseDuration": "ውዕል {count} ወርሒ"
   },
   "errors": {
     "notFound": "እዚ ገጽ ክርከብ ኣይከኣለን።",

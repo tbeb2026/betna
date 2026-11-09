@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { getApiBaseUrl } from "../../lib/api-client";
 import { OfflineInspectionQueue } from "./offline-queue";
 import { UploadStatus } from "./upload-status";
 
@@ -9,12 +8,10 @@ export function InspectionForm({
   inspectionId,
   propertyId,
   category = "residential",
-  authToken,
 }: {
   inspectionId: string;
   propertyId?: string;
   category?: string;
-  authToken?: string;
 }) {
   const [notes, setNotes] = useState("");
   const [evidence, setEvidence] = useState<
@@ -112,11 +109,10 @@ export function InspectionForm({
   }
 
   async function apiJson<T>(path: string, init: RequestInit) {
-    const response = await fetch(`${getApiBaseUrl()}${path}`, {
+    const response = await fetch(`/api/bff${path}`, {
       ...init,
       headers: {
         "Content-Type": "application/json",
-        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         ...(init.headers ?? {}),
       },
     });

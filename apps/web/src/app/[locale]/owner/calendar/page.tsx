@@ -14,7 +14,7 @@ export default async function OwnerCalendarPage({ params }: { params: Promise<{ 
     <div className="portal-card">
       <h2>Availability calendar</h2>
       <p>Confirmed short stays block these dates automatically.</p>
-      <UnavailableDateEditor token={session.token ?? ""} initialDates={unavailableDates} />
+      <UnavailableDateEditor initialDates={unavailableDates} />
       {blocks.length ? (
         <div className="property-list">
           {blocks.map((block) => (

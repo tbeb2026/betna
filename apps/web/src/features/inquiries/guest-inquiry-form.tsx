@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { useTranslations } from "next-intl";
 import { getApiBaseUrl } from "../../lib/api-client";
 
 export function GuestInquiryForm({
@@ -12,12 +13,13 @@ export function GuestInquiryForm({
   offeringId?: string;
   defaultMode?: "SHORT_STAY" | "LONG_TERM";
 }) {
+  const t = useTranslations("publicInquiry");
   const [status, setStatus] = useState("");
   const [reference, setReference] = useState("");
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setStatus("Sending inquiry…");
+    setStatus(t("sending"));
     const form = new FormData(event.currentTarget);
     const payload = {
       propertyId,
@@ -39,33 +41,33 @@ export function GuestInquiryForm({
         body: JSON.stringify(payload),
       });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.message ?? "Inquiry could not be sent");
+      if (!response.ok) throw new Error(body.message ?? t("sendFailed"));
       setReference(body.inquiry?.reference ?? "");
-      setStatus(body.reviewExpectation ?? "Inquiry sent. Betna will follow up during business hours.");
+      setStatus(body.reviewExpectation ?? t("sent"));
       event.currentTarget.reset();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Inquiry could not be sent; please try again.");
+      setStatus(error instanceof Error ? error.message : t("sendFailed"));
     }
   }
 
   return (
     <form className="portal-card inquiry-form" onSubmit={submit} aria-labelledby="guest-inquiry-title">
-      <p className="eyebrow">Managed inquiry</p>
-      <h2 id="guest-inquiry-title">Ask about this place</h2>
-      <p className="form-help">No account is required. Betna reviews inquiries during configured business hours.</p>
+      <p className="eyebrow">{t("eyebrow")}</p>
+      <h2 id="guest-inquiry-title">{t("title")}</h2>
+      <p className="form-help">{t("description")}</p>
       <div className="form-grid">
-        <label>Name<input name="name" required autoComplete="name" /></label>
-        <label>Email<input name="email" type="email" required autoComplete="email" /></label>
-        <label>Phone or WhatsApp<input name="phone" required autoComplete="tel" /></label>
-        <label>Rental mode<select name="mode" defaultValue={defaultMode}><option value="SHORT_STAY">Short stay</option><option value="LONG_TERM">Long term</option></select></label>
-        <label>Start date<input name="startDate" type="date" /></label>
-        <label>End date<input name="endDate" type="date" /></label>
-        <label>Guests<input name="guests" type="number" min="1" max="100" /></label>
-        <label className="honeypot" aria-hidden="true">Website<input name="website" tabIndex={-1} autoComplete="off" /></label>
+        <label>{t("name")}<input name="name" required autoComplete="name" /></label>
+        <label>{t("email")}<input name="email" type="email" required autoComplete="email" /></label>
+        <label>{t("phone")}<input name="phone" required autoComplete="tel" /></label>
+        <label>{t("mode")}<select name="mode" defaultValue={defaultMode}><option value="SHORT_STAY">{t("shortStay")}</option><option value="LONG_TERM">{t("longTerm")}</option></select></label>
+        <label>{t("startDate")}<input name="startDate" type="date" /></label>
+        <label>{t("endDate")}<input name="endDate" type="date" /></label>
+        <label>{t("guests")}<input name="guests" type="number" min="1" max="100" /></label>
+        <label className="honeypot" aria-hidden="true">{t("website")}<input name="website" tabIndex={-1} autoComplete="off" /></label>
       </div>
-      <label>Message<textarea name="message" required rows={4} placeholder="What would you like to know?" /></label>
-      <button className="button primary" type="submit">Send inquiry</button>
-      <p className="form-help" role="status" aria-live="polite">{reference ? `Reference ${reference}. ` : ""}{status}</p>
+      <label>{t("message")}<textarea name="message" required rows={4} placeholder={t("messagePlaceholder")} /></label>
+      <button className="button primary" type="submit">{t("submit")}</button>
+      <p className="form-help" role="status" aria-live="polite">{reference ? `${t("reference", { reference })} ` : ""}{status}</p>
     </form>
   );
 }

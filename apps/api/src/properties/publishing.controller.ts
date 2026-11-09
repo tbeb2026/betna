@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Req, UseGuards } from "@nestjs/common";
 import { Type } from "class-transformer";
 import { IsArray, IsBoolean, IsIn, IsNumber, IsOptional, IsString, Max, MaxLength, Min, ValidateIf, ValidateNested } from "class-validator";
 import { AuthSessionGuard, Roles, RolesGuard } from "../auth/guards";
@@ -9,6 +9,22 @@ class MaterialEditLocationDto {
   @IsString()
   @MaxLength(500)
   address!: string;
+
+  @IsNumber({ allowInfinity: false, allowNaN: false })
+  @Min(-90)
+  @Max(90)
+  latitude!: number;
+
+  @IsNumber({ allowInfinity: false, allowNaN: false })
+  @Min(-180)
+  @Max(180)
+  longitude!: number;
+}
+
+class MaterialEditPublicLocationDto {
+  @IsString()
+  @MaxLength(240)
+  label!: string;
 
   @IsNumber({ allowInfinity: false, allowNaN: false })
   @Min(-90)
@@ -90,6 +106,11 @@ export class MaterialEditDto {
   @IsString()
   @MaxLength(240)
   publicLocationLabel?: string;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @ValidateNested()
+  @Type(() => MaterialEditPublicLocationDto)
+  publicLocation?: MaterialEditPublicLocationDto;
 
   @ValidateIf((_, value) => value !== undefined)
   @IsNumber({ allowInfinity: false, allowNaN: false })
@@ -202,14 +223,14 @@ export class PublishingController {
   }
 
   @Post("publishing/:id/publish")
-  publish(@Req() request: { user: { id: string } }, @Param("id") id: string) {
+  publish(@Req() request: { user: { id: string } }, @Param("id", new ParseUUIDPipe({ version: "4" })) id: string) {
     return this.publishing.publish(id, request.user.id);
   }
 
   @Post("publishing/:id/fraud")
   fraud(
     @Req() request: { user: { id: string } },
-    @Param("id") id: string,
+    @Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
     @Body() body: FraudReportDto,
   ) {
     return this.publishing.reportFraud(id, body, request.user.id);
@@ -218,7 +239,7 @@ export class PublishingController {
   @Patch("publishing/:id/material-edit")
   materialEdit(
     @Req() request: { user: { id: string } },
-    @Param("id") id: string,
+    @Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
     @Body() body: MaterialEditDto,
   ) {
     return this.publishing.createMaterialEditReview(
@@ -231,7 +252,7 @@ export class PublishingController {
   @Patch("publishing/:id/ownership-change")
   ownershipChange(
     @Req() request: { user: { id: string; roles?: unknown[] } },
-    @Param("id") id: string,
+    @Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
     @Body() body: OwnershipChangeDto,
   ) {
     return this.publishing.reverifyOwnershipChange(
@@ -249,7 +270,7 @@ export class PublishingController {
   @Post("translations/:propertyId/:locale/approve")
   approveTranslation(
     @Req() request: { user: { id: string } },
-    @Param("propertyId") propertyId: string,
+    @Param("propertyId", new ParseUUIDPipe({ version: "4" })) propertyId: string,
     @Param("locale") locale: string,
     @Body() body: TranslationApprovalDto,
   ) {

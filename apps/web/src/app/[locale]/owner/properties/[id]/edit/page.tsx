@@ -27,7 +27,7 @@ export default async function EditOwnerPropertyPage({
         options={options}
         initialProperty={property}
       />
-      <MediaUploader propertyId={id} authToken={session?.token} />
+      <MediaUploader propertyId={id} />
     </div>
   );
 }

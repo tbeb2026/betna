@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
-import { normalizeImageType, StorageAdapter } from "./storage.adapter";
+import { createConfiguredStorageAdapter, normalizeImageType, S3StorageAdapter, StorageAdapter } from "./storage.adapter";
 
 async function makeJpeg() {
   return sharp({
@@ -11,6 +11,27 @@ async function makeJpeg() {
 }
 
 describe("StorageAdapter", () => {
+  it("selects a real S3-compatible adapter for production configuration", () => {
+    const storage = createConfiguredStorageAdapter({
+      NODE_ENV: "production",
+      MEDIA_STORAGE_PROVIDER: "s3",
+      S3_ENDPOINT: "https://s3.example.com",
+      S3_REGION: "af-south-1",
+      S3_ACCESS_KEY_ID: "access",
+      S3_SECRET_ACCESS_KEY: "secret",
+      S3_PUBLIC_BUCKET: "public",
+      S3_PRIVATE_BUCKET: "private",
+    });
+    expect(storage).toBeInstanceOf(S3StorageAdapter);
+    expect(() => createConfiguredStorageAdapter({ NODE_ENV: "production", MEDIA_STORAGE_PROVIDER: "s3" })).toThrow(/S3_ENDPOINT/);
+  });
+
+  it("creates MinIO-compatible presigned targets using the configured bucket", async () => {
+    const storage = new S3StorageAdapter({ endpoint: "http://localhost:9000", region: "us-east-1", accessKeyId: "access", secretAccessKey: "secret", publicBucket: "public", privateBucket: "private" });
+    const url = await storage.createSignedUploadUrl("private/inspection-evidence/p/original.jpg", "image/jpeg", 1000);
+    expect(url).toContain("localhost:9000/private/private/inspection-evidence/p/original.jpg");
+    expect(url).toContain("X-Amz-Signature=");
+  });
   it("rejects bytes whose content is not an image or exceeds the claimed size", async () => {
     const storage = new StorageAdapter({
       signingSecret: "test-secret",

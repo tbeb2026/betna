@@ -15,7 +15,6 @@ export default async function VerifierInspectionPage({
       inspectionId={id}
       propertyId={inspection?.propertyId}
       category={inspection?.property?.category}
-      authToken={session?.token}
     />
   );
 }

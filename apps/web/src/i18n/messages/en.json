@@ -71,6 +71,38 @@
       "save": "Save",
       "submit": "Submit for review"
     },
+    "propertyForm": {
+      "placeDetails": "Place details",
+      "title": "Property title",
+      "titlePlaceholder": "A clear name for your place",
+      "description": "Description",
+      "country": "Country",
+      "kenyaCurrency": "Kenya (KES)",
+      "ugandaCurrency": "Uganda (UGX)",
+      "city": "City",
+      "category": "Category",
+      "subcategory": "Subcategory",
+      "location": "Location",
+      "locationHelp": "Visitors see only an approximate area. The exact address stays private for Betna verification.",
+      "publicLocation": "Public area or neighborhood",
+      "approximateLatitude": "Approximate latitude",
+      "approximateLongitude": "Approximate longitude",
+      "exactAddress": "Exact address (private)",
+      "exactLatitude": "Exact latitude (private)",
+      "exactLongitude": "Exact longitude (private)",
+      "authorization": "Authorization",
+      "authorizationText": "I confirm that I own or am authorized to list this place",
+      "rentalOptions": "Rental options",
+      "rentalHelp": "Keep short-stay and long-term prices separate. Prices are shown in local currency. Add at least one public price.",
+      "shortStay": "Short stay",
+      "longTerm": "Long term",
+      "shortStayPrice": "Short-stay public price ({currency})",
+      "longTermPrice": "Long-term public price ({currency})",
+      "minimumNights": "Minimum nights",
+      "leaseDuration": "Lease duration (months)",
+      "saveDraft": "Save draft",
+      "submitReview": "Submit for review"
+    },
     "statuses": {
       "DRAFT": "Draft",
       "PENDING_REVIEW": "Pending review",
@@ -90,6 +122,45 @@
       "locationApproved": "Betna approved the protected location.",
       "verification": "Your inspection status changed."
     }
+  },
+  "publicInquiry": {
+    "eyebrow": "Managed inquiry",
+    "title": "Ask about this place",
+    "description": "No account is required. Betna reviews inquiries during configured business hours.",
+    "name": "Name",
+    "email": "Email",
+    "phone": "Phone or WhatsApp",
+    "mode": "Rental mode",
+    "shortStay": "Short stay",
+    "longTerm": "Long term",
+    "startDate": "Start date",
+    "endDate": "End date",
+    "guests": "Guests",
+    "website": "Website",
+    "message": "Message",
+    "messagePlaceholder": "What would you like to know?",
+    "submit": "Send inquiry",
+    "sending": "Sending inquiry…",
+    "sent": "Inquiry sent. Betna will follow up during business hours.",
+    "sendFailed": "Inquiry could not be sent; please try again.",
+    "reference": "Reference {reference}."
+  },
+  "publicProperty": {
+    "backToDiscovery": "Back to discovery",
+    "approximateLocation": "Approximate location near {label}",
+    "rentalOptions": "Rental options",
+    "verification": "Betna verification",
+    "protectedAddress": "Exact address is protected while Betna manages contact.",
+    "contactOptions": "Contact options",
+    "contactBetnaWhatsApp": "Contact Betna on WhatsApp",
+    "contactOwnerWhatsApp": "Contact owner on WhatsApp",
+    "emailBetna": "Email Betna"
+    ,"verifiedByBetna": "VERIFIED BY BETNA"
+    ,"rentalMode": "Rental mode"
+    ,"shortStay": "Short-stay"
+    ,"longTerm": "Long-term"
+    ,"minimumNights": "Minimum {count} nights"
+    ,"leaseDuration": "{count}-month lease"
   },
   "errors": {
     "notFound": "This page could not be found.",

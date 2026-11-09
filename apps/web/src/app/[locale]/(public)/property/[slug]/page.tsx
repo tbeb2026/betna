@@ -6,6 +6,7 @@ import { PropertyOfferings } from "../../../../../features/search/property-offer
 import { jsonLd, siteUrl } from "../../../../../features/search/seo";
 import { ContactButtons } from "../../../../../features/inquiries/contact-buttons";
 import { GuestInquiryForm } from "../../../../../features/inquiries/guest-inquiry-form";
+import { getTranslations } from "next-intl/server";
 
 function canonical(locale: string, slug: string) { return `${siteUrl}/${locale}/property/${encodeURIComponent(slug)}`; }
 
@@ -20,18 +21,19 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
 
 export default async function PropertyPage({ params }: { params: Promise<{ locale: string; slug: string }> }) {
   const { locale, slug } = await params;
+  const t = await getTranslations("publicProperty");
   const property = await getPublicProperty(slug, locale);
   if (!property) notFound();
   return (
     <article className="property-detail">
       {jsonLd({ "@context": "https://schema.org", "@type": "LodgingBusiness", name: property.title, description: property.description, url: canonical(property.locale ?? "en", slug), address: { "@type": "PostalAddress", addressLocality: property.location.city, addressCountry: property.location.country } })}
-      <Link href="/search" className="back-link">← Back to discovery</Link>
+      <Link href="/search" className="back-link">← {t("backToDiscovery")}</Link>
       <p className="eyebrow">{property.category.replaceAll("_", " ")}</p><h1>{property.title}</h1>
       <p className="property-location">{property.location.label} · {property.location.city}</p>
-      <div className="map-summary" data-latitude={property.location.latitude} data-longitude={property.location.longitude}>Approximate location near {property.location.label}</div>
+      <div className="map-summary" data-latitude={property.location.latitude} data-longitude={property.location.longitude}>{t("approximateLocation", { label: property.location.label })}</div>
       <p className="property-description">{property.description}</p>
-      <section aria-labelledby="property-offerings"><h2 id="property-offerings">Rental options</h2><PropertyOfferings offerings={property.offerings} /></section>
-      <section aria-labelledby="property-verification"><h2 id="property-verification">Betna verification</h2><p>{property.verification?.badge ?? "VERIFIED_BY_BETNA"}. Exact address is protected while Betna manages contact.</p></section>
+      <section aria-labelledby="property-offerings"><h2 id="property-offerings">{t("rentalOptions")}</h2><PropertyOfferings offerings={property.offerings} /></section>
+      <section aria-labelledby="property-verification"><h2 id="property-verification">{t("verification")}</h2><p>{property.verification?.badge ?? t("verifiedByBetna")}. {t("protectedAddress")}</p></section>
       <ContactButtons propertyId={property.id} propertyTitle={property.title} betnaPhone={process.env.NEXT_PUBLIC_BETNA_WHATSAPP ?? "+254700000000"} />
       <GuestInquiryForm propertyId={property.id} offeringId={property.offerings[0]?.id} defaultMode={property.offerings[0]?.mode === "LONG_TERM" ? "LONG_TERM" : "SHORT_STAY"} />
     </article>

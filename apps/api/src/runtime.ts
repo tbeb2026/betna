@@ -9,6 +9,19 @@ export type ApiRuntimeEnvironment = {
   SESSION_SECRET?: string;
   JWT_SECRET?: string;
   MEDIA_SIGNING_SECRET?: string;
+  EMAIL_PROVIDER?: string;
+  EMAIL_FROM?: string;
+  RESEND_API_KEY?: string;
+  WHATSAPP_PROVIDER?: string;
+  WHATSAPP_ACCESS_TOKEN?: string;
+  WHATSAPP_PHONE_NUMBER_ID?: string;
+  S3_ENDPOINT?: string;
+  S3_REGION?: string;
+  S3_ACCESS_KEY_ID?: string;
+  S3_SECRET_ACCESS_KEY?: string;
+  S3_PUBLIC_BUCKET?: string;
+  S3_PRIVATE_BUCKET?: string;
+  MEDIA_STORAGE_PROVIDER?: string;
 };
 
 export const API_CORS_METHODS = [
@@ -27,6 +40,16 @@ const productionRequiredEnvironment = [
   "JWT_SECRET",
   "MEDIA_SIGNING_SECRET",
   "API_CORS_ORIGINS",
+  "EMAIL_PROVIDER",
+  "EMAIL_FROM",
+  "WHATSAPP_PROVIDER",
+  "S3_ENDPOINT",
+  "S3_REGION",
+  "S3_ACCESS_KEY_ID",
+  "S3_SECRET_ACCESS_KEY",
+  "S3_PUBLIC_BUCKET",
+  "S3_PRIVATE_BUCKET",
+  "MEDIA_STORAGE_PROVIDER",
 ] as const;
 const productionSecretEnvironment = new Set([
   "SESSION_SECRET",
@@ -40,7 +63,7 @@ export function validateRuntimeEnvironment(
 ): void {
   if (environment.NODE_ENV !== "production") return;
 
-  const missing = productionRequiredEnvironment.filter((key) => {
+  const missing: string[] = productionRequiredEnvironment.filter((key) => {
     const value = environment[key]?.trim();
     return (
       !value ||
@@ -53,6 +76,17 @@ export function validateRuntimeEnvironment(
       `Missing or unsafe production environment variables: ${missing.join(", ")}`,
     );
   }
+  const emailProvider = environment.EMAIL_PROVIDER?.trim().toLowerCase();
+  if (emailProvider === "resend" && !environment.RESEND_API_KEY?.trim()) missing.push("RESEND_API_KEY");
+  if (emailProvider !== "resend") throw new Error("EMAIL_PROVIDER must be resend in production");
+  const whatsappProvider = environment.WHATSAPP_PROVIDER?.trim().toLowerCase();
+  if (whatsappProvider === "meta" && (!environment.WHATSAPP_ACCESS_TOKEN?.trim() || !environment.WHATSAPP_PHONE_NUMBER_ID?.trim())) {
+    missing.push("WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID");
+  }
+  if (whatsappProvider !== "meta") throw new Error("WHATSAPP_PROVIDER must be meta in production");
+  const storageProvider = environment.MEDIA_STORAGE_PROVIDER?.trim().toLowerCase();
+  if (storageProvider !== "s3" && storageProvider !== "minio") throw new Error("MEDIA_STORAGE_PROVIDER must be s3 or minio in production");
+  if (missing.length) throw new Error(`Missing or unsafe production environment variables: ${[...new Set(missing)].join(", ")}`);
 }
 
 /** Resolve the API listener from the documented API_PORT, defaulting to 4000. */

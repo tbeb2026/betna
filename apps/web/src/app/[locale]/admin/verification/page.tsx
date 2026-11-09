@@ -18,7 +18,7 @@ export default async function AdminVerificationPage() {
                 <h3>{inspection.property?.title ?? inspection.id}</h3>
                 <p className="form-help">{inspection.property?.category ?? "Property inspection"}</p>
               </div>
-              <AdminReviewActions inspectionId={inspection.id} authToken={session?.token} />
+              <AdminReviewActions inspectionId={inspection.id} />
             </article>
           ))}
         </div>

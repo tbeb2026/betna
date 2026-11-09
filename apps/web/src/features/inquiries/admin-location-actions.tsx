@@ -4,13 +4,13 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createApiClient } from "../../lib/api-client";
 
-export function AdminLocationActions({ inquiryId, status, token }: { inquiryId: string; status: string; token: string }) {
+export function AdminLocationActions({ inquiryId, status }: { inquiryId: string; status: string }) {
   const router = useRouter();
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   async function request(path: string, body: Record<string, string>) {
     setBusy(true);
-    try { await createApiClient({ token }).post(`/admin/inquiries/${encodeURIComponent(inquiryId)}/${path}`, body); setMessage(path.endsWith("revoke") ? "Location release revoked." : "Exact location released."); router.refresh(); }
+    try { const response = await fetch(`/api/bff/admin/inquiries/${encodeURIComponent(inquiryId)}/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); if (!response.ok) throw new Error("Location action failed"); setMessage(path.endsWith("revoke") ? "Location release revoked." : "Exact location released."); router.refresh(); }
     catch (error) { setMessage(error instanceof Error ? error.message : "Could not update location release."); }
     finally { setBusy(false); }
   }

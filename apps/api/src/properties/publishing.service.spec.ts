@@ -239,6 +239,17 @@ describe("PublishingService", () => {
     );
   });
 
+  it("maps nested publicLocation edits and sends the listing back through material review", async () => {
+    const { prisma, rows } = makePrisma();
+    const service = new PublishingService(prisma);
+    await service.publish("property-1");
+    await service.createMaterialEditReview("property-1", { publicLocation: { label: "Kololo", latitude: 0.31, longitude: 32.59 } });
+    expect(rows.get("property-1")).toMatchObject({ status: "PENDING_REVIEW", publicLocationLabel: "Kololo", publicLatitude: 0.31, publicLongitude: 32.59 });
+    expect(prisma.property.update).toHaveBeenLastCalledWith(expect.objectContaining({
+      data: expect.not.objectContaining({ publicLocation: expect.anything() }),
+    }));
+  });
+
   it("requires an admin and an eligible owner for ownership re-verification", async () => {
     const { prisma } = makePrisma();
     prisma.user = {

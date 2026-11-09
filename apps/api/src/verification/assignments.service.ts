@@ -3,8 +3,10 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service";
+import { AuditService } from "../audit/audit.service";
 
 type Actor = {
   id: string;
@@ -13,7 +15,7 @@ type Actor = {
 
 @Injectable()
 export class AssignmentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly audit?: AuditService) {}
 
   async assign(inspectionId: string, verifierId: string, actor: Actor) {
     this.assertRole(actor, "ADMIN");
@@ -24,34 +26,36 @@ export class AssignmentsService {
     ) {
       throw new ForbiddenException("Assignment authorization is unavailable");
     }
-    const [inspection, verifier] = await Promise.all([
-      this.prisma.inspection.findUnique({ where: { id: inspectionId } }),
-      this.prisma.user.findUnique({
-        where: { id: verifierId },
-        include: {
-          roles: { include: { role: true } },
-          territoryAssignments: true,
-        },
-      }),
-    ]);
-    if (!inspection) throw new NotFoundException("Inspection not found");
-    if (!verifier) throw new NotFoundException("Verifier not found");
-    if (!this.roles(verifier).includes("VERIFIER")) {
-      throw new ForbiddenException("Only verifiers can receive inspections");
-    }
-    const territories = this.territories(verifier);
-    if (
-      !inspection.territoryId ||
-      !territories.includes(inspection.territoryId)
-    ) {
-      throw new ForbiddenException(
-        "Verifier is outside the inspection territory",
-      );
-    }
-    return this.prisma.inspection.update({
-      where: { id: inspectionId },
-      data: { verifierId, status: "DRAFT" },
-      include: { evidence: true, property: true },
+    return this.withTransaction(async (tx: any) => {
+      if (typeof tx.$queryRaw === "function") {
+        await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Inspection" WHERE "id" = ${inspectionId} FOR UPDATE`);
+      }
+      const [inspection, verifier] = await Promise.all([
+        tx.inspection.findUnique({ where: { id: inspectionId } }),
+        tx.user.findUnique({
+          where: { id: verifierId },
+          include: {
+            roles: { include: { role: true } },
+            territoryAssignments: true,
+          },
+        }),
+      ]);
+      if (!inspection) throw new NotFoundException("Inspection not found");
+      if (!verifier) throw new NotFoundException("Verifier not found");
+      if (!this.roles(verifier).includes("VERIFIER")) {
+        throw new ForbiddenException("Only verifiers can receive inspections");
+      }
+      const territories = this.territories(verifier);
+      if (!inspection.territoryId || !territories.includes(inspection.territoryId)) {
+        throw new ForbiddenException("Verifier is outside the inspection territory");
+      }
+      const updated = await tx.inspection.update({
+        where: { id: inspectionId },
+        data: { verifierId, status: "DRAFT" },
+        include: { evidence: true, property: true },
+      });
+      await this.recordAudit(tx, actor, "INSPECTION_VERIFIER_ASSIGNED", inspectionId, { verifierId, previousVerifierId: inspection.verifierId ?? null });
+      return updated;
     });
   }
 
@@ -121,5 +125,15 @@ export class AssignmentsService {
         typeof entry === "string" ? entry : (entry?.territoryId ?? entry?.id),
       ),
     ].filter(Boolean);
+  }
+
+  private async withTransaction<T>(work: (tx: any) => Promise<T>): Promise<T> {
+    if (typeof (this.prisma as any).$transaction === "function") return (this.prisma as any).$transaction(work);
+    return work(this.prisma as any);
+  }
+
+  private async recordAudit(tx: any, actor: Actor, action: string, entityId: string, metadata: Record<string, unknown>) {
+    if (this.audit?.record) return this.audit.record(tx, { actor: actor.id, action, entity: { type: "Inspection", id: entityId, metadata: metadata as any } });
+    if (typeof tx.auditEvent?.create === "function") return tx.auditEvent.create({ data: { actorId: actor.id, action, entityType: "Inspection", entityId, metadata } });
   }
 }

@@ -12,6 +12,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { TranslationService } from "./translation.service";
 import { AuditService } from "../audit/audit.service";
 import { isCurrentPublicVerification } from "./public-verification";
+import { StorageAdapter } from "../media/storage.adapter";
 
 export { isCurrentPublicVerification } from "./public-verification";
 
@@ -45,6 +46,7 @@ const MATERIAL_EDIT_FIELDS = new Set([
   "capacity",
   "amenities",
   "publicLocationLabel",
+  "publicLocation",
   "publicLatitude",
   "publicLongitude",
   "safetyNotes",
@@ -60,6 +62,7 @@ export class PublishingService {
     private readonly prisma: PrismaService,
     @Optional() private readonly translations?: TranslationService,
     @Optional() private readonly audit?: AuditService,
+    @Optional() private readonly storage?: StorageAdapter,
   ) {}
 
   async publish(propertyId: string, actor?: Actor): Promise<Listing> {
@@ -133,6 +136,7 @@ export class PublishingService {
         status: material ? "PENDING_REVIEW" : property.status,
       };
       this.addScalarPatchFields(data, patch);
+      this.addPublicLocationPatchFields(data, patch);
       this.addExactLocationPatchFields(data, patch);
       this.addOfferingPatch(data, patch);
       this.addMediaPatch(data, patch);
@@ -176,36 +180,27 @@ export class PublishingService {
   async reportFraud(
     propertyId: string,
     input: { reason?: string } | string = {},
-    _actor?: Actor,
+    actor?: Actor,
   ): Promise<Listing> {
-    await this.findProperty(propertyId);
     const reason = typeof input === "string" ? input : input.reason;
-    return this.prisma.property.update({
-      where: { id: propertyId },
-      data: { status: "FRAUD_REVIEW", ...(reason?.trim() ? { fraudReason: reason.trim() } : {}) },
-      include: this.propertyInclude(),
+    return this.withTransaction(async (tx: any) => {
+      await this.lockProperty(tx, propertyId);
+      const property = await this.findProperty(propertyId, tx);
+      const updated = await tx.property.update({
+        where: { id: propertyId },
+        data: { status: "FRAUD_REVIEW", ...(reason?.trim() ? { fraudReason: reason.trim() } : {}) },
+        include: this.propertyInclude(),
+      });
+      await this.recordAudit(tx, actor, "PROPERTY_FRAUD_REPORTED", property.id, { reason: reason?.trim() ?? null, previousStatus: property.status });
+      return updated;
     });
   }
 
   /** Pause published and verified listings whose one-year validity has elapsed. */
   async expireVerification(now: Date | string = new Date()): Promise<string[]> {
     if (typeof now === "string") {
-      const property = await this.findProperty(now);
-      const validUntil = property.verificationValidUntil
-        ? new Date(property.verificationValidUntil)
-        : null;
-      if (
-        validUntil &&
-        validUntil.getTime() <= Date.now() &&
-        ["PUBLISHED", "VERIFIED", "PENDING_REVIEW"].includes(property.status)
-      ) {
-        await this.prisma.property.update({
-          where: { id: property.id },
-          data: { status: "PAUSED" },
-        });
-        return [property.id];
-      }
-      return [];
+      const id = await this.expireOne(now, new Date());
+      return id ? [id] : [];
     }
     const expired: Listing[] = [];
     for (const status of ["PUBLISHED", "VERIFIED", "PENDING_REVIEW"] as const) {
@@ -217,11 +212,8 @@ export class PublishingService {
         select: { id: true },
       });
       for (const property of rows ?? []) {
-        await this.prisma.property.update({
-          where: { id: property.id },
-          data: { status: "PAUSED" },
-        });
-        expired.push(property);
+        const id = await this.expireOne(property.id, now);
+        if (id) expired.push({ id });
       }
     }
     return expired.map((property) => property.id);
@@ -262,16 +254,33 @@ export class PublishingService {
         throw new BadRequestException("New owner must be an active individual owner");
       }
     }
-    await this.findProperty(propertyId);
-    return this.prisma.property.update({
-      where: { id: propertyId },
-      data: {
-        ownerId: newOwnerId,
-        status: "PENDING_INSPECTION",
-        verificationValidUntil: null,
-        lastInspectedAt: null,
-      },
-      include: this.propertyInclude(),
+    return this.withTransaction(async (tx: any) => {
+      await this.lockProperty(tx, propertyId);
+      const property = await this.findProperty(propertyId, tx);
+      const updated = await tx.property.update({
+        where: { id: propertyId },
+        data: {
+          ownerId: newOwnerId,
+          status: "PENDING_INSPECTION",
+          verificationValidUntil: null,
+          lastInspectedAt: null,
+        },
+        include: this.propertyInclude(),
+      });
+      await this.recordAudit(tx, actor, "PROPERTY_OWNERSHIP_TRANSFERRED", propertyId, { previousOwnerId: property.ownerId, newOwnerId });
+      return updated;
+    });
+  }
+
+  private async expireOne(propertyId: string, now: Date): Promise<string | null> {
+    return this.withTransaction(async (tx: any) => {
+      await this.lockProperty(tx, propertyId);
+      const property = await this.findProperty(propertyId, tx);
+      const validUntil = property.verificationValidUntil ? new Date(property.verificationValidUntil) : null;
+      if (!validUntil || validUntil.getTime() > now.getTime() || !["PUBLISHED", "VERIFIED", "PENDING_REVIEW"].includes(property.status)) return null;
+      await tx.property.update({ where: { id: propertyId }, data: { status: "PAUSED" } });
+      await this.recordAudit(tx, undefined, "PROPERTY_VERIFICATION_EXPIRED", propertyId, { previousStatus: property.status, verificationValidUntil: validUntil.toISOString() });
+      return propertyId;
     });
   }
 
@@ -437,13 +446,13 @@ export class PublishingService {
         moveInDate: offering.moveInDate?.toISOString?.() ?? offering.moveInDate,
         leaseDurationMonths: offering.leaseDurationMonths,
       })),
-      media: (property.media ?? [])
+      media: await Promise.all((property.media ?? [])
         .filter((media: Listing) => media.isPublic && media.status === "CLEAN")
-        .map((media: Listing) => ({
+        .map(async (media: Listing) => ({
           id: media.id,
           objectKey: media.objectKey,
-          url: this.publicMediaUrl(media.objectKey),
-        })),
+          url: await this.mediaUrl(media.objectKey),
+        }))),
     };
   }
 
@@ -461,6 +470,11 @@ export class PublishingService {
   private publicMediaUrl(objectKey: string): string {
     const base = process.env.PUBLIC_MEDIA_BASE_URL?.trim();
     return base ? `${base.replace(/\/$/, "")}/${objectKey}` : objectKey;
+  }
+
+  private async mediaUrl(objectKey: string): Promise<string> {
+    if (this.storage) return this.storage.createSignedReadUrl(objectKey);
+    return this.publicMediaUrl(objectKey);
   }
 
   private isMaterialEdit(patch: Record<string, unknown>): boolean {
@@ -498,6 +512,15 @@ export class PublishingService {
     if (Object.prototype.hasOwnProperty.call(exact, "longitude")) {
       data.exactLongitude = exact.longitude;
     }
+  }
+
+  private addPublicLocationPatchFields(data: Record<string, unknown>, patch: Record<string, unknown>) {
+    const location = patch.publicLocation;
+    if (!location || typeof location !== "object") return;
+    const publicLocation = location as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(publicLocation, "label")) data.publicLocationLabel = publicLocation.label;
+    if (Object.prototype.hasOwnProperty.call(publicLocation, "latitude")) data.publicLatitude = publicLocation.latitude;
+    if (Object.prototype.hasOwnProperty.call(publicLocation, "longitude")) data.publicLongitude = publicLocation.longitude;
   }
 
   private addOfferingPatch(data: Record<string, unknown>, patch: Record<string, unknown>) {

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { IsDateString, IsOptional, IsString, IsUUID, MaxLength } from "class-validator";
 import { AuthSessionGuard, Roles, RolesGuard } from "../auth/guards";
 import { AvailabilityService } from "./availability.service";
@@ -46,12 +46,12 @@ export class AvailabilityController {
   }
 
   @Post("inquiries/:id/confirm")
-  confirm(@Req() request: { user: { id: string } }, @Param("id") id: string) {
+  confirm(@Req() request: { user: { id: string } }, @Param("id", new ParseUUIDPipe({ version: "4" })) id: string) {
     return this.availability.confirmInquiryAndBlockDates(id, request.user.id);
   }
 
   @Post("inquiries/:id/decline")
-  decline(@Req() request: { user: { id: string } }, @Param("id") id: string) {
+  decline(@Req() request: { user: { id: string } }, @Param("id", new ParseUUIDPipe({ version: "4" })) id: string) {
     return this.availability.ownerDeclineInquiry(id, request.user.id);
   }
 
@@ -74,14 +74,14 @@ export class AvailabilityController {
   @Patch("unavailable/:id")
   updateUnavailable(
     @Req() request: { user: { id: string } },
-    @Param("id") id: string,
+    @Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
     @Body() body: UpdateUnavailableDateDto,
   ) {
     return this.availability.updateUnavailableDate(request.user.id, id, body);
   }
 
   @Delete("unavailable/:id")
-  deleteUnavailable(@Req() request: { user: { id: string } }, @Param("id") id: string) {
+  deleteUnavailable(@Req() request: { user: { id: string } }, @Param("id", new ParseUUIDPipe({ version: "4" })) id: string) {
     return this.availability.deleteUnavailableDate(request.user.id, id);
   }
 }

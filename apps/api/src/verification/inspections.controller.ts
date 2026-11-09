@@ -7,6 +7,7 @@ import {
   Post,
   Req,
   UseGuards,
+  ParseUUIDPipe,
 } from "@nestjs/common";
 import { IsArray, IsBoolean, IsIn, IsObject, IsOptional, IsString, IsUUID, MaxLength } from "class-validator";
 import { Type } from "class-transformer";
@@ -117,7 +118,7 @@ export class InspectionsController {
   @Roles("ADMIN")
   assign(
     @Req() request: { user: { id: string; roles: string[] } },
-    @Param("id") id: string,
+    @Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
     @Body() body: AssignInspectionDto,
   ) {
     return this.inspections.assign(id, body.verifierId, request.user);
@@ -133,7 +134,7 @@ export class InspectionsController {
   @Roles("VERIFIER")
   get(
     @Req() request: { user: { id: string } },
-    @Param("id") id: string,
+    @Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
   ) {
     return this.inspections.getForVerifier(id, request.user.id);
   }
@@ -142,7 +143,7 @@ export class InspectionsController {
   @Roles("VERIFIER")
   submit(
     @Req() request: { user: { id: string } },
-    @Param("id") id: string,
+    @Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
     @Body() body: SubmitInspectionDto,
   ) {
     return this.inspections.submitPendingUpload(id, request.user.id, body);
@@ -152,8 +153,8 @@ export class InspectionsController {
   @Roles("VERIFIER")
   sync(
     @Req() request: { user: { id: string } },
-    @Param("id") id: string,
-    @Param("mediaId") mediaId: string,
+    @Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
+    @Param("mediaId", new ParseUUIDPipe({ version: "4" })) mediaId: string,
     @Body() body: SyncEvidenceDto,
   ) {
     return this.inspections.markEvidenceSynced(
@@ -168,7 +169,7 @@ export class InspectionsController {
   @Roles("ADMIN")
   review(
     @Req() request: { user: { id: string; roles: string[] } },
-    @Param("id") id: string,
+    @Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
     @Body() body: ReviewInspectionDto,
   ) {
     return this.inspections.adminReview(

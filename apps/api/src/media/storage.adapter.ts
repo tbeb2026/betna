@@ -1,5 +1,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import sharp from "sharp";
+import { createHash } from "node:crypto";
+
+export const STORAGE_ADAPTER = Symbol("STORAGE_ADAPTER");
 
 export type StorageVariant = {
   width: number;
@@ -26,6 +29,19 @@ export type StorageAdapterOptions = {
   uploadBaseUrl?: string;
   readBaseUrl?: string;
   signingSecret?: string;
+  uploadTtlSeconds?: number;
+  readTtlSeconds?: number;
+  fetcher?: typeof fetch;
+};
+
+export type S3StorageAdapterOptions = {
+  endpoint: string;
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  publicBucket: string;
+  privateBucket: string;
+  forcePathStyle?: boolean;
   uploadTtlSeconds?: number;
   readTtlSeconds?: number;
   fetcher?: typeof fetch;
@@ -266,6 +282,133 @@ export class StorageAdapter {
       expected.length === actual.length && timingSafeEqual(expected, actual)
     );
   }
+}
+
+/** S3/MinIO implementation using AWS Signature V4 presigned requests. */
+export class S3StorageAdapter extends StorageAdapter {
+  private readonly endpoint: URL;
+  private readonly region: string;
+  private readonly accessKeyId: string;
+  private readonly secretAccessKey: string;
+  private readonly publicBucket: string;
+  private readonly privateBucket: string;
+  private readonly forcePathStyle: boolean;
+  private readonly s3UploadTtlSeconds: number;
+  private readonly s3ReadTtlSeconds: number;
+  private readonly s3Fetcher: typeof fetch;
+
+  constructor(options: S3StorageAdapterOptions) {
+    super({ signingSecret: "s3-signature-v4" });
+    this.endpoint = new URL(options.endpoint);
+    this.endpoint.search = "";
+    this.endpoint.hash = "";
+    this.region = options.region;
+    this.accessKeyId = options.accessKeyId;
+    this.secretAccessKey = options.secretAccessKey;
+    this.publicBucket = options.publicBucket;
+    this.privateBucket = options.privateBucket;
+    this.forcePathStyle = options.forcePathStyle ?? true;
+    this.s3UploadTtlSeconds = options.uploadTtlSeconds ?? 900;
+    this.s3ReadTtlSeconds = options.readTtlSeconds ?? 300;
+    this.s3Fetcher = options.fetcher ?? globalThis.fetch;
+  }
+
+  override async createSignedUploadUrl(objectKey: string, contentType: string, maxBytes: number): Promise<string> {
+    const bucket = this.bucketFor(objectKey);
+    return this.presign("PUT", bucket, objectKey, this.s3UploadTtlSeconds, {
+      "content-type": contentType,
+      "x-amz-meta-max-bytes": String(maxBytes),
+    });
+  }
+
+  override async createSignedReadUrl(objectKey: string, expiresInSeconds = this.s3ReadTtlSeconds): Promise<string> {
+    return this.presign("GET", this.bucketFor(objectKey), objectKey, expiresInSeconds);
+  }
+
+  override async readObject(objectKey: string): Promise<StorageObject> {
+    const response = await this.s3Fetcher(await this.createSignedReadUrl(objectKey));
+    if (!response.ok) throw new Error(`Unable to read uploaded object (${response.status})`);
+    return { body: new Uint8Array(await response.arrayBuffer()), contentType: response.headers.get("content-type") ?? undefined };
+  }
+
+  override async writeObject(objectKey: string, body: Uint8Array, contentType: string): Promise<void> {
+    const response = await this.s3Fetcher(await this.createSignedUploadUrl(objectKey, contentType, body.byteLength), {
+      method: "PUT",
+      // Content-Type is intentionally not part of the signed header set: the
+      // media row and scan job remain authoritative for type and size checks.
+      headers: { "Content-Type": contentType },
+      body: Buffer.from(body),
+    });
+    if (!response.ok) throw new Error(`Unable to write media variant (${response.status})`);
+  }
+
+  private bucketFor(objectKey: string): string {
+    if (!objectKey || objectKey.startsWith("/") || objectKey.includes("..")) throw new Error("Invalid storage object key");
+    return objectKey.startsWith("private/") ? this.privateBucket : this.publicBucket;
+  }
+
+  private presign(method: string, bucket: string, objectKey: string, expiresInSeconds: number, headers: Record<string, string> = {}): string {
+    const now = new Date();
+    const amzDate = now.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+    const date = amzDate.slice(0, 8);
+    const host = this.forcePathStyle ? this.endpoint.host : `${bucket}.${this.endpoint.host}`;
+    const path = this.forcePathStyle
+      ? `/${encodeURIComponent(bucket)}${this.encodeKey(objectKey)}`
+      : this.encodeKey(objectKey);
+    const credentialScope = `${date}/${this.region}/s3/aws4_request`;
+    const query: Record<string, string> = {
+      "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
+      "X-Amz-Credential": `${this.accessKeyId}/${credentialScope}`,
+      "X-Amz-Date": amzDate,
+      "X-Amz-Expires": String(expiresInSeconds),
+      "X-Amz-SignedHeaders": "host",
+    };
+    const canonicalQuery = Object.keys(query).sort().map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(query[key])}`).join("&");
+    const canonicalHeaders = `host:${host}\n`;
+    const canonicalRequest = [method, path, canonicalQuery, canonicalHeaders, "host", "UNSIGNED-PAYLOAD"].join("\n");
+    const stringToSign = ["AWS4-HMAC-SHA256", amzDate, credentialScope, createHash("sha256").update(canonicalRequest).digest("hex")].join("\n");
+    query["X-Amz-Signature"] = this.hmac(this.signingKey(date), stringToSign) as string;
+    const queryString = Object.keys(query).sort().map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(query[key])}`).join("&");
+    const url = new URL(`${this.endpoint.protocol}//${host}${path}`);
+    url.search = queryString;
+    void headers;
+    return url.toString();
+  }
+
+  private encodeKey(key: string): string {
+    return `/${key.split("/").map((segment) => encodeURIComponent(segment)).join("/")}`;
+  }
+
+  private signingKey(date: string): Buffer {
+    const dateKey = this.hmac(`AWS4${this.secretAccessKey}`, date, true) as Buffer;
+    const regionKey = this.hmac(dateKey, this.region, true) as Buffer;
+    const serviceKey = this.hmac(regionKey, "s3", true) as Buffer;
+    return this.hmac(serviceKey, "aws4_request", true) as Buffer;
+  }
+
+  private hmac(key: string | Buffer, value: string, binary = false): string | Buffer {
+    const result = createHmac("sha256", key).update(value).digest();
+    return binary ? result : result.toString("hex");
+  }
+}
+
+export function createConfiguredStorageAdapter(environment: Record<string, string | undefined> = process.env): StorageAdapter {
+  const nodeEnv = environment.NODE_ENV ?? "development";
+  const provider = (environment.MEDIA_STORAGE_PROVIDER ?? (nodeEnv === "production" ? "s3" : "fake")).toLowerCase();
+  if (provider === "fake" || provider === "local") return new StorageAdapter();
+  if (provider !== "s3" && provider !== "minio") throw new Error(`Unsupported MEDIA_STORAGE_PROVIDER: ${provider}`);
+  const required = ["S3_ENDPOINT", "S3_REGION", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY", "S3_PUBLIC_BUCKET", "S3_PRIVATE_BUCKET"] as const;
+  const missing = required.filter((name) => !environment[name]?.trim());
+  if (missing.length) throw new Error(`Missing ${provider} storage configuration: ${missing.join(", ")}`);
+  return new S3StorageAdapter({
+    endpoint: environment.S3_ENDPOINT!,
+    region: environment.S3_REGION!,
+    accessKeyId: environment.S3_ACCESS_KEY_ID!,
+    secretAccessKey: environment.S3_SECRET_ACCESS_KEY!,
+    publicBucket: environment.S3_PUBLIC_BUCKET!,
+    privateBucket: environment.S3_PRIVATE_BUCKET!,
+    forcePathStyle: provider === "minio" || environment.S3_FORCE_PATH_STYLE === "true",
+  });
 }
 
 export function normalizeImageType(contentType: string): string {

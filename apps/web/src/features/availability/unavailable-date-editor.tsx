@@ -1,9 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { getApiBaseUrl } from "../../lib/api-client";
 
-export function UnavailableDateEditor({ token, initialDates = [] }: { token: string; initialDates?: Array<{ id: string; propertyId?: string; startDate: string; endDate: string; reason?: string | null }> }) {
+export function UnavailableDateEditor({ initialDates = [] }: { initialDates?: Array<{ id: string; propertyId?: string; startDate: string; endDate: string; reason?: string | null }> }) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -14,9 +13,9 @@ export function UnavailableDateEditor({ token, initialDates = [] }: { token: str
     setMessage("");
     const values = new FormData(form);
     try {
-      const response = await fetch(`${getApiBaseUrl()}/owner/availability/unavailable${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, {
+      const response = await fetch(`/api/bff/owner/availability/unavailable${editingId ? `/${encodeURIComponent(editingId)}` : ""}`, {
         method: editingId ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...(editingId ? {} : { propertyId: values.get("propertyId") }),
           startDate: values.get("startDate"),
@@ -36,7 +35,7 @@ export function UnavailableDateEditor({ token, initialDates = [] }: { token: str
   }
 
   async function remove(id: string) {
-    const response = await fetch(`${getApiBaseUrl()}/owner/availability/unavailable/${encodeURIComponent(id)}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+    const response = await fetch(`/api/bff/owner/availability/unavailable/${encodeURIComponent(id)}`, { method: "DELETE" });
     setMessage(response.ok ? "Unavailable dates removed." : "Unavailable dates could not be removed.");
   }
 

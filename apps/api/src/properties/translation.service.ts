@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { AuditService } from "../audit/audit.service";
 
 type TranslationInput = {
   title: string;
@@ -11,7 +12,7 @@ type TranslationInput = {
 export class TranslationService {
   private readonly local = new Map<string, any>();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly audit?: AuditService) {}
 
   async upsertApprovedTranslation(
     propertyId: string,
@@ -37,13 +38,17 @@ export class TranslationService {
       approvedBy: actorId,
     };
     const key = `${propertyId}:${normalizedLocale}`;
-    const stored = this.prisma.propertyTranslation?.upsert
-      ? await this.prisma.propertyTranslation.upsert({
-          where: { propertyId_locale: { propertyId, locale: normalizedLocale } },
-          create: { propertyId, locale: normalizedLocale, ...data },
-          update: data,
-        })
-      : { id: key, propertyId, locale: normalizedLocale, ...data };
+    const stored = await this.withTransaction(async (tx: any) => {
+      const result = tx.propertyTranslation?.upsert
+        ? await tx.propertyTranslation.upsert({
+            where: { propertyId_locale: { propertyId, locale: normalizedLocale } },
+            create: { propertyId, locale: normalizedLocale, ...data },
+            update: data,
+          })
+        : { id: key, propertyId, locale: normalizedLocale, ...data };
+      await this.recordAudit(tx, actorId, "TRANSLATION_APPROVED", result.id ?? key, { propertyId, locale: normalizedLocale });
+      return result;
+    });
     this.local.set(key, stored);
     return stored;
   }
@@ -132,5 +137,15 @@ export class TranslationService {
       throw new BadRequestException("Only English and Tigrinya translations are supported");
     }
     return normalized;
+  }
+
+  private async withTransaction<T>(work: (tx: any) => Promise<T>): Promise<T> {
+    if (typeof (this.prisma as any).$transaction === "function") return (this.prisma as any).$transaction(work);
+    return work(this.prisma as any);
+  }
+
+  private async recordAudit(tx: any, actorId: string | undefined, action: string, entityId: string, metadata: Record<string, unknown>) {
+    if (this.audit?.record) return this.audit.record(tx, { actor: actorId, action, entity: { type: "PropertyTranslation", id: entityId, metadata: metadata as any } });
+    if (typeof tx.auditEvent?.create === "function") return tx.auditEvent.create({ data: { actorId: actorId ?? null, action, entityType: "PropertyTranslation", entityId, metadata } });
   }
 }

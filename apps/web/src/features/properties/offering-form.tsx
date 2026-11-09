@@ -1,4 +1,5 @@
 "use client";
+import { useTranslations } from "next-intl";
 
 type OfferingFormProps = {
   currency: "KES" | "UGX";
@@ -6,6 +7,7 @@ type OfferingFormProps = {
 };
 
 export function OfferingForm({ currency, initialProperty }: OfferingFormProps) {
+  const t = useTranslations("portal.propertyForm");
   const offerings = initialProperty?.offerings ?? [];
   const shortStay = offerings.find(
     (offering: any) => offering.mode === "SHORT_STAY",
@@ -15,16 +17,13 @@ export function OfferingForm({ currency, initialProperty }: OfferingFormProps) {
   );
   return (
     <fieldset className="form-section">
-      <legend>Rental options</legend>
-      <p className="form-help">
-        Keep short-stay and long-term prices separate. Prices are shown in local
-        currency. Add at least one public price.
-      </p>
+      <legend>{t("rentalOptions")}</legend>
+      <p className="form-help">{t("rentalHelp")}</p>
       <div className="offering-grid">
         <div className="offering-card">
-          <h3>Short stay</h3>
+          <h3>{t("shortStay")}</h3>
           <label htmlFor="short-stay-price">
-            Short-stay public price ({currency})
+            {t("shortStayPrice", { currency })}
           </label>
           <input
             id="short-stay-price"
@@ -33,7 +32,7 @@ export function OfferingForm({ currency, initialProperty }: OfferingFormProps) {
             min="1"
             defaultValue={shortStay?.basePrice ?? ""}
           />
-          <label htmlFor="short-stay-minimum">Minimum nights</label>
+          <label htmlFor="short-stay-minimum">{t("minimumNights")}</label>
           <input
             id="short-stay-minimum"
             name="shortStayMinimumNights"
@@ -43,9 +42,9 @@ export function OfferingForm({ currency, initialProperty }: OfferingFormProps) {
           />
         </div>
         <div className="offering-card">
-          <h3>Long term</h3>
+          <h3>{t("longTerm")}</h3>
           <label htmlFor="long-term-price">
-            Long-term public price ({currency})
+            {t("longTermPrice", { currency })}
           </label>
           <input
             id="long-term-price"
@@ -54,7 +53,7 @@ export function OfferingForm({ currency, initialProperty }: OfferingFormProps) {
             min="1"
             defaultValue={longTerm?.basePrice ?? ""}
           />
-          <label htmlFor="long-term-duration">Lease duration (months)</label>
+          <label htmlFor="long-term-duration">{t("leaseDuration")}</label>
           <input
             id="long-term-duration"
             name="longTermLeaseDuration"

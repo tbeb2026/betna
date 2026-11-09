@@ -46,6 +46,9 @@ async function main() {
       firstName: "Critical",
       lastName: "Owner",
       countryId: country.id,
+      emailVerified: true,
+      phoneVerified: true,
+      authorizationAttested: true,
     },
     create: {
       email: ownerEmail,
@@ -53,6 +56,9 @@ async function main() {
       firstName: "Critical",
       lastName: "Owner",
       countryId: country.id,
+      emailVerified: true,
+      phoneVerified: true,
+      authorizationAttested: true,
     },
   });
   const admin = await prisma.user.upsert({
@@ -63,6 +69,7 @@ async function main() {
       firstName: "Critical",
       lastName: "Admin",
       countryId: country.id,
+      emailVerified: true,
     },
     create: {
       email: adminEmail,
@@ -70,6 +77,7 @@ async function main() {
       firstName: "Critical",
       lastName: "Admin",
       countryId: country.id,
+      emailVerified: true,
     },
   });
   await ensureRole(owner.id, "OWNER");

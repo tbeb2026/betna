@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { getApiBaseUrl } from "../../lib/api-client";
 
 export type MediaPurpose = "LISTING" | "INSPECTION_EVIDENCE";
 
@@ -15,9 +14,7 @@ type UploadTarget = {
 type MediaUploaderProps = {
   propertyId: string;
   purpose?: MediaPurpose;
-  apiBaseUrl?: string;
   maxBytes?: number;
-  authToken?: string;
 };
 
 const DEFAULT_MAX_BYTES = 10 * 1024 * 1024;
@@ -26,9 +23,7 @@ const DEFAULT_MAX_BYTES = 10 * 1024 * 1024;
 export function MediaUploader({
   propertyId,
   purpose = "LISTING",
-  apiBaseUrl = getApiBaseUrl(),
   maxBytes = DEFAULT_MAX_BYTES,
-  authToken,
 }: MediaUploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [selected, setSelected] = useState<File[]>([]);
@@ -59,13 +54,12 @@ export function MediaUploader({
     try {
       for (const file of selected) {
         const targetResponse = await fetch(
-          `${apiBaseUrl.replace(/\/$/, "")}/media/upload-target`,
+          "/api/bff/media/upload-target",
           {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               Accept: "application/json",
-              ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
             },
             credentials: "include",
             body: JSON.stringify({
@@ -87,12 +81,11 @@ export function MediaUploader({
         if (!uploadResponse.ok)
           throw new Error(`Could not upload ${file.name}`);
         const completeResponse = await fetch(
-          `${apiBaseUrl.replace(/\/$/, "")}/media/${target.mediaId}/complete`,
+          `/api/bff/media/${encodeURIComponent(target.mediaId)}/complete`,
           {
             method: "POST",
             headers: {
               Accept: "application/json",
-              ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
             },
             credentials: "include",
           },

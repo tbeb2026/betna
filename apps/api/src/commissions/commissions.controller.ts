@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Req, UseGuards } from "@nestjs/common";
 import { Transform } from "class-transformer";
 import { IsBoolean, IsString, Length, Matches, MaxLength, ValidateIf } from "class-validator";
 import { AuthSessionGuard, Roles, RolesGuard } from "../auth/guards";
@@ -64,7 +64,7 @@ export class CommissionsController {
   @Roles("ADMIN")
   verify(
     @Req() request: { user: { id: string } },
-    @Param("id") id: string,
+    @Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
     @Body() body: VerifyEvidenceDto,
   ) {
     return this.conversions.verifyEvidence(id, request.user.id, body);
@@ -72,17 +72,17 @@ export class CommissionsController {
 
   @Post("admin/conversions/:id/mark-due")
   @Roles("ADMIN")
-  markDue(@Req() request: { user: { id: string } }, @Param("id") id: string) { return this.commissions.markDue(id, request.user.id); }
+  markDue(@Req() request: { user: { id: string } }, @Param("id", new ParseUUIDPipe({ version: "4" })) id: string) { return this.commissions.markDue(id, request.user.id); }
 
   @Post("admin/commissions/:id/paid")
   @Roles("ADMIN")
-  paid(@Req() request: { user: { id: string } }, @Param("id") id: string) { return this.commissions.markPaid(id, request.user.id); }
+  paid(@Req() request: { user: { id: string } }, @Param("id", new ParseUUIDPipe({ version: "4" })) id: string) { return this.commissions.markPaid(id, request.user.id); }
 
   @Post("admin/commissions/:id/waive")
   @Roles("ADMIN")
-  waive(@Req() request: { user: { id: string } }, @Param("id") id: string) { return this.commissions.waive(id, request.user.id); }
+  waive(@Req() request: { user: { id: string } }, @Param("id", new ParseUUIDPipe({ version: "4" })) id: string) { return this.commissions.waive(id, request.user.id); }
 
   @Post("admin/commissions/:id/dispute")
   @Roles("ADMIN")
-  dispute(@Req() request: { user: { id: string } }, @Param("id") id: string) { return this.commissions.dispute(id, request.user.id); }
+  dispute(@Req() request: { user: { id: string } }, @Param("id", new ParseUUIDPipe({ version: "4" })) id: string) { return this.commissions.dispute(id, request.user.id); }
 }

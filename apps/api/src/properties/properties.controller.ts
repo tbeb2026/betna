@@ -7,6 +7,7 @@ import {
   Post,
   Req,
   UseGuards,
+  ParseUUIDPipe,
 } from "@nestjs/common";
 import { AuthSessionGuard, Roles, RolesGuard } from "../auth/guards";
 import { CreatePropertyDto, UpdatePropertyDto } from "./dto";
@@ -46,21 +47,21 @@ export class PropertiesController {
   }
 
   @Get(":id")
-  get(@Req() request: { user: { id: string } }, @Param("id") id: string) {
+  get(@Req() request: { user: { id: string } }, @Param("id", new ParseUUIDPipe({ version: "4" })) id: string) {
     return this.properties.getDraft(id, request.user.id);
   }
 
   @Patch(":id")
   update(
     @Req() request: { user: { id: string } },
-    @Param("id") id: string,
+    @Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
     @Body() body: UpdatePropertyDto,
   ) {
     return this.properties.updateDraft(id, request.user.id, body);
   }
 
   @Post(":id/submit")
-  submit(@Req() request: { user: { id: string } }, @Param("id") id: string) {
+  submit(@Req() request: { user: { id: string } }, @Param("id", new ParseUUIDPipe({ version: "4" })) id: string) {
     return this.properties.submit(id, request.user.id);
   }
 }

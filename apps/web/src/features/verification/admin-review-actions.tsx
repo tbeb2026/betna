@@ -1,26 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { getApiBaseUrl } from "../../lib/api-client";
 
 export function AdminReviewActions({
   inspectionId,
-  authToken,
 }: {
   inspectionId: string;
-  authToken?: string;
 }) {
   const [status, setStatus] = useState("");
 
   async function review(decision: "APPROVED" | "REJECTED") {
     setStatus("Saving review…");
     const response = await fetch(
-      `${getApiBaseUrl()}/verification/inspections/${inspectionId}/review`,
+      `/api/bff/verification/inspections/${encodeURIComponent(inspectionId)}/review`,
       {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         },
         body: JSON.stringify({ decision }),
       },

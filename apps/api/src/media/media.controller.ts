@@ -6,6 +6,7 @@ import {
   Post,
   Req,
   UseGuards,
+  ParseUUIDPipe,
 } from "@nestjs/common";
 import { IsIn, IsInt, IsOptional, IsPositive, IsString, IsUUID, Max, MaxLength } from "class-validator";
 import { AuthSessionGuard, Roles, RolesGuard } from "../auth/guards";
@@ -58,18 +59,18 @@ export class MediaController {
   @Post(":id/complete")
   @UseGuards(AuthSessionGuard, RolesGuard)
   @Roles("OWNER", "VERIFIER", "ADMIN")
-  complete(@Req() request: RequestWithUser, @Param("id") id: string) {
+  complete(@Req() request: RequestWithUser, @Param("id", new ParseUUIDPipe({ version: "4" })) id: string) {
     return this.media.completeUpload(id, request.user);
   }
 
   @Get(":id/variants")
-  publicVariants(@Param("id") id: string) {
+  publicVariants(@Param("id", new ParseUUIDPipe({ version: "4" })) id: string) {
     return this.media.getPublicVariants(id);
   }
 
   @Get(":id/private-url")
   @UseGuards(AuthSessionGuard)
-  privateUrl(@Req() request: RequestWithUser, @Param("id") id: string) {
+  privateUrl(@Req() request: RequestWithUser, @Param("id", new ParseUUIDPipe({ version: "4" })) id: string) {
     return this.media.getPrivateUrl(id, request.user);
   }
 }

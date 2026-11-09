@@ -7,10 +7,9 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service";
+import type { WhatsAppOtpSender } from "../notifications/channel.adapter";
 
-export interface WhatsAppProvider {
-  sendOtp(phone: string, code: string, expiresAt: Date): Promise<void>;
-}
+export type WhatsAppProvider = WhatsAppOtpSender;
 
 /** Adapter boundary for WhatsApp Cloud API/Twilio/etc.; no vendor is required in the MVP tests. */
 export class NoopWhatsAppProvider implements WhatsAppProvider {

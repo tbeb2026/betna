@@ -12,9 +12,10 @@ import { ListingLifecycleJob } from "./listing-lifecycle.job";
 import { PublicPropertiesController } from "./public-properties.controller";
 import { SearchService } from "./search.service";
 import { AuditModule } from "../audit/audit.module";
+import { MediaModule } from "../media/media.module";
 
 @Module({
-  imports: [PrismaModule, AuthModule, UsersModule, AuditModule],
+  imports: [PrismaModule, AuthModule, UsersModule, AuditModule, MediaModule],
   controllers: [PropertiesController, PublishingController, PublicPropertiesController],
   providers: [
     PropertiesService,

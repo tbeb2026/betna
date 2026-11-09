@@ -2,23 +2,22 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { createApiClient } from "../../lib/api-client";
 
 type Props = {
   conversionId: string;
   conversionStatus: string;
   commission?: { id: string; status: string } | null;
-  token: string;
 };
 
-export function AdminCommissionActions({ conversionId, conversionStatus, commission, token }: Props) {
+export function AdminCommissionActions({ conversionId, conversionStatus, commission }: Props) {
   const router = useRouter();
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   async function act(path: string, body: Record<string, unknown> = {}) {
     setBusy(true);
     try {
-      await createApiClient({ token }).post(path, body);
+      const response = await fetch(`/api/bff${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!response.ok) throw new Error("Commission action failed");
       setMessage("Updated.");
       router.refresh();
     } catch (error) {
