@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
 import { AssignmentsService } from "./assignments.service";
@@ -139,6 +140,16 @@ export class InspectionsService {
         "Evidence upload failed; synchronization retry is available",
       );
     }
+    if (typeof this.prisma.media?.findUnique !== "function") {
+      throw new InternalServerErrorException(
+        "Evidence media persistence is not configured",
+      );
+    }
+    if (typeof this.prisma.inspectionEvidence?.upsert !== "function") {
+      throw new InternalServerErrorException(
+        "Inspection evidence persistence is not configured",
+      );
+    }
     const inspection = await this.findInspection(inspectionId);
     const requiredEvidence = await this.currentEvidence(inspection);
     if (verifierId) await this.assertVerifierAccess(inspection, verifierId);
@@ -160,24 +171,35 @@ export class InspectionsService {
         "Evidence item is not part of the required evidence for this inspection",
       );
     }
-    if (this.prisma.media?.findUnique) {
-      const media = await this.prisma.media.findUnique({
-        where: { id: mediaId },
-      });
-      if (!media) {
-        throw new NotFoundException("Evidence media not found");
-      }
-      if (
-        media.purpose !== "INSPECTION_EVIDENCE" ||
-        media.status !== "CLEAN" ||
-        (media.propertyId && media.propertyId !== inspection.propertyId)
-      ) {
-        throw new BadRequestException(
-          "Evidence must be a clean inspection upload",
-        );
-      }
+    const media = await this.prisma.media.findUnique({
+      where: { id: mediaId },
+    });
+    if (!media) {
+      throw new NotFoundException("Evidence media not found");
+    }
+    if (
+      media.purpose !== "INSPECTION_EVIDENCE" ||
+      media.status !== "CLEAN" ||
+      (media.propertyId && media.propertyId !== inspection.propertyId)
+    ) {
+      throw new BadRequestException(
+        "Evidence must be a clean inspection upload",
+      );
     }
     await this.assertEvidenceMediaOwnership(inspectionId, [mediaId]);
+    await this.prisma.inspectionEvidence.upsert({
+      where: { inspectionId_mediaId: { inspectionId, mediaId } },
+      create: {
+        inspectionId,
+        mediaId,
+        syncedAt: new Date(),
+        validatedAt: result.validated === false ? null : new Date(),
+      },
+      update: {
+        syncedAt: new Date(),
+        validatedAt: result.validated === false ? null : new Date(),
+      },
+    });
     const synced = this.syncedEvidence.get(inspectionId) ?? new Set<string>();
     synced.add(mediaId);
     this.syncedEvidence.set(inspectionId, synced);
@@ -186,21 +208,6 @@ export class InspectionsService {
     if (result.validated !== false) validated.add(mediaId);
     else validated.delete(mediaId);
     this.validatedEvidence.set(inspectionId, validated);
-    if (this.prisma.inspectionEvidence?.upsert) {
-      await this.prisma.inspectionEvidence.upsert({
-        where: { inspectionId_mediaId: { inspectionId, mediaId } },
-        create: {
-          inspectionId,
-          mediaId,
-          syncedAt: new Date(),
-          validatedAt: result.validated === false ? null : new Date(),
-        },
-        update: {
-          syncedAt: new Date(),
-          validatedAt: result.validated === false ? null : new Date(),
-        },
-      });
-    }
     const requiredEntries = requiredEvidence.filter((entry: any) => entry.mediaId);
     const allSynced =
       requiredEntries.length > 0 &&

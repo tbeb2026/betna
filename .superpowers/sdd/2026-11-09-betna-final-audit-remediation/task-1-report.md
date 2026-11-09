@@ -120,3 +120,42 @@ The follow-up audit findings are addressed as follows:
 - `pnpm vitest run apps/api/src/auth/auth.service.spec.ts` — passed, 22 tests.
 - `pnpm test` — passed, 26 files / 161 tests.
 - `git diff --check` — passed.
+
+## Fix round 5 — fail closed when evidence persistence adapters are missing
+
+- `InspectionsService.markEvidenceSynced()` now requires both
+  `media.findUnique` and `inspectionEvidence.upsert` before processing a sync.
+  Missing adapters produce a controlled `InternalServerErrorException` rather
+  than allowing evidence to be treated as valid or promoting the inspection.
+- Evidence validation and persistence complete before in-memory sync tracking
+  is updated, so adapter failures leave inspection status and evidence links
+  unchanged.
+- Regressions cover each missing adapter method and assert unchanged status and
+  evidence state.
+
+### Fix-round 5 verification
+
+- `pnpm vitest run apps/api/src/verification/inspections.service.spec.ts apps/api/src/media/media.service.spec.ts apps/api/src/verification/inspections.controller.spec.ts` — passed, 3 files / 40 tests.
+- `pnpm test` — passed, 26 files / 178 tests.
+- `pnpm --filter @betna/api typecheck` — passed.
+- `pnpm --filter @betna/api lint` — passed.
+- `git diff --check` — passed.
+
+## Fix round 4 — exercise the process-local email budget
+
+- Malformed notification response regressions now use a challenge store with
+  `create` but no `count`, forcing `AuthService` to enforce its process-local
+  request window rather than allowing a mocked persisted count of zero to mask
+  the budget.
+- Each malformed response case (`undefined`, empty, `[undefined]`, and `[{}]`)
+  is followed by three successful `SENT` requests and a fourth request that is
+  rejected with HTTP 429. The challenge creation spy remains untouched by the
+  malformed response and records exactly three creations for the successful
+  requests; enqueue is called only for the malformed attempt and those three
+  successful retries.
+
+### Fix-round 4 verification
+
+- `pnpm vitest run apps/api/src/auth/auth.service.spec.ts` — passed, 22 tests.
+- `pnpm test` — passed, 26 files / 161 tests.
+- `git diff --check` — passed.

@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { ForbiddenException, BadRequestException } from "@nestjs/common";
+import {
+  ForbiddenException,
+  BadRequestException,
+  InternalServerErrorException,
+} from "@nestjs/common";
 import { InspectionsService } from "./inspections.service";
 import { AssignmentsService } from "./assignments.service";
 import { ChecklistService } from "./checklist.service";
@@ -547,6 +551,50 @@ describe("InspectionsService", () => {
     await expect(
       service.markEvidenceSynced("inspection-1", "media-1", { ok: true }),
     ).rejects.toThrow(/media.*not found/i);
+  });
+
+  it("fails closed when media persistence is unavailable", async () => {
+    const { prisma, rows, evidenceRows } = makePrisma();
+    const service = makeService(prisma);
+    await service.assign("inspection-1", "verifier-1", {
+      id: "admin-1",
+      roles: ["ADMIN"],
+    });
+    await service.submitPendingUpload("inspection-1", "verifier-1", {
+      checklist: completeChecklist,
+      evidence: [{ mediaId: "media-1" }],
+    });
+    const before = structuredClone(rows.get("inspection-1"));
+    const beforeEvidence = structuredClone(evidenceRows.get("inspection-1"));
+    delete prisma.media.findUnique;
+
+    await expect(
+      service.markEvidenceSynced("inspection-1", "media-1", { ok: true }),
+    ).rejects.toBeInstanceOf(InternalServerErrorException);
+    expect(rows.get("inspection-1")).toEqual(before);
+    expect(evidenceRows.get("inspection-1")).toEqual(beforeEvidence);
+  });
+
+  it("fails closed when inspection evidence persistence is unavailable", async () => {
+    const { prisma, rows, evidenceRows } = makePrisma();
+    const service = makeService(prisma);
+    await service.assign("inspection-1", "verifier-1", {
+      id: "admin-1",
+      roles: ["ADMIN"],
+    });
+    await service.submitPendingUpload("inspection-1", "verifier-1", {
+      checklist: completeChecklist,
+      evidence: [{ mediaId: "media-1" }],
+    });
+    const before = structuredClone(rows.get("inspection-1"));
+    const beforeEvidence = structuredClone(evidenceRows.get("inspection-1"));
+    delete prisma.inspectionEvidence.upsert;
+
+    await expect(
+      service.markEvidenceSynced("inspection-1", "media-1", { ok: true }),
+    ).rejects.toBeInstanceOf(InternalServerErrorException);
+    expect(rows.get("inspection-1")).toEqual(before);
+    expect(evidenceRows.get("inspection-1")).toEqual(beforeEvidence);
   });
 
   it("restricts evidence synchronization to the assigned verifier", async () => {
