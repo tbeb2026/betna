@@ -7,9 +7,10 @@ import { AuthService } from "./auth.service";
 import { OtpService, NoopWhatsAppProvider } from "./otp.service";
 import { SessionService } from "./session.service";
 import { AuthSessionGuard } from "./guards";
+import { NotificationsModule } from "../notifications/notifications.module";
 
 @Module({
-  imports: [PrismaModule, AuditModule],
+  imports: [PrismaModule, AuditModule, NotificationsModule],
   controllers: [AuthController],
   providers: [
     AuthService,

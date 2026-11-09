@@ -96,28 +96,28 @@ model Role {
 }
 
 model User {
-  id                   String          @id @default(uuid()) @db.Uuid
-  email                String?         @unique @db.VarChar(320)
-  phone                String?         @unique @db.VarChar(40)
-  passwordHash         String?
-  firstName            String          @db.VarChar(100)
-  lastName             String          @db.VarChar(100)
-  status               UserStatus      @default(ACTIVE)
-  emailVerified        Boolean         @default(false)
-  phoneVerified        Boolean         @default(false)
-  authorizationAttested Boolean        @default(false)
-  countryId            String?         @db.Uuid
-  createdAt            DateTime        @default(now())
-  updatedAt            DateTime        @updatedAt
-  country              Country?        @relation(fields: [countryId], references: [id])
-  roles                UserRole[]
-  properties           Property[]      @relation("PropertyOwner")
-  inspections          Inspection[]    @relation("VerifierInspections")
-  auditEvents          AuditEvent[]    @relation("AuditActor")
-  conversions          Conversion[]
-  commissions          Commission[]    @relation("CommissionOwner")
-  sessions             AuthSession[]
-  territoryAssignments UserTerritory[]
+  id                    String          @id @default(uuid()) @db.Uuid
+  email                 String?         @unique @db.VarChar(320)
+  phone                 String?         @unique @db.VarChar(40)
+  passwordHash          String?
+  firstName             String          @db.VarChar(100)
+  lastName              String          @db.VarChar(100)
+  status                UserStatus      @default(ACTIVE)
+  emailVerified         Boolean         @default(false)
+  phoneVerified         Boolean         @default(false)
+  authorizationAttested Boolean         @default(false)
+  countryId             String?         @db.Uuid
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  country               Country?        @relation(fields: [countryId], references: [id])
+  roles                 UserRole[]
+  properties            Property[]      @relation("PropertyOwner")
+  inspections           Inspection[]    @relation("VerifierInspections")
+  auditEvents           AuditEvent[]    @relation("AuditActor")
+  conversions           Conversion[]
+  commissions           Commission[]    @relation("CommissionOwner")
+  sessions              AuthSession[]
+  territoryAssignments  UserTerritory[]
 }
 
 model UserRole {
@@ -168,6 +168,22 @@ model OtpChallenge {
 
   @@index([phone, requestedAt])
   @@index([phone, expiresAt])
+}
+
+model EmailVerificationChallenge {
+  id          String    @id @default(uuid()) @db.Uuid
+  email       String    @db.VarChar(320)
+  salt        String    @db.VarChar(128)
+  codeHash    String    @db.VarChar(128)
+  expiresAt   DateTime
+  requestedAt DateTime  @default(now())
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5)
+  consumedAt  DateTime?
+  confirmedAt DateTime?
+
+  @@index([email, requestedAt])
+  @@index([email, expiresAt])
 }
 
 model Territory {
@@ -388,31 +404,31 @@ model InspectionEvidence {
 }
 
 model Inquiry {
-  id                 String        @id @default(uuid()) @db.Uuid
-  reference          String        @unique @db.VarChar(30)
-  propertyId         String        @db.Uuid
-  offeringId         String?       @db.Uuid
-  status             InquiryStatus @default(NEW)
-  guestName          String        @db.VarChar(160)
-  guestEmail         String        @db.VarChar(320)
-  guestPhone         String        @db.VarChar(40)
-  message            String
-  ownerResponseMessage String?
-  startDate          DateTime?
-  endDate            DateTime?
-  guests             Int?
-  locationApprovedAt DateTime?
+  id                       String             @id @default(uuid()) @db.Uuid
+  reference                String             @unique @db.VarChar(30)
+  propertyId               String             @db.Uuid
+  offeringId               String?            @db.Uuid
+  status                   InquiryStatus      @default(NEW)
+  guestName                String             @db.VarChar(160)
+  guestEmail               String             @db.VarChar(320)
+  guestPhone               String             @db.VarChar(40)
+  message                  String
+  ownerResponseMessage     String?
+  startDate                DateTime?
+  endDate                  DateTime?
+  guests                   Int?
+  locationApprovedAt       DateTime?
   locationReleaseExpiresAt DateTime?
   /// A new identifier is generated for every approval window, including renewals.
-  locationReleaseId String? @unique @db.Uuid
-  locationRevokedAt DateTime?
-  locationReleasedBy String? @db.Uuid
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-  property           Property      @relation(fields: [propertyId], references: [id])
-  offering           Offering?     @relation(fields: [offeringId], references: [id])
-  conversion         Conversion?
-  availabilityBlock  AvailabilityBlock?
+  locationReleaseId        String?            @unique @db.Uuid
+  locationRevokedAt        DateTime?
+  locationReleasedBy       String?            @db.Uuid
+  createdAt                DateTime           @default(now())
+  updatedAt                DateTime           @updatedAt
+  property                 Property           @relation(fields: [propertyId], references: [id])
+  offering                 Offering?          @relation(fields: [offeringId], references: [id])
+  conversion               Conversion?
+  availabilityBlock        AvailabilityBlock?
 
   @@index([propertyId, status])
   @@index([status, locationReleaseExpiresAt])
@@ -449,26 +465,26 @@ model UnavailableDate {
 /// Queued deliveries are persisted so notification attempts can be retried
 /// without changing the user-visible inquiry transition.
 model Notification {
-  id            String    @id @default(uuid()) @db.Uuid
-  idempotencyKey String   @unique @db.VarChar(255)
-  event         String    @db.VarChar(100)
-  channel       String    @db.VarChar(30)
-  status        String    @default("QUEUED") @db.VarChar(30)
-  attempts      Int       @default(0)
-  processingToken String?  @db.VarChar(64)
-  processingAt  DateTime?
-  nextAttemptAt DateTime?
-  recipientId   String?   @db.Uuid
-  recipientEmail String?  @db.VarChar(320)
-  recipientPhone String?  @db.VarChar(40)
-  inquiryId     String?   @db.Uuid
-  reference     String?   @db.VarChar(30)
-  subject       String?
-  body          String?
-  payload       Json      @default("{}")
-  error         String?
-  createdAt     DateTime  @default(now())
-  sentAt        DateTime?
+  id              String    @id @default(uuid()) @db.Uuid
+  idempotencyKey  String    @unique @db.VarChar(255)
+  event           String    @db.VarChar(100)
+  channel         String    @db.VarChar(30)
+  status          String    @default("QUEUED") @db.VarChar(30)
+  attempts        Int       @default(0)
+  processingToken String?   @db.VarChar(64)
+  processingAt    DateTime?
+  nextAttemptAt   DateTime?
+  recipientId     String?   @db.Uuid
+  recipientEmail  String?   @db.VarChar(320)
+  recipientPhone  String?   @db.VarChar(40)
+  inquiryId       String?   @db.Uuid
+  reference       String?   @db.VarChar(30)
+  subject         String?
+  body            String?
+  payload         Json      @default("{}")
+  error           String?
+  createdAt       DateTime  @default(now())
+  sentAt          DateTime?
 
   @@index([inquiryId, createdAt])
   @@index([status, createdAt])

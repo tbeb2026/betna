@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { ForbiddenException, BadRequestException } from "@nestjs/common";
 import { InspectionsService } from "./inspections.service";
+import { AssignmentsService } from "./assignments.service";
+import { ChecklistService } from "./checklist.service";
 
 const inspection = {
   id: "inspection-1",
@@ -127,6 +129,14 @@ function makePrisma() {
   return { prisma, rows, evidenceRows };
 }
 
+function makeService(prisma: any) {
+  return new InspectionsService(
+    prisma,
+    new AssignmentsService(prisma),
+    new ChecklistService(prisma),
+  );
+}
+
 const completeChecklist = {
   identityAuthorization: true,
   exactLocation: true,
@@ -138,9 +148,58 @@ const completeChecklist = {
 };
 
 describe("InspectionsService", () => {
+  it("uses the published persisted checklist definition for a submission", async () => {
+    const { prisma } = makePrisma();
+    prisma.checklistDefinition = {
+      findFirst: vi.fn().mockResolvedValue({
+        category: "residential",
+        version: 7,
+        isPublished: true,
+        definition: { required: ["identityAuthorization", "publishedRequirement"] },
+      }),
+    };
+    const checklist = new ChecklistService(prisma);
+    const service = new InspectionsService(prisma, new AssignmentsService(prisma), checklist);
+    await service.assign("inspection-1", "verifier-1", { id: "admin-1", roles: ["ADMIN"] });
+
+    await expect(service.submitPendingUpload("inspection-1", "verifier-1", {
+      checklist: { identityAuthorization: true },
+      evidence: [{ mediaId: "media-1" }],
+    })).rejects.toThrow(/publishedRequirement/);
+
+    const submitted = await service.submitPendingUpload("inspection-1", "verifier-1", {
+      checklist: { identityAuthorization: true, publishedRequirement: true },
+      evidence: [{ mediaId: "media-1" }],
+    });
+
+    expect(submitted.checklistVersion).toBe(7);
+  });
+
+  it("uses the published checklist requirements while reviewing a report", async () => {
+    const { prisma, rows } = makePrisma();
+    prisma.checklistDefinition = {
+      findFirst: vi.fn().mockResolvedValue({
+        category: "residential",
+        version: 9,
+        isPublished: true,
+        definition: { required: ["identityAuthorization", "publishedRequirement"] },
+      }),
+    };
+    const service = new InspectionsService(prisma, new AssignmentsService(prisma), new ChecklistService(prisma));
+    Object.assign(rows.get("inspection-1"), {
+      status: "READY_FOR_REVIEW",
+      requiredEvidenceSynced: true,
+      checklist: { identityAuthorization: true },
+      checklistVersion: 9,
+    });
+
+    await expect(service.adminReview("inspection-1", { id: "admin-1", roles: ["ADMIN"] }, "APPROVED"))
+      .rejects.toThrow(/publishedRequirement/);
+  });
+
   it("restricts assignments to a verifier assigned to the inspection territory", async () => {
     const { prisma } = makePrisma();
-    const service = new InspectionsService(prisma);
+    const service = makeService(prisma);
 
     await expect(
       service.assign("inspection-1", "verifier-2", {
@@ -158,7 +217,7 @@ describe("InspectionsService", () => {
 
   it("requires the baseline and category checklist before submission can be reviewed", async () => {
     const { prisma } = makePrisma();
-    const service = new InspectionsService(prisma);
+    const service = makeService(prisma);
     await service.assign("inspection-1", "verifier-1", {
       id: "admin-1",
       roles: ["ADMIN"],
@@ -187,7 +246,7 @@ describe("InspectionsService", () => {
 
   it("rejects admin approval while evidence is pending upload", async () => {
     const { prisma } = makePrisma();
-    const service = new InspectionsService(prisma);
+    const service = makeService(prisma);
     await service.assign("inspection-1", "verifier-1", {
       id: "admin-1",
       roles: ["ADMIN"],
@@ -208,7 +267,7 @@ describe("InspectionsService", () => {
 
   it("returns the persisted result for a repeated submission request", async () => {
     const { prisma } = makePrisma();
-    const service = new InspectionsService(prisma);
+    const service = makeService(prisma);
     await service.assign("inspection-1", "verifier-1", {
       id: "admin-1",
       roles: ["ADMIN"],
@@ -236,7 +295,7 @@ describe("InspectionsService", () => {
 
   it("retries an offline evidence upload and becomes ready after synchronization", async () => {
     const { prisma } = makePrisma();
-    const service = new InspectionsService(prisma);
+    const service = makeService(prisma);
     await service.assign("inspection-1", "verifier-1", {
       id: "admin-1",
       roles: ["ADMIN"],
@@ -264,7 +323,7 @@ describe("InspectionsService", () => {
 
   it("only allows review decisions from READY_FOR_REVIEW", async () => {
     const { prisma } = makePrisma();
-    const service = new InspectionsService(prisma);
+    const service = makeService(prisma);
     await service.assign("inspection-1", "verifier-1", {
       id: "admin-1",
       roles: ["ADMIN"],
@@ -285,7 +344,7 @@ describe("InspectionsService", () => {
 
   it("allows a rejected inspection to resubmit with its same stable request key", async () => {
     const { prisma } = makePrisma();
-    const service = new InspectionsService(prisma);
+    const service = makeService(prisma);
     await service.assign("inspection-1", "verifier-1", {
       id: "admin-1",
       roles: ["ADMIN"],
@@ -316,7 +375,7 @@ describe("InspectionsService", () => {
 
   it("checks assigned verifier access before an idempotent sync replay", async () => {
     const { prisma } = makePrisma();
-    const service = new InspectionsService(prisma);
+    const service = makeService(prisma);
     await service.assign("inspection-1", "verifier-1", {
       id: "admin-1",
       roles: ["ADMIN"],
@@ -352,7 +411,7 @@ describe("InspectionsService", () => {
       }
       return [{ ...inspection, verifierId: "verifier-1" }];
     });
-    const service = new InspectionsService(prisma);
+    const service = makeService(prisma);
 
     const visible = await service.listForVerifier("verifier-1", []);
 
@@ -366,7 +425,7 @@ describe("InspectionsService", () => {
 
   it("does not allow an unrelated evidence item to complete synchronization", async () => {
     const { prisma } = makePrisma();
-    const service = new InspectionsService(prisma);
+    const service = makeService(prisma);
     await service.assign("inspection-1", "verifier-1", {
       id: "admin-1",
       roles: ["ADMIN"],
@@ -384,7 +443,7 @@ describe("InspectionsService", () => {
   it("rejects synchronization for evidence media that does not exist", async () => {
     const { prisma } = makePrisma();
     prisma.media.findUnique = vi.fn(async () => null);
-    const service = new InspectionsService(prisma);
+    const service = makeService(prisma);
     await service.assign("inspection-1", "verifier-1", {
       id: "admin-1",
       roles: ["ADMIN"],
@@ -407,7 +466,7 @@ describe("InspectionsService", () => {
       status: "CLEAN",
       propertyId: "property-1",
     }));
-    const service = new InspectionsService(prisma);
+    const service = makeService(prisma);
     await service.assign("inspection-1", "verifier-1", {
       id: "admin-1",
       roles: ["ADMIN"],
@@ -429,7 +488,7 @@ describe("InspectionsService", () => {
 
   it("rejects an invalid admin review decision", async () => {
     const { prisma } = makePrisma();
-    const service = new InspectionsService(prisma);
+    const service = makeService(prisma);
 
     await expect(
       service.adminReview(

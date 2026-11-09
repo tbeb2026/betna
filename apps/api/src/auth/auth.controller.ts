@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, Req, UseGuards } from "@nestjs/common";
-import { IsBoolean, IsEmail, IsString, Length, Matches } from "class-validator";
+import { IsBoolean, IsEmail, IsOptional, IsString, Length, Matches } from "class-validator";
 import { AuthService } from "./auth.service";
 import { AuthSessionGuard } from "./guards";
 
@@ -31,7 +31,17 @@ export class OwnerOnboardingDto {
   @IsString() @Length(1, 100) lastName!: string;
   @IsString() @Matches(/^\+?[1-9][0-9 ()-]{7,20}$/) phone!: string;
   @IsString() @Matches(/^[0-9]{6}$/) otpCode!: string;
+  @IsOptional() @IsString() @Matches(/^[0-9]{6}$/) emailVerificationCode?: string;
+  @IsOptional() @IsString() @Matches(/^[0-9]{6}$/) emailCode?: string;
   @IsBoolean() authorizationAttested!: boolean;
+}
+
+export class OwnerEmailVerificationDto {
+  @IsEmail() email!: string;
+}
+
+export class OwnerEmailVerificationConfirmDto extends OwnerEmailVerificationDto {
+  @IsString() @Matches(/^[0-9]{6}$/) code!: string;
 }
 
 @Controller("auth")
@@ -46,6 +56,21 @@ export class AuthController {
   @Post("otp/request")
   requestOtp(@Body() body: OtpRequestDto) {
     return this.auth.requestOtp(body.phone);
+  }
+
+  @Post("owner/phone-otp/request")
+  requestOwnerPhoneOtp(@Body() body: OtpRequestDto) {
+    return this.auth.requestOwnerPhoneOtp(body.phone);
+  }
+
+  @Post("owner/email-verification/request")
+  requestOwnerEmailVerification(@Body() body: OwnerEmailVerificationDto) {
+    return this.auth.requestOwnerEmailVerification(body.email);
+  }
+
+  @Post("owner/email-verification/confirm")
+  confirmOwnerEmailVerification(@Body() body: OwnerEmailVerificationConfirmDto) {
+    return this.auth.confirmOwnerEmailVerification(body.email, body.code);
   }
 
   @Post("otp/verify")

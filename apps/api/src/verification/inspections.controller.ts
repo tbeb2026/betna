@@ -80,7 +80,7 @@ class ReviewInspectionDto {
 export class InspectionsController {
   constructor(
     private readonly inspections: InspectionsService,
-    private readonly checklistDefinitions?: ChecklistService,
+    private readonly checklistDefinitions: ChecklistService,
   ) {}
 
   @Get("checklist/:category")
@@ -92,7 +92,7 @@ export class InspectionsController {
   @Get("checklists")
   @Roles("ADMIN")
   definitions() {
-    return this.checklistDefinitions?.listDefinitions() ?? [];
+    return this.checklistDefinitions.listDefinitions();
   }
 
   @Post("checklists/:category")
@@ -101,7 +101,6 @@ export class InspectionsController {
     @Param("category") category: string,
     @Body() body: ChecklistDefinitionDto,
   ) {
-    if (!this.checklistDefinitions) return body;
     return this.checklistDefinitions.upsertDefinition(category, body);
   }
 

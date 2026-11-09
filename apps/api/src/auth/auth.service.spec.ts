@@ -18,6 +18,104 @@ const user = {
 };
 
 describe("AuthService", () => {
+  it("requests an owner WhatsApp OTP through the configured OTP provider", async () => {
+    const request = vi.fn().mockResolvedValue({ expiresAt: new Date() });
+    const auth = new AuthService({} as never, { request } as never);
+
+    await auth.requestOwnerPhoneOtp("+254 700 000 001");
+
+    expect(request).toHaveBeenCalledWith("+254700000001");
+  });
+
+  it("rate limits repeated owner email verification requests", async () => {
+    const notifications = { enqueue: vi.fn().mockResolvedValue([]) };
+    const auth = new AuthService({} as never, undefined, undefined, notifications as never);
+
+    await auth.requestOwnerEmailVerification("rate-limited@example.com");
+    await auth.requestOwnerEmailVerification("rate-limited@example.com");
+    await auth.requestOwnerEmailVerification("rate-limited@example.com");
+
+    await expect(
+      auth.requestOwnerEmailVerification("rate-limited@example.com"),
+    ).rejects.toMatchObject({ status: 429 });
+  });
+
+  it("does not report email verification as sent when the notification boundary fails", async () => {
+    const auth = new AuthService(
+      {} as never,
+      undefined,
+      undefined,
+      { enqueue: vi.fn().mockResolvedValue([{ status: "FAILED", error: "provider unavailable" }]) } as never,
+    );
+
+    await expect(auth.requestOwnerEmailVerification("delivery@example.com"))
+      .rejects.toThrow(/email.*deliver/i);
+  });
+
+  it("does not activate an owner until email verification is confirmed", async () => {
+    let sentEmail = "";
+    const otp = {
+      verify: vi.fn().mockResolvedValue(true),
+    };
+    const notifications = {
+      enqueue: vi.fn().mockImplementation(async (event: { body?: string }) => {
+        sentEmail = event.body ?? "";
+      }),
+    };
+    const prisma = {
+      user: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockImplementation(async ({ data }: { data: { email: string; phone: string; roles: unknown } }) => ({
+          ...user,
+          email: data.email,
+          phone: data.phone,
+          emailVerified: true,
+          phoneVerified: true,
+          authorizationAttested: true,
+          roles: [{ role: { name: "OWNER" } }],
+        })),
+      },
+      role: { findUnique: vi.fn().mockResolvedValue({ id: "owner-role" }) },
+    };
+    const auth = new AuthService(prisma as never, otp as never, undefined, notifications as never);
+
+    await expect(
+      auth.onboardOwner({
+        email: "new-owner@example.com",
+        password: "secret123",
+        phone: "+254700000002",
+        firstName: "New",
+        lastName: "Owner",
+        otpCode: "123456",
+        authorizationAttested: true,
+      }),
+    ).rejects.toThrow(/email.*verif/i);
+
+    await auth.requestOwnerEmailVerification("new-owner@example.com");
+    const emailCode = sentEmail.match(/\b\d{6}\b/)?.[0];
+    expect(emailCode).toBeTruthy();
+    const result = await auth.onboardOwner({
+      email: "new-owner@example.com",
+      password: "secret123",
+      phone: "+254700000002",
+      firstName: "New",
+      lastName: "Owner",
+      otpCode: "123456",
+      emailVerificationCode: emailCode,
+      authorizationAttested: true,
+    });
+
+    expect(result.user.email).toBe("new-owner@example.com");
+    expect(prisma.user.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        status: "ACTIVE",
+        emailVerified: true,
+        phoneVerified: true,
+        authorizationAttested: true,
+      }),
+    }));
+  });
+
   it("denies a suspended password account", async () => {
     const prisma = {
       user: {

@@ -31,8 +31,8 @@ export class InspectionsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly assignments = new AssignmentsService(prisma),
-    private readonly checklist = new ChecklistService(),
+    private readonly assignments: AssignmentsService,
+    private readonly checklist: ChecklistService,
     private readonly audit?: AuditService,
   ) {}
 
@@ -237,16 +237,24 @@ export class InspectionsService {
       );
     }
     const inspection = await this.findInspection(inspectionId);
+    const definition = await this.checklist.getPersisted(
+      String(inspection.property?.category ?? "residential"),
+    );
+    const answers = (inspection.checklist ?? {}) as Record<string, unknown>;
+    const missingChecklistItems = definition.required.filter(
+      (key) => !this.checklist.answerPasses(answers[key]),
+    );
     if (
       decision === "APPROVED" &&
       (inspection.status !== "READY_FOR_REVIEW" ||
         !inspection.requiredEvidenceSynced ||
-        Object.values((inspection.checklist ?? {}) as Record<string, unknown>).some(
-          (answer) => !this.checklist.answerPasses(answer),
-        ))
+        missingChecklistItems.length > 0)
     ) {
+      const checklistMessage = missingChecklistItems.length
+        ? `: ${missingChecklistItems.join(", ")}`
+        : "";
       throw new ConflictException(
-        "Only synced, validated reports are ready for approval",
+        `Only synced, validated reports are ready for approval${checklistMessage}`,
       );
     }
     if (inspection.status !== "READY_FOR_REVIEW") {

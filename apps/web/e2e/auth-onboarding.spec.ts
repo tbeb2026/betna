@@ -9,6 +9,9 @@ test("sign-in exposes password, WhatsApp OTP, and owner onboarding flows", async
 
   await page.goto("/en/sign-in/onboarding");
   await expect(page.getByRole("heading", { name: "Create an owner account" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /request whatsapp code/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /request email verification/i })).toBeVisible();
+  await expect(page.getByLabel("Email verification code")).toBeVisible();
   await expect(page.getByLabel("WhatsApp verification code")).toBeVisible();
   await expect(page.getByLabel(/own or am authorized/i)).toBeVisible();
 });

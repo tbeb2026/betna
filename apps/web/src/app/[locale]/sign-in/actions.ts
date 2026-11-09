@@ -40,10 +40,19 @@ export async function signInWithPassword(_previous: AuthState, form: FormData): 
 
 export async function requestWhatsAppOtp(_previous: AuthState, form: FormData): Promise<AuthState> {
   try {
-    const response = await createApiClient().post<{ expiresAt: string }>("/auth/otp/request", { phone: String(form.get("phone") ?? "") });
+    const response = await createApiClient().post<{ expiresAt: string }>("/auth/owner/phone-otp/request", { phone: String(form.get("phone") ?? "") });
     return { message: `Code sent. It expires at ${new Date(response.expiresAt).toLocaleTimeString()}.` };
   } catch (error) {
     return { message: error instanceof Error ? error.message : "Could not send a WhatsApp code" };
+  }
+}
+
+export async function requestOwnerEmailVerification(_previous: AuthState, form: FormData): Promise<AuthState> {
+  try {
+    const response = await createApiClient().post<{ expiresAt: string }>("/auth/owner/email-verification/request", { email: String(form.get("email") ?? "") });
+    return { message: `Verification email sent. It expires at ${new Date(response.expiresAt).toLocaleTimeString()}.` };
+  } catch (error) {
+    return { message: error instanceof Error ? error.message : "Could not send an email verification code" };
   }
 }
 
@@ -72,6 +81,7 @@ export async function onboardOwner(_previous: AuthState, form: FormData): Promis
       lastName: String(form.get("lastName") ?? ""),
       phone: String(form.get("phone") ?? ""),
       otpCode: String(form.get("otpCode") ?? ""),
+      emailVerificationCode: String(form.get("emailVerificationCode") ?? ""),
       authorizationAttested: form.get("authorizationAttested") === "on",
     });
     await storeSession(response);
