@@ -20,4 +20,18 @@ describe("notification locale selection", () => {
     expect(rendered.subject).toContain("Betna update");
     expect(rendered.body).toContain("no longer available");
   });
+
+  it("provides a Tigrinya subject and body for every supported notification event", () => {
+    const keys = [
+      "inquiry.created", "inquiry.ownerConfirmed", "inquiry.ownerDeclined", "inquiry.locationApproved", "inquiry.guestSuccess",
+      "availability.autoDeclined", "auth.ownerEmailVerification", "auth.ownerPhoneOtp", "system.generic",
+      "verification.assigned", "verification.submitted", "verification.approved", "verification.rejected",
+    ] as const;
+    for (const key of keys) {
+      const rendered = notificationMessage("ti", key, { code: "123456", expiresAt: "10:00", reference: "BTNA-123" });
+      expect(rendered.subject, key).toBeTruthy();
+      expect(rendered.body, key).toBeTruthy();
+      expect(rendered.subject, key).not.toBe(notificationMessage("en", key, { code: "123456", expiresAt: "10:00", reference: "BTNA-123" }).subject);
+    }
+  });
 });

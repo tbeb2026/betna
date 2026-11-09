@@ -52,6 +52,7 @@ export async function signInWithPassword(_previous: AuthState, form: FormData): 
     const response = await createApiClient().post<{ session: { token: string }; user: { roles?: string[] } }>("/auth/password/sign-in", {
       email: String(form.get("email") ?? ""),
       password: String(form.get("password") ?? ""),
+      locale,
     });
     await storeSession(response);
     destination = `/${localeFrom(form)}/${response.user.roles?.includes("ADMIN") ? "admin" : response.user.roles?.includes("VERIFIER") ? "verifier" : "owner"}`;
@@ -64,7 +65,7 @@ export async function signInWithPassword(_previous: AuthState, form: FormData): 
 export async function requestWhatsAppOtp(_previous: AuthState, form: FormData): Promise<AuthState> {
   const locale = localeFrom(form);
   try {
-    const response = await createApiClient().post<{ expiresAt: string }>("/auth/owner/phone-otp/request", { phone: String(form.get("phone") ?? "") });
+    const response = await createApiClient().post<{ expiresAt: string }>("/auth/owner/phone-otp/request", { phone: String(form.get("phone") ?? ""), locale });
     return { message: message(locale, "whatsappCodeSent", { time: new Date(response.expiresAt).toLocaleTimeString(locale) }) };
   } catch (error) {
     return { message: localizedError(error, locale, "genericOtpError") };
@@ -74,7 +75,7 @@ export async function requestWhatsAppOtp(_previous: AuthState, form: FormData): 
 export async function requestOwnerEmailVerification(_previous: AuthState, form: FormData): Promise<AuthState> {
   const locale = localeFrom(form);
   try {
-    const response = await createApiClient().post<{ expiresAt: string }>("/auth/owner/email-verification/request", { email: String(form.get("email") ?? "") });
+    const response = await createApiClient().post<{ expiresAt: string }>("/auth/owner/email-verification/request", { email: String(form.get("email") ?? ""), locale });
     return { message: message(locale, "emailVerificationSent", { time: new Date(response.expiresAt).toLocaleTimeString(locale) }) };
   } catch (error) {
     return { message: localizedError(error, locale, "genericEmailError") };
@@ -88,6 +89,7 @@ export async function verifyWhatsAppOtp(_previous: AuthState, form: FormData): P
     const response = await createApiClient().post<{ session: { token: string }; user: { roles?: string[] } }>("/auth/otp/verify", {
       phone: String(form.get("phone") ?? ""),
       code: String(form.get("code") ?? ""),
+      locale,
     });
     await storeSession(response);
     destination = `/${localeFrom(form)}/owner`;
@@ -110,6 +112,7 @@ export async function onboardOwner(_previous: AuthState, form: FormData): Promis
       otpCode: String(form.get("otpCode") ?? ""),
       emailVerificationCode: String(form.get("emailVerificationCode") ?? ""),
       authorizationAttested: form.get("authorizationAttested") === "on",
+      locale,
     });
     await storeSession(response);
     destination = `/${localeFrom(form)}/owner`;

@@ -106,8 +106,9 @@ export class InquiriesService {
     return {
       inquiry: this.publicInquiry(inquiry),
       location: this.publicLocation(property),
-      reviewExpectation:
-        "Betna reviews inquiries during configured business hours. Urgent cases may be handled by staff outside those hours.",
+      reviewExpectation: notificationMessage(input.locale, "inquiry.guestSuccess", { reference: inquiry.reference }).body,
+      reviewExpectationKey: "inquiry.guestSuccess",
+      locale: normalizeNotificationLocale(input.locale),
     };
   }
 

@@ -11,6 +11,7 @@ import { AssignmentsService } from "./assignments.service";
 import { ChecklistAnswers, ChecklistService } from "./checklist.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
+import { NotificationService } from "../notifications/notifications.service";
 
 type Actor = {
   id: string;
@@ -36,6 +37,7 @@ export class InspectionsService {
     private readonly assignments: AssignmentsService,
     private readonly checklist: ChecklistService,
     private readonly audit?: AuditService,
+    private readonly notifications?: NotificationService,
   ) {}
 
   assign(inspectionId: string, verifierId: string, actor: Actor) {
@@ -178,7 +180,7 @@ export class InspectionsService {
       throw new ConflictException("Only draft inspections can be submitted");
     }
     await this.replaceEvidence(inspectionId, input.evidence);
-    return this.prisma.inspection.update({
+    const submitted = await this.prisma.inspection.update({
       where: { id: inspectionId },
       data: {
         status: "PENDING_UPLOAD",
@@ -191,6 +193,21 @@ export class InspectionsService {
       },
       include: { evidence: true, property: true },
     });
+    if (this.notifications) {
+      const recipients = await this.notificationRecipients({
+        ownerId: submitted.property?.ownerId,
+        roles: ["ADMIN"],
+      });
+      await this.notifications.enqueue({
+        type: "INSPECTION_SUBMITTED",
+        messageKey: "verification.submitted",
+        idempotencyKey: `inspection-submitted:${inspectionId}:${reportRequestKey ?? submitted.updatedAt?.toISOString() ?? "latest"}`,
+        recipients,
+        payload: { inspectionId, propertyId: submitted.propertyId, status: submitted.status },
+        channels: ["IN_APP", "EMAIL", "WHATSAPP"],
+      });
+    }
+    return submitted;
   }
 
   async markEvidenceSynced(
@@ -308,7 +325,7 @@ export class InspectionsService {
         "Review decision must be APPROVED or REJECTED",
       );
     }
-    return this.withTransaction(async (tx: any) => {
+    const reviewed = await this.withTransaction(async (tx: any) => {
       const hint = await this.findInspection(inspectionId, tx);
       await this.lockInspection(tx, inspectionId);
       await this.lockProperty(tx, hint.propertyId);
@@ -396,6 +413,21 @@ export class InspectionsService {
       });
       return this.findInspection(inspectionId, tx);
     });
+    if (this.notifications) {
+      const recipients = await this.notificationRecipients({
+        ownerId: reviewed.property?.ownerId,
+        verifierId: reviewed.verifierId,
+      });
+      await this.notifications.enqueue({
+        type: `INSPECTION_${decision}`,
+        messageKey: decision === "APPROVED" ? "verification.approved" : "verification.rejected",
+        idempotencyKey: `inspection-review:${inspectionId}:${decision}:${reviewed.updatedAt?.toISOString() ?? "latest"}`,
+        recipients,
+        payload: { inspectionId, propertyId: reviewed.propertyId, status: reviewed.status },
+        channels: ["IN_APP", "EMAIL", "WHATSAPP"],
+      });
+    }
+    return reviewed;
   }
 
   private async findInspection(id: string, db: any = this.prisma) {
@@ -502,6 +534,19 @@ export class InspectionsService {
       )
       .filter(Boolean)
       .map((role: string) => role.toUpperCase());
+  }
+
+  private async notificationRecipients(input: { ownerId?: string | null; verifierId?: string | null; roles?: string[] }) {
+    const rows: any[] = [];
+    if (typeof (this.prisma as any).user?.findMany === "function" && input.roles?.length) {
+      rows.push(...(await (this.prisma as any).user.findMany({ where: { status: "ACTIVE", roles: { some: { role: { name: { in: input.roles } } } } }, select: { id: true, email: true, phone: true, preferredLocale: true } })));
+    }
+    for (const id of [input.ownerId, input.verifierId]) {
+      if (!id || typeof (this.prisma as any).user?.findUnique !== "function") continue;
+      const row = await (this.prisma as any).user.findUnique({ where: { id }, select: { id: true, email: true, phone: true, preferredLocale: true } });
+      if (row && !rows.some((candidate) => candidate.id === row.id)) rows.push(row);
+    }
+    return rows.map((row) => ({ userId: row.id, email: row.email, phone: row.phone, locale: row.preferredLocale ?? "en" }));
   }
 
   private async withTransaction<T>(work: (tx: any) => Promise<T>) {

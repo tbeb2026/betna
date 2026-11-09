@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { createApiClient } from "../../../../lib/api-client";
+import { getTranslations } from "next-intl/server";
 
 type PendingTranslation = {
   id: string;
@@ -20,13 +21,15 @@ async function getPending(): Promise<PendingTranslation[]> {
   }
 }
 
-export default async function AdminTranslationsPage() {
+export default async function AdminTranslationsPage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "portal.admin" });
   const pending = await getPending();
   return (
     <div className="portal-card">
-      <p className="eyebrow">Translation queue</p>
-      <h2>Approve localized listing content</h2>
-      <p className="form-help">English can publish while Tigrinya is pending; visitors see a transparent English fallback until an approved Tigrinya translation exists.</p>
+      <p className="eyebrow">{t("translationsEyebrow")}</p>
+      <h2>{t("translationsTitle")}</h2>
+      <p className="form-help">{t("translationsDescription")}</p>
       {pending.length ? (
         <div className="property-list">
           {pending.map((translation) => (
@@ -36,11 +39,11 @@ export default async function AdminTranslationsPage() {
                 <h3>{translation.property?.title ?? translation.propertyId}</h3>
                 <p className="form-help">{translation.title}</p>
               </div>
-              <span className="form-help">Awaiting staff approval</span>
+              <span className="form-help">{t("awaitingApproval")}</span>
             </article>
           ))}
         </div>
-      ) : <p className="form-help">No translations are waiting for approval.</p>}
+      ) : <p className="form-help">{t("emptyTranslations")}</p>}
     </div>
   );
 }

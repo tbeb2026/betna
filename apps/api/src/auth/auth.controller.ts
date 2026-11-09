@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, Req, UseGuards } from "@nestjs/common";
-import { IsBoolean, IsEmail, IsOptional, IsString, Length, Matches } from "class-validator";
+import { IsBoolean, IsEmail, IsIn, IsOptional, IsString, Length, Matches } from "class-validator";
 import { AuthService } from "./auth.service";
 import { AuthSessionGuard } from "./guards";
 
@@ -10,12 +10,20 @@ export class PasswordSignInDto {
   @IsString()
   @Length(8, 200)
   password!: string;
+
+  @IsOptional()
+  @IsIn(["en", "ti"])
+  locale?: string;
 }
 
 export class OtpRequestDto {
   @IsString()
   @Matches(/^\+?[1-9][0-9 ()-]{7,20}$/)
   phone!: string;
+
+  @IsOptional()
+  @IsIn(["en", "ti"])
+  locale?: string;
 }
 
 export class OtpVerifyDto extends OtpRequestDto {
@@ -34,10 +42,12 @@ export class OwnerOnboardingDto {
   @IsOptional() @IsString() @Matches(/^[0-9]{6}$/) emailVerificationCode?: string;
   @IsOptional() @IsString() @Matches(/^[0-9]{6}$/) emailCode?: string;
   @IsBoolean() authorizationAttested!: boolean;
+  @IsOptional() @IsIn(["en", "ti"]) locale?: string;
 }
 
 export class OwnerEmailVerificationDto {
   @IsEmail() email!: string;
+  @IsOptional() @IsIn(["en", "ti"]) locale?: string;
 }
 
 export class OwnerEmailVerificationConfirmDto extends OwnerEmailVerificationDto {
@@ -50,22 +60,22 @@ export class AuthController {
 
   @Post("password/sign-in")
   signInWithPassword(@Body() body: PasswordSignInDto) {
-    return this.auth.signInWithPassword(body.email, body.password);
+    return this.auth.signInWithPassword(body.email, body.password, body.locale);
   }
 
   @Post("otp/request")
   requestOtp(@Body() body: OtpRequestDto) {
-    return this.auth.requestOtp(body.phone);
+    return this.auth.requestOtp(body.phone, body.locale);
   }
 
   @Post("owner/phone-otp/request")
   requestOwnerPhoneOtp(@Body() body: OtpRequestDto) {
-    return this.auth.requestOwnerPhoneOtp(body.phone);
+    return this.auth.requestOwnerPhoneOtp(body.phone, body.locale);
   }
 
   @Post("owner/email-verification/request")
   requestOwnerEmailVerification(@Body() body: OwnerEmailVerificationDto) {
-    return this.auth.requestOwnerEmailVerification(body.email);
+    return this.auth.requestOwnerEmailVerification(body.email, body.locale);
   }
 
   @Post("owner/email-verification/confirm")
@@ -75,7 +85,7 @@ export class AuthController {
 
   @Post("otp/verify")
   verifyOtp(@Body() body: OtpVerifyDto) {
-    return this.auth.verifyOtp(body.phone, body.code);
+    return this.auth.verifyOtp(body.phone, body.code, body.locale);
   }
 
   @Post("owner/onboarding")

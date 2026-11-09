@@ -25,6 +25,10 @@ function price(property: PublicProperty, onRequest: string) {
 
 export function PropertyCard({ property }: { property: PublicProperty }) {
   const t = useTranslations("publicProperty");
+  const categoryKey = property.category.toLowerCase();
+  const category = t.has(`categories.${categoryKey}`) ? t(`categories.${categoryKey}`) : t("verifiedPlace");
+  const badgeKey = String(property.verification?.badge ?? "VERIFIED_BY_BETNA").toUpperCase();
+  const badge = t.has(`badges.${badgeKey}`) ? t(`badges.${badgeKey}`) : t("verifiedByBetna");
   return (
     <article className="portal-card property-card" data-testid="property-card">
       <div className="property-card-media" aria-hidden="true">
@@ -37,8 +41,8 @@ export function PropertyCard({ property }: { property: PublicProperty }) {
         ) : <span>{t("verifiedPlace")}</span>}
       </div>
       <div className="section-heading">
-        <div><p className="eyebrow">{property.category.replaceAll("_", " ")}</p><h2>{property.title}</h2></div>
-        <span className="verification-badge">{property.verification?.badge ?? t("verifiedByBetna")}</span>
+        <div><p className="eyebrow">{category}</p><h2>{property.title}</h2></div>
+        <span className="verification-badge">{badge}</span>
       </div>
       <p className="form-help">{property.location.label} · {property.location.city ?? property.location.country}</p>
       <p>{property.description}</p>

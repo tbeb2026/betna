@@ -14,7 +14,7 @@ export default async function AdminInquiriesPage({ params }: { params: Promise<{
       <p className="eyebrow">{t("eyebrow")}</p>
       <h2>{t("title")}</h2>
       <p className="form-help">{t("description")}</p>
-      {inquiries.length ? <div className="property-list">{inquiries.map((inquiry) => <article className="property-list-item" key={inquiry.id}><div><p className="eyebrow">{statusT.has(inquiry.status) ? statusT(inquiry.status) : inquiry.status}</p><h3>{inquiry.reference}</h3><p>{inquiry.property?.title ?? t("propertyFallback")}</p></div>{session ? <AdminLocationActions inquiryId={inquiry.id} status={inquiry.status} /> : null}</article>)}</div> : <p className="form-help">{t("empty")}</p>}
+      {inquiries.length ? <div className="property-list">{inquiries.map((inquiry) => <article className="property-list-item" key={inquiry.id}><div><p className="eyebrow">{statusT.has(inquiry.status) ? statusT(inquiry.status) : statusT("UNPUBLISHED")}</p><h3>{inquiry.reference}</h3><p>{inquiry.property?.title ?? t("propertyFallback")}</p></div>{session ? <AdminLocationActions inquiryId={inquiry.id} status={inquiry.status} /> : null}</article>)}</div> : <p className="form-help">{t("empty")}</p>}
     </div>
   );
 }

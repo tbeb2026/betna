@@ -12,7 +12,7 @@ import { OtpService, normalizePhone } from "./otp.service";
 import { AuthenticationError, SessionService } from "./session.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { NotificationService } from "../notifications/notifications.service";
-import { notificationMessage } from "../i18n/messages";
+import { normalizeNotificationLocale, notificationMessage } from "../i18n/messages";
 
 const scrypt = promisify(scryptCallback);
 
@@ -21,6 +21,7 @@ export interface AuthResult {
     id: string;
     email?: string | null;
     phone?: string | null;
+    preferredLocale: string;
     roles: string[];
   };
   session: Awaited<ReturnType<SessionService["create"]>>;
@@ -35,6 +36,7 @@ interface AuthUserRecord {
   emailVerified?: boolean;
   phoneVerified?: boolean;
   authorizationAttested?: boolean;
+  preferredLocale?: string | null;
   roles?: Array<string | { name?: string; role?: { name?: string } | null }>;
   territoryAssignments?: Array<{ territoryId: string }>;
   territoryIds?: string[];
@@ -71,6 +73,7 @@ export class AuthService {
   async signInWithPassword(
     email: string,
     password: string,
+    locale?: string,
   ): Promise<AuthResult> {
     const normalizedEmail = email.trim().toLowerCase();
     const user = (await this.prisma.user.findUnique({
@@ -89,19 +92,30 @@ export class AuthService {
       throw new AuthenticationError("Invalid email or password");
     }
     this.assertVerifiedIdentity(user);
+    await this.persistPreferredLocale(user, locale);
     return this.issueSession(user);
   }
 
-  async requestOtp(phone: string): Promise<{ expiresAt: Date }> {
-    return this.requestOwnerPhoneOtp(phone);
+  async requestOtp(phone: string, locale?: string): Promise<{ expiresAt: Date }> {
+    return this.requestOwnerPhoneOtp(phone, locale);
   }
 
-  async requestOwnerPhoneOtp(phone: string): Promise<{ expiresAt: Date }> {
-    return this.otpService.request(normalizePhone(phone));
+  async requestOwnerPhoneOtp(phone: string, locale?: string): Promise<{ expiresAt: Date }> {
+    const normalizedPhone = normalizePhone(phone);
+    const user = typeof (this.prisma as any).user?.findUnique === "function"
+      ? await (this.prisma as any).user.findUnique({ where: { phone: normalizedPhone }, select: { preferredLocale: true } })
+      : null;
+    const selected = locale ?? user?.preferredLocale;
+    return selected === undefined ? this.otpService.request(normalizedPhone) : this.otpService.request(normalizedPhone, selected);
   }
 
-  async requestOwnerEmailVerification(emailInput: string): Promise<{ expiresAt: Date }> {
+  async requestOwnerEmailVerification(emailInput: string, locale?: string): Promise<{ expiresAt: Date }> {
     const email = this.normalizeEmail(emailInput);
+    const existingUser = typeof (this.prisma as any).user?.findUnique === "function"
+      ? await (this.prisma as any).user.findUnique({ where: { email }, select: { id: true, preferredLocale: true } })
+      : null;
+    const selectedLocale = locale ?? existingUser?.preferredLocale;
+    if (existingUser && locale) await this.persistPreferredLocale(existingUser, locale);
     const now = Date.now();
     const store = (this.prisma as any).emailVerificationChallenge;
     const windowMs = 15 * 60_000;
@@ -129,10 +143,10 @@ export class AuthService {
     if (!this.notifications) {
       throw new Error("Email notification provider is not configured");
     }
-    const emailContent = notificationMessage("en", "auth.ownerEmailVerification", { code });
+    const emailContent = notificationMessage(selectedLocale, "auth.ownerEmailVerification", { code });
     const deliveries = await this.notifications.enqueue({
       type: "OWNER_EMAIL_VERIFICATION",
-      recipients: [{ email }],
+      recipients: [{ email, locale: selectedLocale }],
       channels: ["EMAIL"],
       messageKey: "auth.ownerEmailVerification",
       messageValues: { code },
@@ -234,7 +248,7 @@ export class AuthService {
     return { verified: true };
   }
 
-  async verifyOtp(phone: string, code: string): Promise<AuthResult> {
+  async verifyOtp(phone: string, code: string, locale?: string): Promise<AuthResult> {
     const normalizedPhone = normalizePhone(phone);
     await this.otpService.verify(normalizedPhone, code);
     const user = (await this.prisma.user.findUnique({
@@ -248,6 +262,7 @@ export class AuthService {
       throw new AuthenticationError("Invalid phone or OTP");
     }
     this.assertVerifiedIdentity(user, "OTP");
+    await this.persistPreferredLocale(user, locale);
     return this.issueSession(user);
   }
 
@@ -261,6 +276,7 @@ export class AuthService {
     emailVerificationCode?: string;
     emailCode?: string;
     authorizationAttested: boolean;
+    locale?: string;
   }): Promise<AuthResult> {
     if (!input.authorizationAttested) {
       throw new BadRequestException("Owner authorization attestation is required");
@@ -297,6 +313,7 @@ export class AuthService {
         emailVerified: true,
         phoneVerified: true,
         authorizationAttested: true,
+        preferredLocale: normalizeNotificationLocale(input.locale),
         roles: { create: { roleId: role.id } },
       },
       include: { roles: { include: { role: true } }, territoryAssignments: { select: { territoryId: true } } },
@@ -372,9 +389,16 @@ export class AuthService {
       territoryIds,
     );
     return {
-      user: { id: user.id, email: user.email, phone: user.phone, roles },
+      user: { id: user.id, email: user.email, phone: user.phone, preferredLocale: normalizeNotificationLocale(user.preferredLocale), roles },
       session,
     };
+  }
+
+  private async persistPreferredLocale(user: AuthUserRecord, locale?: string) {
+    if (!locale || typeof (this.prisma as any).user?.update !== "function") return;
+    const preferredLocale = normalizeNotificationLocale(locale);
+    user.preferredLocale = preferredLocale;
+    await (this.prisma as any).user.update({ where: { id: user.id }, data: { preferredLocale } });
   }
 
   static async hashPassword(password: string): Promise<string> {

@@ -41,7 +41,7 @@ export default async function OwnerPropertiesPage({ params }: { params: Promise<
             <article className="property-list-item" key={property.id}>
               <div>
                 <p className="eyebrow">
-                  {statusT.has(property.status) ? statusT(property.status) : property.status.replaceAll("_", " ")}
+                  {statusT.has(property.status) ? statusT(property.status) : statusT("UNPUBLISHED")}
                 </p>
                 <h3>{property.title}</h3>
                 <p className="form-help">

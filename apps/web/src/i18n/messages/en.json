@@ -141,11 +141,77 @@
       "LOCATION_APPROVED": "Location approved",
       "OWNER_CONFIRMED": "Owner confirmed",
       "OWNER_DECLINED": "Owner declined"
+      ,"UNPUBLISHED": "Unpublished"
+      ,"READY_FOR_REVIEW": "Ready for review"
+      ,"PENDING_UPLOAD": "Pending upload"
+      ,"APPROVED": "Approved"
+      ,"CONTACTED": "Contacted"
+      ,"NEW": "New"
+      ,"CLOSED": "Closed"
+      ,"COMMISSION_DUE": "Commission due"
+      ,"PAID": "Paid"
+      ,"DISPUTED": "Disputed"
+      ,"EVIDENCE_PENDING": "Evidence pending"
+    },
+    "categories": {
+      "residential": "Residential",
+      "land": "Land",
+      "commercial": "Commercial",
+      "apartment": "Apartment",
+      "house": "House",
+      "room": "Room",
+      "furnished_stay": "Furnished stay",
+      "guesthouse": "Guesthouse",
+      "vacation_home": "Vacation home",
+      "office": "Office",
+      "shop": "Shop",
+      "warehouse": "Warehouse",
+      "commercial_space": "Commercial space",
+      "other": "Other"
+    },
+    "badges": {
+      "VERIFIED_BY_BETNA": "Verified by Betna",
+      "PUBLISHED": "Published",
+      "UNPUBLISHED": "Unpublished"
     },
     "notifications": {
       "inquiryCreated": "Your inquiry was sent.",
       "locationApproved": "Betna approved the protected location.",
       "verification": "Your inspection status changed."
+    },
+    "admin": {
+      "commissionTitle": "Commission ledger",
+      "commissionDescription": "Verify first-payment evidence, mark a commission due, then record payment or a reviewed exception.",
+      "conversion": "Conversion",
+      "firstPayment": "of first payment",
+      "emptyCommissions": "No conversion or commission records yet.",
+      "publishingEyebrow": "Publishing",
+      "publishingTitle": "Listing lifecycle queue",
+      "publishingDescription": "Publish only listings with a current approved inspection. Paused and fraud-review listings stay hidden from public discovery.",
+      "verifiedUntil": "Verified until {date}",
+      "needsVerification": "Needs verification",
+      "emptyPublishing": "No listings are waiting for a publication decision.",
+      "translationsEyebrow": "Translation queue",
+      "translationsTitle": "Approve localized listing content",
+      "translationsDescription": "English can publish while Tigrinya is pending; visitors see a transparent English fallback until an approved Tigrinya translation exists.",
+      "awaitingApproval": "Awaiting staff approval",
+      "emptyTranslations": "No translations are waiting for approval.",
+      "verificationEyebrow": "Verification review",
+      "verificationTitle": "Inspection review queue",
+      "verificationDescription": "Reports become reviewable only after required checklist answers and evidence synchronization pass.",
+      "readyForReview": "Ready for review",
+      "emptyVerification": "No synchronized inspections are waiting for review.",
+      "reviewQueueTitle": "Review queue",
+      "reviewQueueDescription": "Submissions and verification decisions will appear here."
+    },
+    "verifier": {
+      "territoryQueue": "Territory queue",
+      "assignedInspections": "Assigned inspections",
+      "territoryHelp": "Only inspections assigned within your territory are shown.",
+      "propertyInspection": "Property inspection",
+      "openInspection": "Open inspection",
+      "empty": "No inspections are assigned in your territories.",
+      "homeDescription": "Your territory assignments will appear here."
     },
     "ownerInquiries": {
       "eyebrow": "Owner inquiries",
@@ -202,6 +268,7 @@
       "uploadPending": "Pending upload — retry when online",
       "evidenceMissing": "Evidence is missing its property or file",
       "evidenceUploadFailed": "Evidence upload failed",
+      "uploadRequestFailed": "Upload request failed ({status})",
       "submissionFailed": "Inspection submission failed",
       "evidenceMediaMissing": "Evidence media ID is missing",
       "items": {
@@ -253,7 +320,23 @@
       "title": "Listings",
       "description": "Your places and review progress will appear here.",
       "manage": "Manage places"
-    }
+    },
+    "media": {
+      "title": "Property photos",
+      "help": "Add clear images. Betna scans every upload before a listing photo is published.",
+      "choose": "Choose images",
+      "invalidImage": "{name} is not a supported image or is too large.",
+      "prepareFailed": "Could not prepare the upload",
+      "uploadFailed": "Could not upload {name}",
+      "scanFailed": "Could not scan {name}",
+      "complete": "Upload complete. Files are being checked for safety.",
+      "failed": "Upload failed",
+      "ready": "{count} image(s) ready.",
+      "uploading": "Uploading…",
+      "upload": "Upload photos"
+    },
+    "reviewActions": {"saving": "Saving review…", "approved": "Inspection approved", "rejected": "Inspection rejected", "failed": "Review failed; retry", "approve": "Approve", "reject": "Reject"},
+    "commissionActions": {"failed": "Commission action failed", "updated": "Updated.", "couldNotUpdate": "Could not update commission.", "verifyEvidence": "Verify evidence", "markDue": "Mark commission due", "markPaid": "Mark paid", "waive": "Waive", "dispute": "Dispute"}
   },
   "publicInquiry": {
     "eyebrow": "Managed inquiry",
@@ -288,6 +371,8 @@
     "contactOwnerWhatsApp": "Contact owner on WhatsApp",
     "emailBetna": "Email Betna"
     ,"verifiedByBetna": "VERIFIED BY BETNA"
+    ,"categories": {"residential": "Residential", "land": "Land", "commercial": "Commercial", "apartment": "Apartment", "house": "House", "room": "Room", "furnished_stay": "Furnished stay", "guesthouse": "Guesthouse", "vacation_home": "Vacation home", "office": "Office", "shop": "Shop", "warehouse": "Warehouse", "commercial_space": "Commercial space", "other": "Other"}
+    ,"badges": {"VERIFIED_BY_BETNA": "Verified by Betna", "PUBLISHED": "Published", "UNPUBLISHED": "Unpublished"}
     ,"rentalMode": "Rental mode"
     ,"shortStay": "Short-stay"
     ,"longTerm": "Long-term"

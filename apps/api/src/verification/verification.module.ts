@@ -5,9 +5,10 @@ import { AssignmentsService } from "./assignments.service";
 import { ChecklistService } from "./checklist.service";
 import { InspectionsService } from "./inspections.service";
 import { AuditModule } from "../audit/audit.module";
+import { NotificationsModule } from "../notifications/notifications.module";
 
 @Module({
-  imports: [MediaModule, AuditModule],
+  imports: [MediaModule, AuditModule, NotificationsModule],
   controllers: [InspectionsController],
   providers: [AssignmentsService, ChecklistService, InspectionsService],
   exports: [AssignmentsService, ChecklistService, InspectionsService],

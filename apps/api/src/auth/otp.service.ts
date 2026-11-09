@@ -84,7 +84,7 @@ export class OtpService {
     this.maxAttempts = configured.maxAttempts ?? 5;
   }
 
-  async request(phone: string): Promise<{ expiresAt: Date }> {
+  async request(phone: string, locale?: string | null): Promise<{ expiresAt: Date }> {
     const normalizedPhone = normalizePhone(phone);
     const now = Date.now();
     const record = this.records.get(normalizedPhone) ?? { requestedAt: [] };
@@ -127,7 +127,7 @@ export class OtpService {
       });
     }
     try {
-      await this.provider.sendOtp(normalizedPhone, code, expiresAt);
+      await this.provider.sendOtp(normalizedPhone, code, expiresAt, locale);
     } catch (error) {
       if (this.prisma?.otpChallenge.delete) {
         await this.prisma.otpChallenge.delete({ where: { id: challengeId } });
@@ -138,8 +138,8 @@ export class OtpService {
     return { expiresAt };
   }
 
-  async requestOtp(phone: string): Promise<{ expiresAt: Date }> {
-    return this.request(phone);
+  async requestOtp(phone: string, locale?: string | null): Promise<{ expiresAt: Date }> {
+    return this.request(phone, locale);
   }
 
   async verify(phone: string, code: string): Promise<boolean> {

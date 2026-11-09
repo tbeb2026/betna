@@ -39,6 +39,7 @@ type NotificationRow = {
   recipientId?: string | null;
   recipientEmail?: string | null;
   recipientPhone?: string | null;
+  recipientLocale?: string | null;
   inquiryId?: string | null;
   reference?: string | null;
   subject?: string | null;
@@ -172,6 +173,7 @@ export class NotificationService {
       userId: row.recipientId ?? undefined,
       email: row.recipientEmail ?? undefined,
       phone: row.recipientPhone ?? undefined,
+      locale: row.recipientLocale ?? undefined,
     };
     const adapter = this.adapters.get(channel);
     if (!adapter) {
@@ -221,6 +223,7 @@ export class NotificationService {
       id: randomUUID(), idempotencyKey, event: event.type, channel, status: "PROCESSING", attempts: 1,
       processingToken: token, processingAt: now, recipientId: recipient.userId,
       recipientEmail: recipient.email ?? undefined, recipientPhone: recipient.phone ?? undefined,
+      recipientLocale: recipient.locale ?? undefined,
       inquiryId: event.inquiryId, reference: event.reference, subject: content.subject, body: content.body,
       payload: event.payload ?? {},
     };

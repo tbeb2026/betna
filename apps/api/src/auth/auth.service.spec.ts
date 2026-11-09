@@ -373,6 +373,29 @@ describe("AuthService", () => {
     expect(result.session.token).toEqual(expect.any(String));
   });
 
+  it("persists a selected locale when an owner signs in", async () => {
+    const passwordHash = await AuthService.hashPassword("secret123");
+    const update = vi.fn().mockResolvedValue({});
+    const prisma = { user: { findUnique: vi.fn().mockResolvedValue({ ...user, passwordHash }), update } };
+    const auth = new AuthService(prisma as never);
+
+    await auth.signInWithPassword("owner@example.com", "secret123", "ti");
+
+    expect(update).toHaveBeenCalledWith({ where: { id: user.id }, data: { preferredLocale: "ti" } });
+  });
+
+  it("sends email verification content in the requested locale", async () => {
+    const enqueue = vi.fn().mockResolvedValue([{ status: "SENT" }]);
+    const auth = new AuthService({} as never, undefined, undefined, { enqueue } as never);
+
+    await auth.requestOwnerEmailVerification("locale@example.com", "ti");
+
+    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({
+      recipients: [{ email: "locale@example.com", locale: "ti" }],
+      subject: expect.not.stringContaining("Verify your Betna owner account"),
+    }));
+  });
+
   it("denies an owner whose persisted verification flags are incomplete", async () => {
     const passwordHash = await AuthService.hashPassword("secret123");
     const prisma = { user: { findUnique: vi.fn().mockResolvedValue({ ...user, passwordHash, phoneVerified: false }) } };

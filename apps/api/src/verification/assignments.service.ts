@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
+import { NotificationService } from "../notifications/notifications.service";
 
 type Actor = {
   id: string;
@@ -15,7 +16,7 @@ type Actor = {
 
 @Injectable()
 export class AssignmentsService {
-  constructor(private readonly prisma: PrismaService, private readonly audit?: AuditService) {}
+  constructor(private readonly prisma: PrismaService, private readonly audit?: AuditService, private readonly notifications?: NotificationService) {}
 
   async assign(inspectionId: string, verifierId: string, actor: Actor) {
     this.assertRole(actor, "ADMIN");
@@ -26,7 +27,7 @@ export class AssignmentsService {
     ) {
       throw new ForbiddenException("Assignment authorization is unavailable");
     }
-    return this.withTransaction(async (tx: any) => {
+    const result = await this.withTransaction(async (tx: any) => {
       if (typeof tx.$queryRaw === "function") {
         await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Inspection" WHERE "id" = ${inspectionId} FOR UPDATE`);
       }
@@ -57,6 +58,20 @@ export class AssignmentsService {
       await this.recordAudit(tx, actor, "INSPECTION_VERIFIER_ASSIGNED", inspectionId, { verifierId, previousVerifierId: inspection.verifierId ?? null });
       return updated;
     });
+    if (this.notifications) {
+      const recipient = await (this.prisma as any).user?.findUnique?.({ where: { id: verifierId }, select: { id: true, email: true, phone: true, preferredLocale: true } });
+      if (recipient) {
+        await this.notifications.enqueue({
+          type: "INSPECTION_ASSIGNED",
+          messageKey: "verification.assigned",
+          idempotencyKey: `inspection-assigned:${inspectionId}:${verifierId}`,
+          recipients: [{ userId: recipient.id, email: recipient.email, phone: recipient.phone, locale: recipient.preferredLocale ?? "en" }],
+          payload: { inspectionId, propertyId: result.propertyId, status: result.status },
+          channels: ["IN_APP", "EMAIL", "WHATSAPP"],
+        });
+      }
+    }
+    return result;
   }
 
   async listForVerifier(verifierId: string, territoryIds?: string[]) {

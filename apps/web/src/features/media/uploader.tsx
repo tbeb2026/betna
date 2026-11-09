@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 
 export type MediaPurpose = "LISTING" | "INSPECTION_EVIDENCE";
 
@@ -26,6 +27,7 @@ export function MediaUploader({
   maxBytes = DEFAULT_MAX_BYTES,
 }: MediaUploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const t = useTranslations("portal.media");
   const [selected, setSelected] = useState<File[]>([]);
   const [message, setMessage] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -39,7 +41,7 @@ export function MediaUploader({
         file.size > maxBytes,
     );
     if (invalid) {
-      setMessage(`${invalid.name} is not a supported image or is too large.`);
+      setMessage(t("invalidImage", { name: invalid.name }));
       setSelected([]);
       return;
     }
@@ -71,7 +73,7 @@ export function MediaUploader({
             }),
           },
         );
-        if (!targetResponse.ok) throw new Error("Could not prepare the upload");
+        if (!targetResponse.ok) throw new Error(t("prepareFailed"));
         const target = (await targetResponse.json()) as UploadTarget;
         const uploadResponse = await fetch(target.uploadUrl, {
           method: "PUT",
@@ -79,7 +81,7 @@ export function MediaUploader({
           body: file,
         });
         if (!uploadResponse.ok)
-          throw new Error(`Could not upload ${file.name}`);
+          throw new Error(t("uploadFailed", { name: file.name }));
         const completeResponse = await fetch(
           `/api/bff/media/${encodeURIComponent(target.mediaId)}/complete`,
           {
@@ -91,13 +93,13 @@ export function MediaUploader({
           },
         );
         if (!completeResponse.ok)
-          throw new Error(`Could not scan ${file.name}`);
+          throw new Error(t("scanFailed", { name: file.name }));
       }
       setSelected([]);
       if (inputRef.current) inputRef.current.value = "";
-      setMessage("Upload complete. Files are being checked for safety.");
+      setMessage(t("complete"));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Upload failed");
+      setMessage(error instanceof Error ? error.message : t("failed"));
     } finally {
       setUploading(false);
     }
@@ -105,12 +107,11 @@ export function MediaUploader({
 
   return (
     <section aria-labelledby="media-uploader-title" className="form-section">
-      <h3 id="media-uploader-title">Property photos</h3>
+      <h3 id="media-uploader-title">{t("title")}</h3>
       <p className="form-help">
-        Add clear images. Betna scans every upload before a listing photo is
-        published.
+        {t("help")}
       </p>
-      <label htmlFor="property-media">Choose images</label>
+      <label htmlFor="property-media">{t("choose")}</label>
       <input
         ref={inputRef}
         id="property-media"
@@ -122,7 +123,7 @@ export function MediaUploader({
         disabled={uploading}
       />
       {selected.length ? (
-        <p className="form-help">{selected.length} image(s) ready.</p>
+        <p className="form-help">{t("ready", { count: selected.length })}</p>
       ) : null}
       <button
         className="button secondary"
@@ -130,7 +131,7 @@ export function MediaUploader({
         onClick={upload}
         disabled={!selected.length || uploading}
       >
-        {uploading ? "Uploading…" : "Upload photos"}
+        {uploading ? t("uploading") : t("upload")}
       </button>
       {message ? (
         <p role="status" className="form-help">

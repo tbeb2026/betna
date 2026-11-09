@@ -1,3 +1,5 @@
+import { notificationMessage } from "../i18n/messages";
+
 export type NotificationChannel = "IN_APP" | "EMAIL" | "WHATSAPP" | "SMS";
 
 export interface NotificationRecipient {
@@ -28,7 +30,7 @@ export interface ChannelAdapter {
 }
 
 export interface WhatsAppOtpSender {
-  sendOtp(phone: string, code: string, expiresAt: Date): Promise<void>;
+  sendOtp(phone: string, code: string, expiresAt: Date, locale?: string | null): Promise<void>;
 }
 
 export type ProviderEnvironment = Record<string, string | undefined>;
@@ -79,10 +81,14 @@ export class MetaWhatsAppAdapter implements ChannelAdapter, WhatsAppOtpSender {
     await this.sendText(message.recipient.phone, message.body, message.idempotencyKey);
   }
 
-  async sendOtp(phone: string, code: string, expiresAt: Date): Promise<void> {
+  async sendOtp(phone: string, code: string, expiresAt: Date, locale?: string | null): Promise<void> {
+    const localized = notificationMessage(locale, "auth.ownerPhoneOtp", {
+      code,
+      expiresAt: expiresAt.toISOString(),
+    });
     await this.sendText(
       phone,
-      `Your Betna WhatsApp verification code is ${code}. It expires at ${expiresAt.toISOString()}.`,
+      localized.body,
       `otp:${phone}:${expiresAt.getTime()}`,
     );
   }

@@ -483,6 +483,7 @@ model Notification {
   recipientId     String?   @db.Uuid
   recipientEmail  String?   @db.VarChar(320)
   recipientPhone  String?   @db.VarChar(40)
+  recipientLocale String?   @db.VarChar(10)
   inquiryId       String?   @db.Uuid
   reference       String?   @db.VarChar(30)
   subject         String?

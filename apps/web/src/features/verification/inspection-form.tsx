@@ -116,7 +116,7 @@ export function InspectionForm({
         ...(init.headers ?? {}),
       },
     });
-    if (!response.ok) throw new Error(`Upload request failed (${response.status})`);
+    if (!response.ok) throw new Error(t("uploadRequestFailed", { status: response.status }));
     return (await response.json()) as T;
   }
 
