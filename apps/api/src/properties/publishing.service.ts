@@ -267,7 +267,7 @@ export class PublishingService {
         ? await tx.inspection.updateMany({
             where: {
               propertyId,
-              status: { in: ["DRAFT", "PENDING_UPLOAD", "READY_FOR_REVIEW"] },
+              status: { in: ["DRAFT", "PENDING_UPLOAD", "READY_FOR_REVIEW", "APPROVED"] },
             },
             data: {
               status: "EXPIRED",

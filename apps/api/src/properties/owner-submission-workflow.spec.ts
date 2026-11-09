@@ -380,6 +380,83 @@ describe("owner submission inspection workflow", () => {
     await expect(inspectionService.listForAdmin()).resolves.toEqual([inspections[1]]);
   });
 
+  it("creates a fresh owner draft after a rejected transfer inspection without mutating the approved history", async () => {
+    const { prisma, inspections, properties: rows } = makePrisma();
+    const inspectionService = new InspectionsService(
+      prisma,
+      new AssignmentsService(prisma),
+      new ChecklistService(prisma),
+    );
+    const properties = makePropertiesService(prisma, inspectionService);
+    const publishing = new PublishingService(
+      prisma,
+      undefined,
+      undefined,
+      undefined,
+      inspectionService,
+    );
+    const draft = await properties.createDraft(owner.id, input);
+    await properties.submit(draft.id, owner.id);
+    const approvedInspection = inspections[0];
+    const historicEvidence = [{ id: "historic-evidence", mediaId: "media-1" }];
+    Object.assign(approvedInspection, {
+      status: "READY_FOR_REVIEW",
+      requiredEvidenceSynced: true,
+      checklist: { identityAuthorization: true },
+      evidence: historicEvidence,
+      reportRequestKey: "historic-report",
+      notes: "Historic approved report",
+    });
+    await inspectionService.adminReview(approvedInspection.id, admin, "APPROVED");
+    await publishing.publish(draft.id, admin);
+
+    prisma.user.findUnique.mockImplementation(async ({ where }: any) =>
+      where.id === "owner-2"
+        ? { id: "owner-2", status: "ACTIVE", roles: [{ role: { name: "OWNER" } }] }
+        : owner,
+    );
+    await publishing.reverifyOwnershipChange(draft.id, "owner-2", admin);
+
+    const transferInspection = inspections[1];
+    Object.assign(transferInspection, {
+      status: "READY_FOR_REVIEW",
+      requiredEvidenceSynced: true,
+      checklist: { identityAuthorization: true },
+    });
+    await inspectionService.adminReview(
+      transferInspection.id,
+      admin,
+      "REJECTED",
+      "Please correct the transfer details",
+    );
+    await properties.updateDraft(draft.id, "owner-2", { title: "Corrected transfer listing" } as any);
+    await properties.submit(draft.id, "owner-2");
+
+    expect(inspections).toHaveLength(3);
+    expect(inspections[0]).toMatchObject({
+      id: approvedInspection.id,
+      status: "EXPIRED",
+      ownerSubmissionKey: null,
+      evidence: historicEvidence,
+      reportRequestKey: "historic-report",
+      notes: "Historic approved report",
+    });
+    expect(inspections[1]).toMatchObject({
+      id: transferInspection.id,
+      status: "REJECTED",
+      ownerSubmissionKey: null,
+    });
+    expect(inspections[2]).toMatchObject({
+      propertyId: draft.id,
+      status: "DRAFT",
+      ownerSubmissionKey: `owner-submit:${draft.id}`,
+    });
+    expect(inspections[2].id).not.toBe(approvedInspection.id);
+    expect(inspections[2].id).not.toBe(transferInspection.id);
+    expect(rows[0].status).toBe("PENDING_REVIEW");
+    await expect(publishing.getPublicProjection(draft.id)).resolves.toBeNull();
+  });
+
   it("rejects an owner retry when a guessed key belongs to another property's inspection", async () => {
     const { prisma, inspections, properties: rows } = makePrisma();
     const inspectionService = new InspectionsService(
