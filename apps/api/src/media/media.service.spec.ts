@@ -34,6 +34,11 @@ function makePrisma(media: any = undefined) {
   return {
     property: {
       findFirst: vi.fn(async () => ({ id: "property-1", ownerId: owner.id })),
+      findUnique: vi.fn(async () => ({
+        id: "property-1",
+        status: "PUBLISHED",
+        verificationValidUntil: new Date("2027-01-01T00:00:00.000Z"),
+      })),
     },
     media: {
       count: vi.fn(async () => 0),
@@ -48,6 +53,64 @@ function makePrisma(media: any = undefined) {
 }
 
 describe("MediaService", () => {
+  it("links an evidence upload target to its assigned inspection", async () => {
+    const prisma = makePrisma();
+    prisma.inspection = {
+      findUnique: vi.fn().mockResolvedValue({
+        id: "inspection-1",
+        propertyId: "property-1",
+        verifierId: "verifier-1",
+        territoryId: "territory-1",
+      }),
+    };
+    prisma.inspectionEvidence = { upsert: vi.fn().mockResolvedValue({}) };
+    const service = new MediaService(prisma, makeStorage() as any);
+
+    await service.createUploadTarget({
+      id: "verifier-1",
+      roles: ["VERIFIER"],
+      territoryIds: ["territory-1"],
+    }, "INSPECTION_EVIDENCE", {
+      propertyId: "property-1",
+      inspectionId: "inspection-1",
+      contentType: "image/jpeg",
+      sizeBytes: 1200,
+      fileName: "evidence.jpg",
+    });
+
+    expect(prisma.inspectionEvidence.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { inspectionId_mediaId: expect.objectContaining({ inspectionId: "inspection-1" }) },
+      create: expect.objectContaining({ inspectionId: "inspection-1" }),
+    }));
+  });
+
+  it("does not serve public variants when property verification has no expiry", async () => {
+    const prisma = makePrisma({
+      id: "media-1",
+      propertyId: "property-1",
+      purpose: "LISTING",
+      status: "CLEAN",
+      objectKey: "public/listings/property-1/media-1/original.jpg",
+      contentType: "image/jpeg",
+      sizeBytes: BigInt(1200),
+      isPublic: true,
+    });
+    prisma.property.findUnique.mockResolvedValueOnce({
+      id: "property-1",
+      status: "PUBLISHED",
+      verificationValidUntil: null,
+    });
+    const service = new MediaService(prisma, makeStorage() as any);
+
+    await expect(service.getPublicVariants("media-1")).rejects.toBeInstanceOf(ForbiddenException);
+    prisma.property.findUnique.mockResolvedValueOnce({
+      id: "property-1",
+      status: "PUBLISHED",
+      verificationValidUntil: new Date("2020-01-01T00:00:00.000Z"),
+    });
+    await expect(service.getPublicVariants("media-1")).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it("blocks executable uploads before creating a signed target", async () => {
     const storage = makeStorage();
     const prisma = makePrisma();
@@ -155,6 +218,86 @@ describe("MediaService", () => {
         roles: ["OWNER"],
       }),
     ).rejects.toThrow(/property access denied|not authorized/i);
+  });
+
+  it("denies a foreign verifier completion for linked inspection evidence", async () => {
+    const prisma = makePrisma({
+      id: "evidence-1",
+      propertyId: "property-1",
+      purpose: "INSPECTION_EVIDENCE",
+      status: "PENDING",
+      objectKey: "private/inspection-evidence/property-1/evidence-1/original.jpg",
+      contentType: "image/jpeg",
+      sizeBytes: BigInt(1200),
+      isPublic: false,
+    });
+    prisma.inspectionEvidence = {
+      findMany: vi.fn().mockResolvedValue([
+        { mediaId: "evidence-1", inspection: { propertyId: "property-1", verifierId: "verifier-1", territoryId: "territory-1" } },
+      ]),
+    };
+    const service = new MediaService(prisma, makeStorage() as any);
+
+    await expect(service.completeUpload("evidence-1", {
+      id: "verifier-2",
+      roles: ["VERIFIER"],
+      territoryIds: ["territory-1"],
+    })).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("audits an authorized private evidence read", async () => {
+    const prisma = makePrisma({
+      id: "evidence-1",
+      propertyId: "property-1",
+      purpose: "INSPECTION_EVIDENCE",
+      status: "CLEAN",
+      objectKey: "private/inspection-evidence/property-1/evidence-1/original.jpg",
+      contentType: "image/jpeg",
+      sizeBytes: BigInt(1200),
+      isPublic: false,
+    });
+    prisma.inspectionEvidence = {
+      findMany: vi.fn().mockResolvedValue([
+        { mediaId: "evidence-1", inspection: { propertyId: "property-1", verifierId: "verifier-1", territoryId: "territory-1" } },
+      ]),
+    };
+    const audit = { record: vi.fn().mockResolvedValue({ id: "audit-1" }) };
+    const service = new MediaService(prisma, makeStorage() as any, undefined, audit as any);
+
+    await expect(service.getPrivateUrl("evidence-1", {
+      id: "verifier-1",
+      roles: ["VERIFIER"],
+      territoryIds: ["territory-1"],
+    })).resolves.toMatchObject({ mediaId: "evidence-1" });
+    expect(audit.record).toHaveBeenCalledWith("verifier-1", "INSPECTION_EVIDENCE_VIEWED", expect.objectContaining({
+      type: "Media",
+      id: "evidence-1",
+    }));
+  });
+
+  it("denies a foreign verifier private evidence read", async () => {
+    const prisma = makePrisma({
+      id: "evidence-1",
+      propertyId: "property-1",
+      purpose: "INSPECTION_EVIDENCE",
+      status: "CLEAN",
+      objectKey: "private/inspection-evidence/property-1/evidence-1/original.jpg",
+      contentType: "image/jpeg",
+      sizeBytes: BigInt(1200),
+      isPublic: false,
+    });
+    prisma.inspectionEvidence = {
+      findMany: vi.fn().mockResolvedValue([
+        { mediaId: "evidence-1", inspection: { propertyId: "property-1", verifierId: "verifier-1", territoryId: "territory-1" } },
+      ]),
+    };
+    const service = new MediaService(prisma, makeStorage() as any);
+
+    await expect(service.getPrivateUrl("evidence-1", {
+      id: "verifier-2",
+      roles: ["VERIFIER"],
+      territoryIds: ["territory-1"],
+    })).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it("passes the claimed byte limit and content type into the scan boundary", async () => {

@@ -170,6 +170,19 @@ describe("PublishingService", () => {
     await expect(service.getPublicProjection("property-1")).resolves.toBeNull();
   });
 
+  it("does not publish or project a property with no verification expiry", async () => {
+    const { prisma, rows } = makePrisma();
+    rows.get("property-1")!.verificationValidUntil = null;
+    const service = new PublishingService(prisma);
+
+    await expect(service.publish("property-1")).rejects.toBeInstanceOf(ConflictException);
+    rows.get("property-1")!.status = "PUBLISHED";
+    await expect(service.getPublicProjection("property-1")).resolves.toBeNull();
+    rows.get("property-1")!.status = "VERIFIED";
+    rows.get("property-1")!.verificationValidUntil = new Date("2020-01-01T00:00:00.000Z");
+    await expect(service.publish("property-1")).rejects.toBeInstanceOf(ConflictException);
+  });
+
   it("treats price and core-photo edits as material changes", async () => {
     const { prisma } = makePrisma();
     const service = new PublishingService(prisma);

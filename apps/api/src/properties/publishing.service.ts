@@ -10,6 +10,9 @@ import { randomUUID } from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { TranslationService } from "./translation.service";
 import { AuditService } from "../audit/audit.service";
+import { isCurrentPublicVerification } from "./public-verification";
+
+export { isCurrentPublicVerification } from "./public-verification";
 
 type Listing = any;
 type Actor = string | { id?: string; roles?: unknown[] };
@@ -65,10 +68,7 @@ export class PublishingService {
         "Only a verified listing can be published",
       );
     }
-    if (
-      property.verificationValidUntil &&
-      new Date(property.verificationValidUntil).getTime() <= Date.now()
-    ) {
+    if (!isCurrentPublicVerification({ ...property, status: "PUBLISHED" })) {
       throw new ConflictException("Verification has expired");
     }
 
@@ -238,12 +238,23 @@ export class PublishingService {
   /** Public APIs should call this projection and never serialize the Property row directly. */
   async getPublicProjection(propertyId: string, locale = "en") {
     const property = await this.findProperty(propertyId);
-    if (this.isExpired(property)) return null;
-    if (PUBLIC_STATUSES.has(property.status)) return this.publicSnapshot(property, locale);
+    if (PUBLIC_STATUSES.has(property.status)) {
+      if (!isCurrentPublicVerification(property)) return null;
+      return this.publicSnapshot(property, locale);
+    }
     if (property.status !== "PENDING_REVIEW") return null;
     const snapshot =
       this.approvedSnapshots.get(propertyId) ?? (await this.findApprovedSnapshot(propertyId));
-    return snapshot ? this.publicSnapshot({ ...snapshot, verificationValidUntil: property.verificationValidUntil, lastInspectedAt: property.lastInspectedAt }, locale, "PUBLISHED") : null;
+    const publicSnapshotInput = snapshot
+      ? {
+          ...snapshot,
+          status: "PUBLISHED",
+          verificationValidUntil: property.verificationValidUntil,
+          lastInspectedAt: property.lastInspectedAt,
+        }
+      : null;
+    if (!publicSnapshotInput || !isCurrentPublicVerification(publicSnapshotInput)) return null;
+    return this.publicSnapshot(publicSnapshotInput, locale, "PUBLISHED");
   }
 
   async listPublishingQueue() {
@@ -494,13 +505,6 @@ export class PublishingService {
         : {}),
       ...Object.fromEntries(changedFacts.map((key) => [key, patch[key]])),
     };
-  }
-
-  private isExpired(property: Listing, now = new Date()): boolean {
-    return Boolean(
-      property.verificationValidUntil &&
-        new Date(property.verificationValidUntil).getTime() <= now.getTime(),
-    );
   }
 
   private hasRole(actor: Actor, expected: string): boolean {

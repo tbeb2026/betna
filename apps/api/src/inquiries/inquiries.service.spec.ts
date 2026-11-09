@@ -6,6 +6,7 @@ const property = {
   id: "property-1",
   ownerId: "owner-1",
   status: "PUBLISHED",
+  verificationValidUntil: new Date("2027-01-01T00:00:00.000Z"),
   publicLocationLabel: "Kilimani, Nairobi",
   publicLatitude: -1.2921,
   publicLongitude: 36.8219,
@@ -63,6 +64,37 @@ function makePrisma() {
 }
 
 describe("InquiriesService", () => {
+  it("rejects guest inquiries and contact clicks when verification has no expiry", async () => {
+    const { prisma } = makePrisma();
+    prisma.property.findUnique.mockResolvedValue({ ...property, verificationValidUntil: null });
+    const service = new InquiriesService(prisma, { enqueue: vi.fn() } as any);
+
+    await expect(service.createGuestInquiry({
+      propertyId: "property-1",
+      mode: "SHORT_STAY",
+      name: "No Expiry Guest",
+      email: "no-expiry@example.com",
+      phone: "+254711111111",
+      message: "Can I visit?",
+      ...shortStayDates,
+    })).rejects.toThrow("Published property");
+    await expect(service.logContactClick({ propertyId: "property-1", target: "BETNA", channel: "WHATSAPP" })).rejects.toThrow("Published property");
+
+    prisma.property.findUnique.mockResolvedValue({
+      ...property,
+      verificationValidUntil: new Date("2020-01-01T00:00:00.000Z"),
+    });
+    await expect(service.createGuestInquiry({
+      propertyId: "property-1",
+      mode: "SHORT_STAY",
+      name: "Expired Guest",
+      email: "expired@example.com",
+      phone: "+254711111112",
+      message: "Can I visit?",
+      ...shortStayDates,
+    })).rejects.toThrow("Published property");
+    await expect(service.logContactClick({ propertyId: "property-1", target: "BETNA", channel: "WHATSAPP" })).rejects.toThrow("Published property");
+  });
   it("accepts a guest inquiry without an account and notifies owner and Betna", async () => {
     const { prisma } = makePrisma();
     const enqueue = vi.fn().mockResolvedValue(undefined);

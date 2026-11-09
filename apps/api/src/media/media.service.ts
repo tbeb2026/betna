@@ -3,9 +3,12 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service";
+import { AuditService } from "../audit/audit.service";
+import { isCurrentPublicVerification } from "../properties/public-verification";
 import { MediaScanJob } from "./scan.job";
 import { StorageAdapter, type StorageVariant } from "./storage.adapter";
 
@@ -58,6 +61,7 @@ export class MediaService {
     private readonly prisma: PrismaService,
     private readonly storage: StorageAdapter = new StorageAdapter(),
     scanJob?: MediaScanJob,
+    @Optional() private readonly audit?: AuditService,
   ) {
     this.scanJob = scanJob ?? new MediaScanJob(prisma, storage);
   }
@@ -83,6 +87,13 @@ export class MediaService {
     const fileName = input.fileName ?? normalizedActor.fileName ?? "upload";
     this.assertUploadType(contentType, fileName);
     const maxBytes = this.maxBytes(purpose);
+    const inspectionId = input.inspectionId;
+    if (purpose === "INSPECTION_EVIDENCE" && !inspectionId) {
+      throw new BadRequestException("An inspection is required for evidence uploads");
+    }
+    if (purpose === "INSPECTION_EVIDENCE" && typeof this.prisma.inspectionEvidence?.upsert !== "function") {
+      throw new ForbiddenException("Inspection evidence linkage is unavailable");
+    }
     if (
       typeof sizeBytes !== "number" ||
       !Number.isSafeInteger(sizeBytes) ||
@@ -126,6 +137,14 @@ export class MediaService {
         isPublic: false,
       },
     });
+    if (purpose === "INSPECTION_EVIDENCE") {
+      const linkedInspectionId = input.inspectionId as string;
+      await this.prisma.inspectionEvidence.upsert({
+        where: { inspectionId_mediaId: { inspectionId: linkedInspectionId, mediaId: media.id } },
+        create: { inspectionId: linkedInspectionId, mediaId: media.id },
+        update: {},
+      });
+    }
     return {
       mediaId: media.id,
       objectKey,
@@ -157,11 +176,8 @@ export class MediaService {
       media.status !== "CLEAN" ||
       media.isPublic !== true ||
       !media.objectKey.startsWith("public/listings/") ||
-      (propertyLookup &&
-        (!property ||
-          property.status !== "PUBLISHED" ||
-          (property.verificationValidUntil &&
-            new Date(property.verificationValidUntil).getTime() <= Date.now())))
+      !propertyLookup ||
+      !isCurrentPublicVerification(property)
     ) {
       throw new ForbiddenException("Media is not publicly available");
     }
@@ -198,11 +214,14 @@ export class MediaService {
         "Inspection evidence is restricted to staff",
       );
     }
-    if (roles.includes("VERIFIER")) {
-      await this.assertInspectionEvidenceAccess(normalizedActor, media);
-    }
+    await this.assertInspectionEvidenceAccess(normalizedActor, media);
     if (media.status !== "CLEAN")
       throw new ForbiddenException("Media is not available");
+    await this.audit?.record(normalizedActor.id, "INSPECTION_EVIDENCE_VIEWED", {
+      type: "Media",
+      id: media.id,
+      metadata: { propertyId: media.propertyId },
+    });
     return {
       mediaId,
       url: await this.storage.createSignedReadUrl(media.objectKey),
@@ -259,6 +278,8 @@ export class MediaService {
       if (
         !inspection ||
         inspection.propertyId !== propertyId ||
+        !inspection.verifierId ||
+        !inspection.territoryId ||
         (!roles.includes("ADMIN") &&
           (inspection.verifierId !== actor.id ||
             !actor.territoryIds?.includes(inspection.territoryId ?? "")))
@@ -279,7 +300,9 @@ export class MediaService {
   }
 
   private async assertInspectionEvidenceAccess(actor: MediaActor, media: any) {
-    if (!this.prisma.inspectionEvidence?.findMany) return;
+    if (typeof this.prisma.inspectionEvidence?.findMany !== "function") {
+      throw new ForbiddenException("Inspection evidence is not assigned");
+    }
     const links = await this.prisma.inspectionEvidence?.findMany?.({
       where: { mediaId: media.id },
       include: { inspection: { select: { propertyId: true, verifierId: true, territoryId: true } } },
@@ -287,17 +310,29 @@ export class MediaService {
     if (!Array.isArray(links) || links.length === 0) {
       throw new ForbiddenException("Inspection evidence is not assigned");
     }
-    const allowed = links.some((link: any) =>
-      link.inspection?.propertyId === media.propertyId &&
-      link.inspection?.verifierId === actor.id &&
-      actor.territoryIds?.includes(link.inspection.territoryId ?? ""),
-    );
+    const roles = this.roles(actor);
+    const allowed = links.some((link: any) => {
+      const inspection = link.inspection;
+      if (
+        inspection?.propertyId !== media.propertyId ||
+        !inspection.verifierId ||
+        !inspection.territoryId
+      ) return false;
+      if (roles.includes("ADMIN")) return true;
+      return roles.includes("VERIFIER") &&
+        inspection.verifierId === actor.id &&
+        actor.territoryIds?.includes(inspection.territoryId);
+    });
     if (!allowed) throw new ForbiddenException("Inspection evidence access denied");
   }
 
   private async assertMediaCompletionAccess(actor: MediaActor, media: any) {
     const roles = this.roles(actor);
-    if (roles.includes("ADMIN") || roles.includes("VERIFIER")) return;
+    if (media.purpose === "INSPECTION_EVIDENCE") {
+      await this.assertInspectionEvidenceAccess(actor, media);
+      return;
+    }
+    if (roles.includes("ADMIN")) return;
     if (media.purpose === "LISTING" && roles.includes("OWNER")) {
       await this.assertPropertyAccess(actor, media.propertyId, "LISTING");
       return;

@@ -15,6 +15,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { NotificationEvent, NotificationService } from "../notifications/notifications.service";
 import { InquiryActor, LocationReleaseService } from "./location-release.service";
 import { AvailabilityService } from "../availability/availability.service";
+import { isCurrentPublicVerification } from "../properties/public-verification";
 
 export type GuestInquiryRequest = GuestInquiryInput & {
   honeypot?: string;
@@ -56,9 +57,7 @@ export class InquiriesService {
     });
     if (
       !property ||
-      property.status !== "PUBLISHED" ||
-      (property.verificationValidUntil &&
-        new Date(property.verificationValidUntil).getTime() <= Date.now())
+      !isCurrentPublicVerification(property)
     ) {
       throw new NotFoundException("Published property not found");
     }
@@ -215,7 +214,7 @@ export class InquiriesService {
       where: { id: input.propertyId },
       include: { owner: true },
     });
-    if (!property || property.status !== "PUBLISHED" || (property.verificationValidUntil && new Date(property.verificationValidUntil).getTime() <= Date.now())) throw new NotFoundException("Published property not found");
+    if (!property || !isCurrentPublicVerification(property)) throw new NotFoundException("Published property not found");
     if (input.target === "OWNER" && !property.owner?.phone) throw new BadRequestException("Published owner contact is unavailable");
     const data = {
       propertyId: input.propertyId,
@@ -238,9 +237,7 @@ export class InquiriesService {
     });
     if (
       !property ||
-      property.status !== "PUBLISHED" ||
-      (property.verificationValidUntil &&
-        new Date(property.verificationValidUntil).getTime() <= Date.now()) ||
+      !isCurrentPublicVerification(property) ||
       !property.owner?.phone
     ) {
       throw new NotFoundException("Published owner contact is unavailable");
