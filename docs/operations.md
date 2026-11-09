@@ -28,10 +28,12 @@ To roll back an application regression, route traffic to the last known-good ima
 
 ## Database integration gate
 
-Run `pnpm test:integration` (or `pnpm --filter @betna/api test:db`) against an
-isolated PostgreSQL/PostGIS database after migrations. This gate validates the
-durable schema and immutable audit trigger; unit tests use transactional fakes
-when a database is unavailable.
+Run `pnpm test:db` (or `pnpm test:integration`) against an isolated
+PostgreSQL/PostGIS database after migrations. This gate validates the durable
+schema and immutable audit trigger; unit tests use transactional fakes when a
+database is unavailable. Run the browser release gate separately with
+`pnpm test:playwright`, or run both API and browser end-to-end suites with
+`pnpm test:e2e` after the required services are available.
 
 ## SLO starting points
 

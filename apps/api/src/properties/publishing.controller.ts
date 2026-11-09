@@ -1,7 +1,190 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards, BadRequestException } from "@nestjs/common";
+import { Type } from "class-transformer";
+import { IsArray, IsBoolean, IsIn, IsNumber, IsOptional, IsString, Max, MaxLength, Min, ValidateIf, ValidateNested } from "class-validator";
 import { AuthSessionGuard, Roles, RolesGuard } from "../auth/guards";
 import { PublishingService } from "./publishing.service";
 import { TranslationService } from "./translation.service";
+
+class MaterialEditLocationDto {
+  @IsString()
+  @MaxLength(500)
+  address!: string;
+
+  @IsNumber({ allowInfinity: false, allowNaN: false })
+  @Min(-90)
+  @Max(90)
+  latitude!: number;
+
+  @IsNumber({ allowInfinity: false, allowNaN: false })
+  @Min(-180)
+  @Max(180)
+  longitude!: number;
+}
+
+class MaterialEditOfferingDto {
+  @IsIn(["SHORT_STAY", "LONG_TERM"])
+  mode!: "SHORT_STAY" | "LONG_TERM";
+
+  @IsIn(["KES", "UGX"])
+  currency!: "KES" | "UGX";
+
+  @IsNumber({ allowInfinity: false, allowNaN: false })
+  @Min(0)
+  basePrice!: number;
+
+  @IsOptional()
+  @IsBoolean()
+  negotiable?: boolean;
+
+  @IsOptional()
+  @IsNumber({ allowInfinity: false, allowNaN: false })
+  @Min(1)
+  minimumNights?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  moveInDate?: string;
+
+  @IsOptional()
+  @IsNumber({ allowInfinity: false, allowNaN: false })
+  @Min(1)
+  leaseDurationMonths?: number;
+}
+
+export class FraudReportDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(2_000)
+  reason?: string;
+}
+
+export class MaterialEditDto {
+  @ValidateIf((_, value) => value !== undefined)
+  @IsString()
+  @MaxLength(200)
+  title?: string;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsString()
+  @MaxLength(10_000)
+  description?: string;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsString()
+  @MaxLength(100)
+  category?: string;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsString()
+  @MaxLength(100)
+  subcategory?: string;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(100, { each: true })
+  amenities?: string[];
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsString()
+  @MaxLength(240)
+  publicLocationLabel?: string;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsNumber({ allowInfinity: false, allowNaN: false })
+  @Min(-90)
+  @Max(90)
+  publicLatitude?: number;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsNumber({ allowInfinity: false, allowNaN: false })
+  @Min(-180)
+  @Max(180)
+  publicLongitude?: number;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsNumber({ allowInfinity: false, allowNaN: false })
+  @Min(0)
+  basePrice?: number;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @ValidateNested({ each: true })
+  @Type(() => MaterialEditOfferingDto)
+  offerings?: MaterialEditOfferingDto[];
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsArray()
+  @IsString({ each: true })
+  media?: string[];
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsArray()
+  @IsString({ each: true })
+  mediaIds?: string[];
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsArray()
+  @IsString({ each: true })
+  corePhotos?: string[];
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsString()
+  @MaxLength(500)
+  exactAddress?: string;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsNumber({ allowInfinity: false, allowNaN: false })
+  @Min(-90)
+  @Max(90)
+  exactLatitude?: number;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsNumber({ allowInfinity: false, allowNaN: false })
+  @Min(-180)
+  @Max(180)
+  exactLongitude?: number;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @ValidateNested()
+  @Type(() => MaterialEditLocationDto)
+  exactLocation?: MaterialEditLocationDto;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsNumber({ allowInfinity: false, allowNaN: false })
+  @Min(0)
+  bedrooms?: number;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsNumber({ allowInfinity: false, allowNaN: false })
+  @Min(0)
+  capacity?: number;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsString()
+  @MaxLength(4_000)
+  safetyNotes?: string;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsBoolean()
+  authorizationAttested?: boolean;
+}
+
+export class OwnershipChangeDto {
+  @IsString()
+  @MaxLength(100)
+  newOwnerId!: string;
+}
+
+export class TranslationApprovalDto {
+  @IsString()
+  @MaxLength(200)
+  title!: string;
+
+  @IsString()
+  @MaxLength(10_000)
+  description!: string;
+}
 
 @Controller("admin")
 @UseGuards(AuthSessionGuard, RolesGuard)
@@ -26,8 +209,9 @@ export class PublishingController {
   fraud(
     @Req() request: { user: { id: string } },
     @Param("id") id: string,
-    @Body() body: { reason?: string },
+    @Body() body: FraudReportDto,
   ) {
+    assertMutationBody(body);
     return this.publishing.reportFraud(id, body, request.user.id);
   }
 
@@ -35,17 +219,23 @@ export class PublishingController {
   materialEdit(
     @Req() request: { user: { id: string } },
     @Param("id") id: string,
-    @Body() body: Record<string, unknown>,
+    @Body() body: MaterialEditDto,
   ) {
-    return this.publishing.createMaterialEditReview(id, body, request.user.id);
+    assertMutationBody(body);
+    return this.publishing.createMaterialEditReview(
+      id,
+      body as unknown as Record<string, unknown>,
+      request.user.id,
+    );
   }
 
   @Patch("publishing/:id/ownership-change")
   ownershipChange(
     @Req() request: { user: { id: string; roles?: unknown[] } },
     @Param("id") id: string,
-    @Body() body: { newOwnerId: string },
+    @Body() body: OwnershipChangeDto,
   ) {
+    assertMutationBody(body);
     return this.publishing.reverifyOwnershipChange(
       id,
       body?.newOwnerId,
@@ -63,8 +253,9 @@ export class PublishingController {
     @Req() request: { user: { id: string } },
     @Param("propertyId") propertyId: string,
     @Param("locale") locale: string,
-    @Body() body: { title: string; description: string },
+    @Body() body: TranslationApprovalDto,
   ) {
+    assertMutationBody(body);
     return this.translations.upsertApprovedTranslation(
       propertyId,
       locale,
@@ -73,4 +264,20 @@ export class PublishingController {
       request.user.id,
     );
   }
+}
+
+function assertMutationBody(body: unknown): asserts body is object {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new BadRequestException("Request body must be an object");
+  }
+  if (containsNull(body)) {
+    throw new BadRequestException("Request body contains an invalid null value");
+  }
+}
+
+function containsNull(value: unknown): boolean {
+  if (value === null) return true;
+  if (Array.isArray(value)) return value.some(containsNull);
+  if (typeof value !== "object") return false;
+  return Object.values(value as Record<string, unknown>).some(containsNull);
 }

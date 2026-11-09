@@ -3,11 +3,14 @@
   "private": true,
   "packageManager": "pnpm@9.15.4",
   "scripts": {
+    "build": "turbo build",
     "dev": "turbo dev",
     "lint": "turbo lint",
     "test": "vitest run",
     "test:integration": "pnpm --filter @betna/api test:db",
+    "test:db": "pnpm --filter @betna/api test:db",
     "test:e2e": "turbo test:e2e",
+    "test:playwright": "pnpm --filter @betna/web test:e2e",
     "typecheck": "turbo typecheck",
     "format": "prettier --check ."
   },

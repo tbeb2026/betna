@@ -103,7 +103,11 @@ export class PropertiesService {
         mergedPublished.neighborhoodId,
         mergedPublished.cityId,
       );
-      return this.publishing.createMaterialEditReview(propertyId, patch, ownerId);
+      return this.publishing.createMaterialEditReview(
+        propertyId,
+        patch as unknown as Record<string, unknown>,
+        ownerId,
+      );
     }
     if (existing.status !== "DRAFT") {
       throw new ConflictException("Only drafts can be edited");

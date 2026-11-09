@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -9,7 +10,7 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { AuthSessionGuard, Roles, RolesGuard } from "../auth/guards";
-import { CreatePropertyInput, UpdatePropertyInput } from "./dto";
+import { CreatePropertyDto, UpdatePropertyDto } from "./dto";
 import { PropertiesService } from "./properties.service";
 import { TaxonomyService } from "./taxonomy.service";
 
@@ -40,8 +41,9 @@ export class PropertiesController {
   @Post()
   create(
     @Req() request: { user: { id: string } },
-    @Body() body: CreatePropertyInput,
+    @Body() body: CreatePropertyDto,
   ) {
+    assertMutationBody(body);
     return this.properties.createDraft(request.user.id, body);
   }
 
@@ -54,8 +56,9 @@ export class PropertiesController {
   update(
     @Req() request: { user: { id: string } },
     @Param("id") id: string,
-    @Body() body: UpdatePropertyInput,
+    @Body() body: UpdatePropertyDto,
   ) {
+    assertMutationBody(body);
     return this.properties.updateDraft(id, request.user.id, body);
   }
 
@@ -63,4 +66,20 @@ export class PropertiesController {
   submit(@Req() request: { user: { id: string } }, @Param("id") id: string) {
     return this.properties.submit(id, request.user.id);
   }
+}
+
+function assertMutationBody(body: unknown): asserts body is object {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new BadRequestException("Request body must be an object");
+  }
+  if (containsNull(body)) {
+    throw new BadRequestException("Request body contains an invalid null value");
+  }
+}
+
+function containsNull(value: unknown): boolean {
+  if (value === null) return true;
+  if (Array.isArray(value)) return value.some(containsNull);
+  if (typeof value !== "object") return false;
+  return Object.values(value as Record<string, unknown>).some(containsNull);
 }

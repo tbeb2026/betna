@@ -7,7 +7,7 @@
     "start": "node dist/main.js",
     "lint": "eslint . --no-error-on-unmatched-pattern",
     "test": "vitest run",
-    "test:db": "BETNA_RUN_DB_TESTS=1 vitest run prisma/seed.test.ts",
+    "test:db": "BETNA_RUN_DB_TESTS=1 vitest run --config vitest.db.config.ts",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "typecheck": "tsc --noEmit",
     "prisma": "prisma",

@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Param, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
-import { IsEmail, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from "class-validator";
+import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
+import { IsEmail, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateIf } from "class-validator";
 import { AuthSessionGuard, Roles, RolesGuard } from "../auth/guards";
 import { InquiriesService } from "./inquiries.service";
 
@@ -29,17 +29,26 @@ class OwnerResponseDto {
   @IsOptional() @IsString() @MaxLength(4000) message?: string;
 }
 
+export class AdminLocationReleaseDto {
+  @ValidateIf((_, value) => value !== undefined)
+  @IsString()
+  @MaxLength(2_000)
+  reason?: string;
+}
+
 @Controller("public/inquiries")
 export class PublicInquiriesController {
   constructor(private readonly inquiries: InquiriesService) {}
 
   @Post()
   create(@Body() body: GuestInquiryDto) {
+    assertMutationBody(body);
     return this.inquiries.createGuestInquiry(body);
   }
 
   @Post("contact-click")
   contactClick(@Body() body: ContactClickDto) {
+    assertMutationBody(body);
     return this.inquiries.logContactClick(body);
   }
 
@@ -56,6 +65,7 @@ export class PublicContactController {
 
   @Post("contact-click")
   contactClick(@Body() body: ContactClickDto) {
+    assertMutationBody(body);
     return this.inquiries.logContactClick(body);
   }
 
@@ -86,6 +96,7 @@ export class OwnerInquiriesController {
     @Param("id") id: string,
     @Body() body: OwnerResponseDto,
   ) {
+    assertMutationBody(body);
     return this.inquiries.ownerRespond(id, request.user.id, body);
   }
 }
@@ -105,8 +116,9 @@ export class AdminInquiriesController {
   release(
     @Req() request: { user: { id: string; roles: string[] } },
     @Param("id") id: string,
-    @Body() body: { reason?: string },
+    @Body() body: AdminLocationReleaseDto,
   ) {
+    assertMutationBody(body);
     return this.inquiries.adminReleaseLocation(id, request.user, body?.reason);
   }
 
@@ -114,8 +126,25 @@ export class AdminInquiriesController {
   revoke(
     @Req() request: { user: { id: string; roles: string[] } },
     @Param("id") id: string,
-    @Body() body: { reason?: string },
+    @Body() body: AdminLocationReleaseDto,
   ) {
+    assertMutationBody(body);
     return this.inquiries.revokeLocation(id, request.user, body?.reason);
   }
+}
+
+function assertMutationBody(body: unknown): asserts body is object {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new BadRequestException("Request body must be an object");
+  }
+  if (containsNull(body)) {
+    throw new BadRequestException("Request body contains an invalid null value");
+  }
+}
+
+function containsNull(value: unknown): boolean {
+  if (value === null) return true;
+  if (Array.isArray(value)) return value.some(containsNull);
+  if (typeof value !== "object") return false;
+  return Object.values(value as Record<string, unknown>).some(containsNull);
 }

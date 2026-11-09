@@ -38,10 +38,19 @@ Betna is a trust-first property marketplace for Kenya and Uganda. This repositor
 ```sh
 pnpm dev       # Run web and API development tasks through Turborepo
 pnpm lint      # Lint all workspace packages
-pnpm test      # Run unit/smoke tests
-pnpm test:e2e  # Run Playwright/API end-to-end tasks
-pnpm typecheck # Type-check all packages
+pnpm test                 # Unit/smoke tests only (Vitest; no DB or browser suites)
+pnpm test:db              # Database integration gate (requires migrated PostgreSQL/PostGIS)
+pnpm test:e2e             # API e2e plus web Playwright through Turborepo
+pnpm test:playwright      # Web Playwright gate only (starts its configured test servers)
+pnpm build                # Production API/web/package builds
+pnpm typecheck            # Type-check all packages
 ```
+
+The release gates are intentionally separate: run `pnpm test` for fast unit
+coverage, `pnpm test:db` against an isolated migrated database, and
+`pnpm test:playwright` (or the combined `pnpm test:e2e`) for browser/API flows.
+The root Vitest configuration excludes `apps/api/test`, `apps/api/prisma`, and
+web `e2e` suites so database fixtures and Playwright never run as unit tests.
 
 ## Environment variables
 
