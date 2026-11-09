@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 
-type SeedClient = Pick<PrismaClient, 'country' | 'role' | 'territory' | 'city' | 'neighborhood'>;
+type SeedClient = Pick<PrismaClient, 'country' | 'role' | 'territory' | 'city' | 'neighborhood' | 'checklistDefinition'>;
 
 const countries = [
   { code: 'KE', name: 'Kenya', currency: 'KES' },
@@ -24,6 +24,12 @@ const geography = [
   },
 ] as const;
 
+const checklistItems: Record<string, string[]> = {
+  residential: ['identityAuthorization', 'exactLocation', 'currentPhotos', 'statedPrice', 'category', 'safetyCondition', 'residentialUtilities'],
+  land: ['identityAuthorization', 'exactLocation', 'currentPhotos', 'statedPrice', 'category', 'safetyCondition', 'landBoundaries', 'landAccess'],
+  commercial: ['identityAuthorization', 'exactLocation', 'currentPhotos', 'statedPrice', 'category', 'safetyCondition', 'commercialUse', 'commercialSafety'],
+};
+
 /** Idempotently creates launch geography and the roles used by the API. */
 export async function seed(prisma: SeedClient): Promise<void> {
   const countryIds = new Map<string, string>();
@@ -39,6 +45,14 @@ export async function seed(prisma: SeedClient): Promise<void> {
 
   for (const role of roles) {
     await prisma.role.upsert({ where: { name: role }, update: {}, create: { name: role } });
+  }
+
+  for (const [category, required] of Object.entries(checklistItems)) {
+    await prisma.checklistDefinition.upsert({
+      where: { category_version: { category, version: 1 } },
+      update: { definition: { required, rules: Object.fromEntries(required.map((item) => [item, 'PASS'])) }, isPublished: true },
+      create: { category, version: 1, definition: { required, rules: Object.fromEntries(required.map((item) => [item, 'PASS'])) }, isPublished: true },
+    });
   }
 
   for (const entry of geography) {

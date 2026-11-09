@@ -95,7 +95,18 @@ export class SessionService {
   async validate(token: string): Promise<Session> {
     const tokenHash = this.hash(token);
     const stored = this.prisma
-      ? await this.prisma.authSession.findUnique({ where: { tokenHash } })
+      ? await this.prisma.authSession.findUnique({
+          where: { tokenHash },
+          include: {
+            user: {
+              select: {
+                status: true,
+                roles: { select: { role: { select: { name: true } } } },
+                territoryAssignments: { select: { territoryId: true } },
+              },
+            },
+          },
+        })
       : this.sessions.get(tokenHash);
     if (
       !stored ||
@@ -103,6 +114,31 @@ export class SessionService {
       stored.expiresAt.getTime() <= Date.now()
     ) {
       throw new AuthenticationError("Session is invalid or expired");
+    }
+    if (this.prisma) {
+      const currentRoles = (stored as any).user?.roles
+        ?.map((entry: any) => entry.role?.name)
+        .filter((role: unknown): role is string => typeof role === "string")
+        .map((role: string) => role.toUpperCase())
+        .sort() ?? [];
+      const sessionRoles = jsonStringArray(stored.roles).map((role) => role.toUpperCase()).sort();
+      const currentTerritories = (stored as any).user?.territoryAssignments
+        ?.map((entry: any) => entry.territoryId)
+        .filter((id: unknown): id is string => typeof id === "string")
+        .sort() ?? [];
+      const sessionTerritories = jsonStringArray(stored.territoryIds).sort();
+      const userStatus = (stored as any).user?.status;
+      const changed =
+        userStatus !== "ACTIVE" ||
+        JSON.stringify(currentRoles) !== JSON.stringify(sessionRoles) ||
+        JSON.stringify(currentTerritories) !== JSON.stringify(sessionTerritories);
+      if (changed) {
+        await this.prisma.authSession.update({
+          where: { id: stored.id },
+          data: { revokedAt: new Date() },
+        });
+        throw new AuthenticationError("Session is no longer valid");
+      }
     }
     return {
       id: stored.id,

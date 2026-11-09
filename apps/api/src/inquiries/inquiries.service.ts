@@ -54,7 +54,12 @@ export class InquiriesService {
       where: { id: input.propertyId },
       include: { owner: true, offerings: true },
     });
-    if (!property || (property.status && property.status !== "PUBLISHED")) {
+    if (
+      !property ||
+      property.status !== "PUBLISHED" ||
+      (property.verificationValidUntil &&
+        new Date(property.verificationValidUntil).getTime() <= Date.now())
+    ) {
       throw new NotFoundException("Published property not found");
     }
     const offering = this.resolveOffering(property.offerings, input);
@@ -113,6 +118,12 @@ export class InquiriesService {
     }
     if (decision === "CONFIRMED" && this.availability && (inquiry.offering?.mode === "SHORT_STAY" || inquiry.startDate || inquiry.endDate)) {
       const blocked = await this.availability.confirmInquiryAndBlockDates(inquiryId, ownerId);
+      if (typeof response === "object" && response.message?.trim()) {
+        blocked.inquiry = await (this.prisma as any).inquiry.update({
+          where: { id: inquiryId },
+          data: { ownerResponseMessage: response.message.trim() },
+        });
+      }
       await this.notifications.enqueue({
         type: "INQUIRY_OWNER_CONFIRMED",
         idempotencyKey: `inquiry-owner:${inquiryId}:CONFIRMED`,
@@ -127,7 +138,13 @@ export class InquiriesService {
     const status = decision === "CONFIRMED" ? "OWNER_CONFIRMED" : "OWNER_DECLINED";
     const updated = await (this.prisma as any).inquiry.update({
       where: { id: inquiryId },
-      data: { status },
+      data: {
+        status,
+        ownerResponseMessage:
+          typeof response === "object" && response.message?.trim()
+            ? response.message.trim()
+            : undefined,
+      },
       include: { property: true },
     });
     await this.audit?.record({ id: ownerId }, `INQUIRY_OWNER_${decision}`, {
@@ -171,6 +188,10 @@ export class InquiriesService {
     return this.locationRelease.getReleasedLocation(inquiryId, actor);
   }
 
+  async getReleasedLocationByToken(token: string) {
+    return this.locationRelease.getReleasedLocationByToken(token);
+  }
+
   async listForOwner(ownerId: string) {
     return (this.prisma as any).inquiry.findMany({
       where: { property: { ownerId } },
@@ -194,7 +215,7 @@ export class InquiriesService {
       where: { id: input.propertyId },
       include: { owner: true },
     });
-    if (!property || property.status !== "PUBLISHED") throw new NotFoundException("Published property not found");
+    if (!property || property.status !== "PUBLISHED" || (property.verificationValidUntil && new Date(property.verificationValidUntil).getTime() <= Date.now())) throw new NotFoundException("Published property not found");
     if (input.target === "OWNER" && !property.owner?.phone) throw new BadRequestException("Published owner contact is unavailable");
     const data = {
       propertyId: input.propertyId,
@@ -204,6 +225,36 @@ export class InquiriesService {
     const store = (this.prisma as any).contactClick;
     if (!store?.create) return data;
     return (await store.create({ data })) ?? data;
+  }
+
+  /**
+   * Resolves an owner contact only at click time. The phone number never
+   * appears in a public property response or in a client-rendered URL.
+   */
+  async ownerContactRedirect(propertyId: string) {
+    const property = await (this.prisma as any).property.findUnique?.({
+      where: { id: propertyId },
+      include: { owner: true },
+    });
+    if (
+      !property ||
+      property.status !== "PUBLISHED" ||
+      (property.verificationValidUntil &&
+        new Date(property.verificationValidUntil).getTime() <= Date.now()) ||
+      !property.owner?.phone
+    ) {
+      throw new NotFoundException("Published owner contact is unavailable");
+    }
+    await this.logContactClick({
+      propertyId,
+      target: "OWNER",
+      channel: "WHATSAPP",
+    });
+    const phone = property.owner.phone.replace(/\D/g, "");
+    if (phone.length < 7 || phone.length > 15) {
+      throw new NotFoundException("Published owner contact is unavailable");
+    }
+    return `https://wa.me/${phone}?text=${encodeURIComponent(`Hello, I am asking about ${property.title} on Betna.`)}`;
   }
 
   private async findInquiry(id: string) {

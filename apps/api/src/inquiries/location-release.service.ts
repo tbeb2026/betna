@@ -55,6 +55,7 @@ export class LocationReleaseService {
           return {
             inquiry,
             location: this.location(inquiry.property),
+            releaseToken: inquiry.locationReleaseId,
             idempotent: true,
             releaseId: inquiry.locationReleaseId ?? inquiry.locationApprovedAt?.toISOString() ?? inquiry.id,
           };
@@ -103,7 +104,7 @@ export class LocationReleaseService {
         reason: reason?.trim() || "admin-approved inquiry",
         releaseId,
       });
-      return { inquiry: updated, location: this.location(updated.property), idempotent: false, releaseId };
+      return { inquiry: updated, location: this.location(updated.property), releaseToken: releaseId, idempotent: false, releaseId };
     });
     return result;
   }
@@ -132,6 +133,36 @@ export class LocationReleaseService {
     return this.location(inquiry.property);
   }
 
+  /** Visitor read path: an opaque, expiring release token is the only public
+   * credential. Inquiry identifiers alone are never sufficient. */
+  async getReleasedLocationByToken(token: string) {
+    if (typeof token !== "string" || !/^[0-9a-f-]{36}$/i.test(token)) {
+      throw new NotFoundException("Released location not found");
+    }
+    const inquiry = await this.prisma.inquiry.findUnique({
+      where: { locationReleaseId: token },
+      include: { property: true },
+    });
+    if (
+      !inquiry ||
+      inquiry.status !== "LOCATION_APPROVED" ||
+      !inquiry.locationReleaseExpiresAt ||
+      new Date(inquiry.locationReleaseExpiresAt).getTime() <= Date.now() ||
+      inquiry.locationRevokedAt
+    ) {
+      throw new NotFoundException("Released location not found");
+    }
+    await this.recordAudit(this.prisma, {}, "EXACT_LOCATION_VIEWED", inquiry.id, {
+      releaseId: token,
+      channel: "visitor-token",
+    });
+    return {
+      inquiryReference: inquiry.reference,
+      expiresAt: inquiry.locationReleaseExpiresAt,
+      location: this.location(inquiry.property),
+    };
+  }
+
   private async revokeWithinTransaction(tx: any, inquiry: any, actor: InquiryActor, reason: string) {
     const data = {
       status: "CONTACTED",
@@ -157,9 +188,9 @@ export class LocationReleaseService {
     }
   }
 
-  private async recordAudit(tx: any, actor: InquiryActor, action: string, inquiryId: string, metadata: Record<string, unknown>) {
+  private async recordAudit(tx: any, actor: { id?: string }, action: string, inquiryId: string, metadata: Record<string, unknown>) {
     if (typeof tx.auditEvent?.create === "function") {
-      await tx.auditEvent.create({ data: { actorId: actor.id, action, entityType: "Inquiry", entityId: inquiryId, metadata: metadata as Prisma.InputJsonValue } });
+      await tx.auditEvent.create({ data: { actorId: actor.id ?? null, action, entityType: "Inquiry", entityId: inquiryId, metadata: metadata as Prisma.InputJsonValue } });
       return;
     }
     await this.audit?.record(actor, action, { type: "Inquiry", id: inquiryId, metadata: metadata as Prisma.InputJsonValue });

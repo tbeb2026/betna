@@ -9,6 +9,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { TranslationService } from "./translation.service";
+import { AuditService } from "../audit/audit.service";
 
 type Listing = any;
 type Actor = string | { id?: string; roles?: unknown[] };
@@ -54,6 +55,7 @@ export class PublishingService {
   constructor(
     private readonly prisma: PrismaService,
     @Optional() private readonly translations?: TranslationService,
+    @Optional() private readonly audit?: AuditService,
   ) {}
 
   async publish(propertyId: string, actor?: Actor): Promise<Listing> {
@@ -72,11 +74,17 @@ export class PublishingService {
 
     const snapshot = await this.publicSnapshot(property);
     this.approvedSnapshots.set(propertyId, snapshot);
-    await this.createApprovedVersion(propertyId, snapshot, actor);
-    return this.prisma.property.update({
-      where: { id: propertyId },
-      data: { status: "PUBLISHED" },
-      include: this.propertyInclude(),
+    return this.withTransaction(async (tx: any) => {
+      await this.createApprovedVersion(propertyId, snapshot, actor, tx);
+      const published = await tx.property.update({
+        where: { id: propertyId },
+        data: { status: "PUBLISHED" },
+        include: this.propertyInclude(),
+      });
+      await this.recordAudit(tx, actor, "PROPERTY_PUBLISHED", propertyId, {
+        status: "PUBLISHED",
+      });
+      return published;
     });
   }
 
@@ -276,22 +284,22 @@ export class PublishingService {
     return version?.snapshot ?? null;
   }
 
-  private async createApprovedVersion(propertyId: string, snapshot: Listing, actor?: Actor) {
-    if (!this.prisma.propertyVersion?.create) return;
-    const latest = this.prisma.propertyVersion.findFirst
-      ? await this.prisma.propertyVersion.findFirst({
+  private async createApprovedVersion(propertyId: string, snapshot: Listing, actor?: Actor, tx: any = this.prisma) {
+    if (!tx.propertyVersion?.create) return;
+    const latest = tx.propertyVersion.findFirst
+      ? await tx.propertyVersion.findFirst({
           where: { propertyId },
           orderBy: { version: "desc" },
         })
       : null;
     const version = (latest?.version ?? 0) + 1;
-    if (this.prisma.propertyVersion.updateMany) {
-      await this.prisma.propertyVersion.updateMany({
+    if (tx.propertyVersion.updateMany) {
+      await tx.propertyVersion.updateMany({
         where: { propertyId, isApproved: true },
         data: { isApproved: false },
       });
     }
-    await this.prisma.propertyVersion.create({
+    await tx.propertyVersion.create({
       data: {
         id: randomUUID(),
         propertyId,
@@ -302,6 +310,22 @@ export class PublishingService {
         approvedBy: typeof actor === "string" ? actor : actor?.id,
       },
     });
+  }
+
+  private async withTransaction<T>(work: (tx: any) => Promise<T>) {
+    if (typeof (this.prisma as any).$transaction === "function") {
+      return (this.prisma as any).$transaction(work);
+    }
+    return work(this.prisma as any);
+  }
+
+  private async recordAudit(tx: any, actor: Actor | undefined, action: string, entityId: string, metadata: Record<string, unknown>) {
+    const actorId = typeof actor === "string" ? actor : actor?.id;
+    if (typeof tx.auditEvent?.create === "function") {
+      await tx.auditEvent.create({ data: { actorId, action, entityType: "Property", entityId, metadata } });
+      return;
+    }
+    await this.audit?.record(actorId, action, { type: "Property", id: entityId, metadata: metadata as any });
   }
 
   private async publicSnapshot(property: Listing, locale = "en", status = "PUBLISHED") {
@@ -347,7 +371,6 @@ export class PublishingService {
         latitude: Number(property.publicLatitude),
         longitude: Number(property.publicLongitude),
       },
-      ownerPhone: this.publicPhone(property.owner?.phone),
       offerings: (property.offerings ?? []).map((offering: Listing) => ({
         mode: offering.mode,
         currency: offering.currency,
@@ -359,13 +382,17 @@ export class PublishingService {
       })),
       media: (property.media ?? [])
         .filter((media: Listing) => media.isPublic && media.status === "CLEAN")
-        .map((media: Listing) => ({ id: media.id, objectKey: media.objectKey })),
+        .map((media: Listing) => ({
+          id: media.id,
+          objectKey: media.objectKey,
+          url: this.publicMediaUrl(media.objectKey),
+        })),
     };
   }
 
   private propertyInclude() {
     return {
-      owner: { select: { phone: true } },
+      owner: { select: { id: true } },
       country: true,
       city: true,
       neighborhood: true,
@@ -374,10 +401,9 @@ export class PublishingService {
     };
   }
 
-  private publicPhone(value: unknown): string | null {
-    if (typeof value !== "string") return null;
-    const digits = value.replace(/\D/g, "");
-    return digits.length >= 7 && digits.length <= 15 ? `+${digits}` : null;
+  private publicMediaUrl(objectKey: string): string {
+    const base = process.env.PUBLIC_MEDIA_BASE_URL?.trim();
+    return base ? `${base.replace(/\/$/, "")}/${objectKey}` : objectKey;
   }
 
   private isMaterialEdit(patch: Record<string, unknown>): boolean {

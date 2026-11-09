@@ -7,17 +7,39 @@ import {
   Req,
   UseGuards,
 } from "@nestjs/common";
+import { IsIn, IsInt, IsOptional, IsPositive, IsString, IsUUID, Max, MaxLength } from "class-validator";
 import { AuthSessionGuard, Roles, RolesGuard } from "../auth/guards";
 import { MediaPurpose, MediaService } from "./media.service";
 
 type RequestWithUser = { user: { id: string; roles: string[] } };
-type CreateUploadTargetBody = {
-  purpose: MediaPurpose;
+class CreateUploadTargetBody {
+  @IsIn(["LISTING", "INSPECTION_EVIDENCE"])
+  purpose!: MediaPurpose;
+
+  @IsOptional()
+  @IsUUID()
   propertyId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  inspectionId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
   contentType?: string;
+
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  @Max(25_000_000)
   sizeBytes?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
   fileName?: string;
-};
+}
 
 @Controller("media")
 export class MediaController {

@@ -103,6 +103,9 @@ model User {
   firstName            String          @db.VarChar(100)
   lastName             String          @db.VarChar(100)
   status               UserStatus      @default(ACTIVE)
+  emailVerified        Boolean         @default(false)
+  phoneVerified        Boolean         @default(false)
+  authorizationAttested Boolean        @default(false)
   countryId            String?         @db.Uuid
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
@@ -251,6 +254,7 @@ model Property {
   inspections            Inspection[]
   inquiries              Inquiry[]
   availabilityBlocks     AvailabilityBlock[]
+  unavailableDates       UnavailableDate[]
   conversions            Conversion[]
   versions               PropertyVersion[]
   translations           PropertyTranslation[]
@@ -331,6 +335,22 @@ model Media {
   @@index([propertyId, purpose])
 }
 
+/// Versioned, administratively managed inspection checklist definitions.
+/// The definition is snapshotted on each inspection so later edits cannot
+/// change the meaning of an already submitted report.
+model ChecklistDefinition {
+  id          String   @id @default(uuid()) @db.Uuid
+  category    String   @db.VarChar(80)
+  version     Int
+  definition  Json
+  isPublished Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([category, version])
+  @@index([category, isPublished, version])
+}
+
 model Inspection {
   id                     String               @id @default(uuid()) @db.Uuid
   propertyId             String               @db.Uuid
@@ -377,6 +397,7 @@ model Inquiry {
   guestEmail         String        @db.VarChar(320)
   guestPhone         String        @db.VarChar(40)
   message            String
+  ownerResponseMessage String?
   startDate          DateTime?
   endDate            DateTime?
   guests             Int?
@@ -406,6 +427,21 @@ model AvailabilityBlock {
   createdAt  DateTime @default(now())
   property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   inquiry    Inquiry  @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId, startDate, endDate])
+}
+
+/// Owner-declared unavailable dates are separate from confirmed inquiry
+/// blocks: they have no guest/inquiry identity and can be edited by the owner.
+model UnavailableDate {
+  id         String   @id @default(uuid()) @db.Uuid
+  propertyId String   @db.Uuid
+  startDate  DateTime
+  endDate    DateTime
+  reason     String?  @db.VarChar(240)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
   @@index([propertyId, startDate, endDate])
 }

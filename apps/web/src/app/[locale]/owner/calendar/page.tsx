@@ -1,14 +1,20 @@
 import { createApiClient } from "../../../../lib/api-client";
 import { requireRole } from "../../../../lib/auth";
+import { UnavailableDateEditor } from "../../../../features/availability/unavailable-date-editor";
 
 export default async function OwnerCalendarPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
   const session = await requireRole("OWNER", locale);
-  const blocks = await createApiClient({ token: session.token }).get<any[]>("/owner/availability").catch(() => []);
+  const api = createApiClient({ token: session.token });
+  const [blocks, unavailableDates] = await Promise.all([
+    api.get<any[]>("/owner/availability").catch(() => []),
+    api.get<any[]>("/owner/availability/unavailable").catch(() => []),
+  ]);
   return (
     <div className="portal-card">
       <h2>Availability calendar</h2>
       <p>Confirmed short stays block these dates automatically.</p>
+      <UnavailableDateEditor token={session.token ?? ""} initialDates={unavailableDates} />
       {blocks.length ? (
         <div className="property-list">
           {blocks.map((block) => (

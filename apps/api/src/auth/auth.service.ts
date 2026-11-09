@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable, Optional } from "@nestjs/common";
 import { promisify } from "node:util";
 import {
   randomBytes,
@@ -87,6 +87,51 @@ export class AuthService {
       throw new AuthenticationError("Invalid phone or OTP");
     }
     return this.issueSession(user);
+  }
+
+  async onboardOwner(input: {
+    email: string;
+    password: string;
+    phone: string;
+    firstName: string;
+    lastName: string;
+    otpCode: string;
+    authorizationAttested: boolean;
+  }): Promise<AuthResult> {
+    if (!input.authorizationAttested) {
+      throw new BadRequestException("Owner authorization attestation is required");
+    }
+    const email = input.email.trim().toLowerCase();
+    const phone = normalizePhone(input.phone);
+    if (!input.firstName.trim() || !input.lastName.trim()) {
+      throw new Error("First and last name are required");
+    }
+    await this.otpService.verify(phone, input.otpCode);
+    const existing = await this.prisma.user.findFirst?.({
+      where: { OR: [{ email }, { phone }] },
+    });
+    if (existing) throw new Error("An account already exists for this email or phone");
+    const role = await this.prisma.role.findUnique({ where: { name: "OWNER" } });
+    if (!role) throw new BadRequestException("Owner onboarding is not configured");
+    const user = await this.prisma.user.create({
+      data: {
+        email,
+        phone,
+        passwordHash: await AuthService.hashPassword(input.password),
+        firstName: input.firstName.trim(),
+        lastName: input.lastName.trim(),
+        status: "ACTIVE",
+        emailVerified: false,
+        phoneVerified: true,
+        authorizationAttested: true,
+        roles: { create: { roleId: role.id } },
+      },
+      include: { roles: { include: { role: true } }, territoryAssignments: { select: { territoryId: true } } },
+    });
+    // Email verification is an explicit pending onboarding step; the account
+    // is session-capable for owners while listing submission still requires
+    // the attestation and physical inspection workflow.
+    return this.issueSession(user as AuthUserRecord);
   }
 
   async revokeSession(tokenOrId: string): Promise<void> {

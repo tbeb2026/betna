@@ -147,12 +147,12 @@ export async function saveOwnerProperty(
     const payload = propertyInputFromFormData(form, options.cities);
     const propertyId = String(form.get("propertyId") ?? "").trim();
     const saved = propertyId
-      ? await auth.client.patch<{ id: string }>(
+      ? await auth.client.patch<{ id: string; status?: string }>(
           `/owner/properties/${encodeURIComponent(propertyId)}`,
           payload,
         )
-      : await auth.client.post<{ id: string }>("/owner/properties", payload);
-    if (form.get("formAction") === "submit") {
+      : await auth.client.post<{ id: string; status?: string }>("/owner/properties", payload);
+    if (form.get("formAction") === "submit" && saved.status !== "PENDING_REVIEW") {
       await auth.client.post(
         `/owner/properties/${encodeURIComponent(saved.id)}/submit`,
         {},

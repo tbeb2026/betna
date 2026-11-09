@@ -12,9 +12,8 @@ export type PublicProperty = {
   availableLocales?: string[];
   location: { country?: string; city?: string; neighborhood?: string; label: string; latitude: number; longitude: number };
   offerings: Array<{ id?: string; mode: "SHORT_STAY" | "LONG_TERM" | string; currency: string; basePrice: number; negotiable?: boolean; minimumNights?: number | null; leaseDurationMonths?: number | null }>;
-  media: Array<{ id: string; objectKey: string }>;
+  media: Array<{ id: string; objectKey: string; url?: string }>;
   verification?: { badge?: string; validUntil?: string | null };
-  ownerPhone?: string | null;
 };
 
 function price(property: PublicProperty) {
@@ -27,7 +26,13 @@ export function PropertyCard({ property }: { property: PublicProperty }) {
   return (
     <article className="portal-card property-card" data-testid="property-card">
       <div className="property-card-media" aria-hidden="true">
-        {property.media[0] ? <span>{property.media[0].objectKey}</span> : <span>Betna verified place</span>}
+        {property.media[0] ? (
+          <img
+            src={property.media[0].url ?? property.media[0].objectKey}
+            alt=""
+            loading="lazy"
+          />
+        ) : <span>Betna verified place</span>}
       </div>
       <div className="section-heading">
         <div><p className="eyebrow">{property.category.replaceAll("_", " ")}</p><h2>{property.title}</h2></div>

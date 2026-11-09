@@ -129,6 +129,50 @@ export class AvailabilityService {
     return (this.prisma as any).availabilityBlock?.findMany?.({ include: { property: true, inquiry: true }, orderBy: { startDate: "asc" } }) ?? [];
   }
 
+  async listUnavailableForOwner(ownerId: string, propertyId?: string) {
+    const where: any = { property: { ownerId } };
+    if (propertyId) where.propertyId = propertyId;
+    return (this.prisma as any).unavailableDate?.findMany?.({
+      where,
+      include: { property: true },
+      orderBy: { startDate: "asc" },
+    }) ?? [];
+  }
+
+  async createUnavailableDate(
+    ownerId: string,
+    input: { propertyId: string; startDate: string | Date; endDate: string | Date; reason?: string },
+  ) {
+    const { propertyId, startDate, endDate } = this.validateUnavailableInput(input);
+    await this.assertPropertyOwner(propertyId, ownerId);
+    const store = (this.prisma as any).unavailableDate;
+    if (!store?.create) return { propertyId, startDate, endDate, reason: input.reason?.trim() || null };
+    const overlap = await store.findFirst?.({ where: { propertyId, startDate: { lt: endDate }, endDate: { gt: startDate } } });
+    if (overlap) throw new ConflictException("Those dates are already unavailable");
+    return store.create({ data: { propertyId, startDate, endDate, reason: input.reason?.trim() || null } });
+  }
+
+  async updateUnavailableDate(
+    ownerId: string,
+    id: string,
+    input: { startDate?: string | Date; endDate?: string | Date; reason?: string },
+  ) {
+    const store = (this.prisma as any).unavailableDate;
+    const existing = await store?.findUnique?.({ where: { id }, include: { property: true } });
+    if (!existing || existing.property?.ownerId !== ownerId) throw new NotFoundException("Unavailable date not found");
+    const values = this.validateUnavailableInput({ propertyId: existing.propertyId, startDate: input.startDate ?? existing.startDate, endDate: input.endDate ?? existing.endDate });
+    const overlap = await store.findFirst?.({ where: { id: { not: id }, propertyId: existing.propertyId, startDate: { lt: values.endDate }, endDate: { gt: values.startDate } } });
+    if (overlap) throw new ConflictException("Those dates are already unavailable");
+    return store.update({ where: { id }, data: { startDate: values.startDate, endDate: values.endDate, ...(input.reason !== undefined ? { reason: input.reason?.trim() || null } : {}) } });
+  }
+
+  async deleteUnavailableDate(ownerId: string, id: string) {
+    const store = (this.prisma as any).unavailableDate;
+    const existing = await store?.findUnique?.({ where: { id }, include: { property: true } });
+    if (!existing || existing.property?.ownerId !== ownerId) throw new NotFoundException("Unavailable date not found");
+    return store.delete({ where: { id } });
+  }
+
   private async findInquiry(tx: any, inquiryId: string) {
     const inquiry = await tx.inquiry.findUnique({ where: { id: inquiryId }, include: { property: { include: { owner: true } }, offering: true } });
     if (!inquiry) throw new NotFoundException("Inquiry not found");
@@ -179,6 +223,19 @@ export class AvailabilityService {
     if (inquiry.property?.ownerId !== ownerId && inquiry.property?.owner?.id !== ownerId) {
       throw new ForbiddenException("Only the property owner can manage availability");
     }
+  }
+
+  private async assertPropertyOwner(propertyId: string, ownerId: string) {
+    const property = await (this.prisma as any).property?.findFirst?.({ where: { id: propertyId, ownerId }, select: { id: true } });
+    if (!property) throw new ForbiddenException("Only the property owner can manage availability");
+  }
+
+  private validateUnavailableInput(input: { propertyId: string; startDate: string | Date; endDate: string | Date }) {
+    if (!input.propertyId) throw new BadRequestException("Property is required");
+    const startDate = this.date(input.startDate, "startDate");
+    const endDate = this.date(input.endDate, "endDate");
+    if (endDate <= startDate) throw new BadRequestException("endDate must be after startDate");
+    return { propertyId: input.propertyId, startDate, endDate };
   }
 
   private date(value: unknown, field: string) {

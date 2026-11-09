@@ -8,6 +8,7 @@ import {
 import { AssignmentsService } from "./assignments.service";
 import { ChecklistAnswers, ChecklistService } from "./checklist.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { AuditService } from "../audit/audit.service";
 
 type Actor = {
   id: string;
@@ -32,6 +33,7 @@ export class InspectionsService {
     private readonly prisma: PrismaService,
     private readonly assignments = new AssignmentsService(prisma),
     private readonly checklist = new ChecklistService(),
+    private readonly audit?: AuditService,
   ) {}
 
   assign(inspectionId: string, verifierId: string, actor: Actor) {
@@ -74,7 +76,7 @@ export class InspectionsService {
   }
 
   getChecklist(category: string) {
-    return this.checklist.get(category);
+    return this.checklist.getPersisted(category);
   }
 
   async submitPendingUpload(
@@ -93,8 +95,15 @@ export class InspectionsService {
       return inspection;
     }
     const category = String(inspection.property?.category ?? "residential");
-    const definition = this.checklist.get(category);
-    this.checklist.assertComplete(category, input.checklist);
+    const definition = await this.checklist.getPersisted(category);
+    const missing = definition.required.filter(
+      (key) => !this.checklist.answerRecorded(input.checklist?.[key]),
+    );
+    if (missing.length) {
+      throw new BadRequestException(
+        `Required inspection checklist items are incomplete: ${missing.join(", ")}`,
+      );
+    }
     if (!input.evidence?.length) {
       throw new BadRequestException(
         "At least one inspection evidence item is required",
@@ -231,7 +240,10 @@ export class InspectionsService {
     if (
       decision === "APPROVED" &&
       (inspection.status !== "READY_FOR_REVIEW" ||
-        !inspection.requiredEvidenceSynced)
+        !inspection.requiredEvidenceSynced ||
+        Object.values((inspection.checklist ?? {}) as Record<string, unknown>).some(
+          (answer) => !this.checklist.answerPasses(answer),
+        ))
     ) {
       throw new ConflictException(
         "Only synced, validated reports are ready for approval",
@@ -242,25 +254,31 @@ export class InspectionsService {
         "Only reports ready for review can be approved or rejected",
       );
     }
-    const updated = await this.prisma.inspection.update({
-      where: { id: inspectionId },
-      data: { status: decision, notes: notes?.trim() || inspection.notes },
-      include: { evidence: true, property: true },
-    });
-    if (decision === "APPROVED" && this.prisma.property?.update) {
-      const inspectedAt = inspection.inspectedAt ?? new Date();
-      await this.prisma.property.update({
-        where: { id: inspection.propertyId },
-        data: {
-          status: "VERIFIED",
-          lastInspectedAt: inspectedAt,
-          verificationValidUntil: new Date(
-            inspectedAt.getTime() + 365 * 24 * 60 * 60 * 1000,
-          ),
-        },
+    return this.withTransaction(async (tx: any) => {
+      const updated = await tx.inspection.update({
+        where: { id: inspectionId },
+        data: { status: decision, notes: notes?.trim() || inspection.notes },
+        include: { evidence: true, property: true },
       });
-    }
-    return updated;
+      if (decision === "APPROVED" && tx.property?.update) {
+        const inspectedAt = inspection.inspectedAt ?? new Date();
+        await tx.property.update({
+          where: { id: inspection.propertyId },
+          data: {
+            status: "VERIFIED",
+            lastInspectedAt: inspectedAt,
+            verificationValidUntil: new Date(
+              inspectedAt.getTime() + 365 * 24 * 60 * 60 * 1000,
+            ),
+          },
+        });
+      }
+      await this.recordAudit(tx, actor, `INSPECTION_${decision}`, inspectionId, {
+        propertyId: inspection.propertyId,
+        checklistVersion: inspection.checklistVersion,
+      });
+      return updated;
+    });
   }
 
   private async findInspection(id: string) {
@@ -333,6 +351,33 @@ export class InspectionsService {
       )
       .filter(Boolean)
       .map((role: string) => role.toUpperCase());
+  }
+
+  private async withTransaction<T>(work: (tx: any) => Promise<T>) {
+    if (typeof (this.prisma as any).$transaction === "function") {
+      return (this.prisma as any).$transaction(work);
+    }
+    return work(this.prisma as any);
+  }
+
+  private async recordAudit(
+    tx: any,
+    actor: Actor,
+    action: string,
+    entityId: string,
+    metadata: Record<string, unknown>,
+  ) {
+    if (typeof tx.auditEvent?.create === "function") {
+      await tx.auditEvent.create({
+        data: { actorId: actor.id, action, entityType: "Inspection", entityId, metadata },
+      });
+    } else {
+      await this.audit?.record(actor.id, action, {
+        type: "Inspection",
+        id: entityId,
+        metadata: metadata as any,
+      });
+    }
   }
 }
 

@@ -19,7 +19,15 @@
     "description": "Use your Betna account to manage places and protected work.",
     "emailLabel": "Email address",
     "passwordLabel": "Password",
-    "submit": "Sign in"
+    "submit": "Sign in",
+    "working": "Signing in…",
+    "otpTitle": "Sign in with WhatsApp code",
+    "phoneLabel": "Phone or WhatsApp number",
+    "otpCodeLabel": "Verification code",
+    "requestOtp": "Send code",
+    "verifyOtp": "Verify code"
+    ,"onboardingTitle": "Create an owner account",
+    "onboardingDescription": "Verify your WhatsApp number, accept the owner attestation, and submit your place for physical inspection."
   },
   "portal": {
     "ownerTitle": "Owner portal",
@@ -27,7 +35,37 @@
     "verifierTitle": "Verifier portal",
     "verifierDescription": "Work through assigned inspections in your territory.",
     "adminTitle": "Admin portal",
-    "adminDescription": "Review submissions, assignments, and publication controls."
+    "adminDescription": "Review submissions, assignments, and publication controls.",
+    "forms": {
+      "title": "Listing details",
+      "description": "Description",
+      "country": "Country",
+      "city": "City",
+      "category": "Category",
+      "status": "Status",
+      "filter": "Filter",
+      "save": "Save",
+      "submit": "Submit for review"
+    },
+    "statuses": {
+      "DRAFT": "Draft",
+      "PENDING_REVIEW": "Pending review",
+      "PENDING_INSPECTION": "Pending inspection",
+      "VERIFIED": "Verified",
+      "PUBLISHED": "Published",
+      "PAUSED": "Paused",
+      "EXPIRED": "Expired",
+      "FRAUD_REVIEW": "Fraud review",
+      "REJECTED": "Rejected",
+      "LOCATION_APPROVED": "Location approved",
+      "OWNER_CONFIRMED": "Owner confirmed",
+      "OWNER_DECLINED": "Owner declined"
+    },
+    "notifications": {
+      "inquiryCreated": "Your inquiry was sent.",
+      "locationApproved": "Betna approved the protected location.",
+      "verification": "Your inspection status changed."
+    }
   },
   "errors": {
     "notFound": "This page could not be found.",

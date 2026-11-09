@@ -8,18 +8,101 @@ import {
   Req,
   UseGuards,
 } from "@nestjs/common";
+import { IsArray, IsBoolean, IsIn, IsObject, IsOptional, IsString, IsUUID, MaxLength } from "class-validator";
+import { Type } from "class-transformer";
+import { ValidateNested } from "class-validator";
 import { AuthSessionGuard, Roles, RolesGuard } from "../auth/guards";
 import { InspectionsService } from "./inspections.service";
+import { ChecklistService } from "./checklist.service";
+
+class ChecklistDefinitionDto {
+  @IsArray()
+  @IsString({ each: true })
+  required!: string[];
+
+  @IsOptional()
+  @IsObject()
+  rules?: Record<string, string>;
+}
+
+class AssignInspectionDto {
+  @IsUUID()
+  verifierId!: string;
+}
+
+class InspectionEvidenceDto {
+  @IsUUID()
+  mediaId!: string;
+}
+
+class SubmitInspectionDto {
+  @IsObject()
+  checklist!: Record<string, unknown>;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => InspectionEvidenceDto)
+  evidence!: InspectionEvidenceDto[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  notes?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  requestKey?: string;
+}
+
+class SyncEvidenceDto {
+  @IsOptional()
+  @IsBoolean()
+  ok?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  validated?: boolean;
+}
+
+class ReviewInspectionDto {
+  @IsIn(["APPROVED", "REJECTED"])
+  decision!: "APPROVED" | "REJECTED";
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  notes?: string;
+}
 
 @Controller("verification")
 @UseGuards(AuthSessionGuard, RolesGuard)
 export class InspectionsController {
-  constructor(private readonly inspections: InspectionsService) {}
+  constructor(
+    private readonly inspections: InspectionsService,
+    private readonly checklistDefinitions?: ChecklistService,
+  ) {}
 
   @Get("checklist/:category")
   @Roles("VERIFIER", "ADMIN")
   checklist(@Param("category") category: string) {
     return this.inspections.getChecklist(category);
+  }
+
+  @Get("checklists")
+  @Roles("ADMIN")
+  definitions() {
+    return this.checklistDefinitions?.listDefinitions() ?? [];
+  }
+
+  @Post("checklists/:category")
+  @Roles("ADMIN")
+  upsertDefinition(
+    @Param("category") category: string,
+    @Body() body: ChecklistDefinitionDto,
+  ) {
+    if (!this.checklistDefinitions) return body;
+    return this.checklistDefinitions.upsertDefinition(category, body);
   }
 
   @Get("inspections")
@@ -36,7 +119,7 @@ export class InspectionsController {
   assign(
     @Req() request: { user: { id: string; roles: string[] } },
     @Param("id") id: string,
-    @Body() body: { verifierId: string },
+    @Body() body: AssignInspectionDto,
   ) {
     return this.inspections.assign(id, body.verifierId, request.user);
   }
@@ -61,13 +144,7 @@ export class InspectionsController {
   submit(
     @Req() request: { user: { id: string } },
     @Param("id") id: string,
-    @Body()
-    body: {
-      checklist: Record<string, unknown>;
-      evidence: Array<{ mediaId: string }>;
-      notes?: string;
-      requestKey?: string;
-    },
+    @Body() body: SubmitInspectionDto,
   ) {
     return this.inspections.submitPendingUpload(id, request.user.id, body);
   }
@@ -78,7 +155,7 @@ export class InspectionsController {
     @Req() request: { user: { id: string } },
     @Param("id") id: string,
     @Param("mediaId") mediaId: string,
-    @Body() body: { ok?: boolean; validated?: boolean },
+    @Body() body: SyncEvidenceDto,
   ) {
     return this.inspections.markEvidenceSynced(
       id,
@@ -93,7 +170,7 @@ export class InspectionsController {
   review(
     @Req() request: { user: { id: string; roles: string[] } },
     @Param("id") id: string,
-    @Body() body: { decision: "APPROVED" | "REJECTED"; notes?: string },
+    @Body() body: ReviewInspectionDto,
   ) {
     return this.inspections.adminReview(
       id,

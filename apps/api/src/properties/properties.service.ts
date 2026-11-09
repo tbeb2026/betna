@@ -15,6 +15,7 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { CreatePropertyInput, OfferingInput, UpdatePropertyInput } from "./dto";
 import { TaxonomyService } from "./taxonomy.service";
+import { PublishingService } from "./publishing.service";
 
 type PropertyRecord = any;
 
@@ -27,6 +28,7 @@ export class PropertiesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly taxonomy: TaxonomyService = new TaxonomyService(),
+    private readonly publishing?: PublishingService,
   ) {}
 
   async createDraft(
@@ -40,6 +42,7 @@ export class PropertiesService {
       input.countryId,
     );
     await this.assertManagedCity(input.cityId, countryId);
+    await this.assertManagedNeighborhood(input.neighborhoodId, input.cityId);
 
     return this.prisma.$transaction(async (tx) =>
       tx.property.create({
@@ -88,6 +91,20 @@ export class PropertiesService {
   ): Promise<PropertyRecord> {
     await this.assertIndividualOwner(ownerId);
     const existing = await this.findOwnedProperty(propertyId, ownerId);
+    if (existing.status === "PUBLISHED" && this.publishing) {
+      const mergedPublished = this.mergeInput(existing, patch);
+      await this.normalizeAndValidate(mergedPublished);
+      const mergedCountryId = await this.resolveCountryId(
+        mergedPublished.countryCode,
+        mergedPublished.countryId,
+      );
+      await this.assertManagedCity(mergedPublished.cityId, mergedCountryId);
+      await this.assertManagedNeighborhood(
+        mergedPublished.neighborhoodId,
+        mergedPublished.cityId,
+      );
+      return this.publishing.createMaterialEditReview(propertyId, patch, ownerId);
+    }
     if (existing.status !== "DRAFT") {
       throw new ConflictException("Only drafts can be edited");
     }
@@ -99,6 +116,7 @@ export class PropertiesService {
       merged.countryId,
     );
     await this.assertManagedCity(merged.cityId, countryId);
+    await this.assertManagedNeighborhood(merged.neighborhoodId, merged.cityId);
     return this.prisma.property.update({
       where: { id: propertyId },
       data: {
@@ -298,6 +316,26 @@ export class PropertiesService {
     if (!city?.countryId || city.countryId !== countryId) {
       throw new BadRequestException(
         "City does not exist or does not belong to the selected country",
+      );
+    }
+  }
+
+  private async assertManagedNeighborhood(
+    neighborhoodId: string | undefined,
+    cityId: string,
+  ): Promise<void> {
+    if (!neighborhoodId) return;
+    if (!this.prisma.neighborhood?.findUnique) return;
+    if (!UUID_PATTERN.test(neighborhoodId)) {
+      throw new BadRequestException("Neighborhood id must be a valid UUID");
+    }
+    const neighborhood = await this.prisma.neighborhood?.findUnique?.({
+      where: { id: neighborhoodId },
+      select: { cityId: true },
+    });
+    if (!neighborhood || neighborhood.cityId !== cityId) {
+      throw new BadRequestException(
+        "Neighborhood does not exist or does not belong to the selected city",
       );
     }
   }

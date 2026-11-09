@@ -30,6 +30,11 @@ export class NoopChannelAdapter implements ChannelAdapter {
   constructor(public readonly channel: NotificationChannel) {}
 
   async send(_message: NotificationMessage): Promise<void> {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        `No ${this.channel} notification adapter is configured; refusing a silent production no-op`,
+      );
+    }
     return undefined;
   }
 }

@@ -19,7 +19,15 @@
     "description": "ቦታታትን ዕቑባዊ ስራሕን ንምምሕዳር ናይ Betna መለለዪኻ ተጠቐም።",
     "emailLabel": "ኢመይል ኣድራሻ",
     "passwordLabel": "መሕለፊ ቃል",
-    "submit": "እቶ"
+    "submit": "እቶ",
+    "working": "ይኣቱ ኣሎ…",
+    "otpTitle": "ብኮድ WhatsApp እቶ",
+    "phoneLabel": "ቁጽሪ ስልኪ ወይ WhatsApp",
+    "otpCodeLabel": "ኮድ ምርግጋጽ",
+    "requestOtp": "ኮድ ስደድ",
+    "verifyOtp": "ኮድ ኣረጋግጽ"
+    ,"onboardingTitle": "ናይ ባለቤት ሒሳብ ፍጠር",
+    "onboardingDescription": "ቁጽሪ WhatsApp ኣረጋግጽ፣ ምስክር ባለቤትነት ተቐበል፣ ቦታኻ ንኣካላዊ ምርመራ ኣቕርብ።"
   },
   "portal": {
     "ownerTitle": "ፖርታል ባለቤት",
@@ -27,7 +35,37 @@
     "verifierTitle": "ፖርታል ኣረጋጋጺ",
     "verifierDescription": "ኣብ ክልልካ ዝተመደቡ ምርመራታት ፈጽም።",
     "adminTitle": "ፖርታል ኣስተዳዳሪ",
-    "adminDescription": "ምልክታት፣ ምድባትን መቆጻጸሪታት ህትመትን ገምግም።"
+    "adminDescription": "ምልክታት፣ ምድባትን መቆጻጸሪታት ህትመትን ገምግም።",
+    "forms": {
+      "title": "ዝርዝር ንብረት",
+      "description": "መግለጺ",
+      "country": "ሃገር",
+      "city": "ከተማ",
+      "category": "ምድብ",
+      "status": "ኩነታት",
+      "filter": "ማጣሪያ",
+      "save": "ዓቅብ",
+      "submit": "ንግምገማ ስደድ"
+    },
+    "statuses": {
+      "DRAFT": "ረቂቕ",
+      "PENDING_REVIEW": "ግምገማ ይጽበ",
+      "PENDING_INSPECTION": "ምርመራ ይጽበ",
+      "VERIFIED": "ተረጋጊጹ",
+      "PUBLISHED": "ተዘርጊሑ",
+      "PAUSED": "ተዓጽዩ",
+      "EXPIRED": "ግዜ ዝሓለፎ",
+      "FRAUD_REVIEW": "ግምገማ ምትላል",
+      "REJECTED": "ተነጺጉ",
+      "LOCATION_APPROVED": "ቦታ ጸዲቑ",
+      "OWNER_CONFIRMED": "ባለቤት ኣረጋጊጹ",
+      "OWNER_DECLINED": "ባለቤት ነጺጉ"
+    },
+    "notifications": {
+      "inquiryCreated": "ሕቶኻ ተላኢኹ።",
+      "locationApproved": "Betna ዕቑብ ቦታ ኣጽዲቑ።",
+      "verification": "ኩነታት ምርመራኻ ተቐይሩ።"
+    }
   },
   "errors": {
     "notFound": "እዚ ገጽ ክርከብ ኣይከኣለን።",

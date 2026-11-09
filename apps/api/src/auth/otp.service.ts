@@ -19,6 +19,11 @@ export class NoopWhatsAppProvider implements WhatsAppProvider {
     _code: string,
     _expiresAt: Date,
   ): Promise<void> {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "WhatsApp OTP provider is not configured; set a production adapter before accepting OTP sign-in",
+      );
+    }
     return undefined;
   }
 }

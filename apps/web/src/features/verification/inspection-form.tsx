@@ -8,10 +8,12 @@ import { UploadStatus } from "./upload-status";
 export function InspectionForm({
   inspectionId,
   propertyId,
+  category = "residential",
   authToken,
 }: {
   inspectionId: string;
   propertyId?: string;
+  category?: string;
   authToken?: string;
 }) {
   const [notes, setNotes] = useState("");
@@ -28,19 +30,25 @@ export function InspectionForm({
     "Offline drafts are encrypted on this device.",
   );
   const [pending, setPending] = useState(false);
+  const checklistItems = [
+    "identityAuthorization",
+    "exactLocation",
+    "currentPhotos",
+    "statedPrice",
+    "category",
+    "safetyCondition",
+    ...(category === "land" ? ["landBoundaries", "landAccess"] : []),
+    ...(category === "commercial" ? ["commercialUse", "commercialSafety"] : []),
+    ...(category === "residential" ? ["residentialUtilities"] : []),
+  ];
+  const [checklist, setChecklist] = useState<Record<string, unknown>>(
+    Object.fromEntries(checklistItems.map((item) => [item, { status: "" }])),
+  );
   const queue = new OfflineInspectionQueue();
   const requestKey = `inspection:${inspectionId}`;
   const draft = (submitted = false) => ({
     inspectionId,
-    checklist: {
-      identityAuthorization: true,
-      exactLocation: true,
-      currentPhotos: true,
-      statedPrice: true,
-      category: true,
-      safetyCondition: true,
-      residentialUtilities: true,
-    },
+    checklist,
     evidence,
     notes,
     requestKey,
@@ -135,6 +143,7 @@ export function InspectionForm({
               body: JSON.stringify({
                 purpose: "INSPECTION_EVIDENCE",
                 propertyId,
+                inspectionId: entry.inspectionId,
                 contentType: item.contentType,
                 sizeBytes: item.sizeBytes,
                 fileName: item.fileName,
@@ -211,6 +220,26 @@ export function InspectionForm({
         multiple
         onChange={chooseEvidence}
       />
+      <fieldset className="form-section" aria-labelledby="inspection-checklist-title">
+        <legend id="inspection-checklist-title">Inspection checklist</legend>
+        <p className="form-help">Record the observed result for every required item. A report cannot be approved from unfilled defaults.</p>
+        {checklistItems.map((item) => (
+          <label key={item} htmlFor={`check-${item}`}>
+            {item.replaceAll(/([A-Z])/g, " $1")}
+            <select
+              id={`check-${item}`}
+              value={String((checklist[item] as { status?: string })?.status ?? "")}
+              onChange={(event) => setChecklist((current) => ({ ...current, [item]: { status: event.target.value } }))}
+              required
+            >
+              <option value="">Choose result</option>
+              <option value="PASS">Pass</option>
+              <option value="FAIL">Fail</option>
+              <option value="ESCALATE">Escalate for documents</option>
+            </select>
+          </label>
+        ))}
+      </fieldset>
       <div className="actions">
         <button className="button secondary" type="button" onClick={saveDraft}>
           Save draft

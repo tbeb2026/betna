@@ -14,6 +14,7 @@ export type MediaPurpose = "LISTING" | "INSPECTION_EVIDENCE";
 export type MediaActor = {
   id: string;
   roles?: Array<string | { name?: string; role?: { name?: string } | null }>;
+  territoryIds?: string[];
   propertyId?: string;
   contentType?: string;
   sizeBytes?: number;
@@ -22,6 +23,7 @@ export type MediaActor = {
 
 export type UploadInput = {
   propertyId?: string;
+  inspectionId?: string;
   contentType?: string;
   sizeBytes?: number;
   fileName?: string;
@@ -72,7 +74,7 @@ export class MediaService {
     const propertyId = input.propertyId ?? normalizedActor.propertyId;
     if (!propertyId) throw new BadRequestException("A property is required");
     this.assertPurposeRole(normalizedActor, purpose);
-    await this.assertPropertyAccess(normalizedActor, propertyId, purpose);
+    await this.assertPropertyAccess(normalizedActor, propertyId, purpose, input.inspectionId);
 
     const contentType = (input.contentType ?? normalizedActor.contentType ?? "")
       .toLowerCase()
@@ -145,11 +147,21 @@ export class MediaService {
 
   async getPublicVariants(mediaId: string) {
     const media = await this.findMedia(mediaId);
+    const propertyLookup = (this.prisma as any).property?.findUnique;
+    const property = await propertyLookup?.({
+      where: { id: media.propertyId },
+      select: { status: true, verificationValidUntil: true },
+    });
     if (
       media.purpose !== "LISTING" ||
       media.status !== "CLEAN" ||
       media.isPublic !== true ||
-      !media.objectKey.startsWith("public/listings/")
+      !media.objectKey.startsWith("public/listings/") ||
+      (propertyLookup &&
+        (!property ||
+          property.status !== "PUBLISHED" ||
+          (property.verificationValidUntil &&
+            new Date(property.verificationValidUntil).getTime() <= Date.now())))
     ) {
       throw new ForbiddenException("Media is not publicly available");
     }
@@ -179,11 +191,15 @@ export class MediaService {
         "Only inspection evidence uses private URLs",
       );
     }
-    const roles = this.roles(this.normalizeActor(actor));
+    const normalizedActor = this.normalizeActor(actor);
+    const roles = this.roles(normalizedActor);
     if (!roles.some((role) => role === "ADMIN" || role === "VERIFIER")) {
       throw new ForbiddenException(
         "Inspection evidence is restricted to staff",
       );
+    }
+    if (roles.includes("VERIFIER")) {
+      await this.assertInspectionEvidenceAccess(normalizedActor, media);
     }
     if (media.status !== "CLEAN")
       throw new ForbiddenException("Media is not available");
@@ -228,9 +244,29 @@ export class MediaService {
     actor: MediaActor,
     propertyId: string,
     purpose: MediaPurpose,
+    inspectionId?: string,
   ) {
     if (!this.prisma.property?.findFirst) return;
     const roles = this.roles(actor);
+    if (purpose === "INSPECTION_EVIDENCE") {
+      if (!inspectionId) {
+        throw new BadRequestException("An inspection is required for evidence uploads");
+      }
+      const inspection = await this.prisma.inspection?.findUnique?.({
+        where: { id: inspectionId },
+        select: { id: true, propertyId: true, verifierId: true, territoryId: true },
+      });
+      if (
+        !inspection ||
+        inspection.propertyId !== propertyId ||
+        (!roles.includes("ADMIN") &&
+          (inspection.verifierId !== actor.id ||
+            !actor.territoryIds?.includes(inspection.territoryId ?? "")))
+      ) {
+        throw new ForbiddenException("Inspection evidence access denied");
+      }
+      return;
+    }
     const where =
       purpose === "LISTING" && roles.includes("OWNER")
         ? { id: propertyId, ownerId: actor.id }
@@ -240,6 +276,23 @@ export class MediaService {
       select: { id: true, ownerId: true },
     });
     if (!property) throw new ForbiddenException("Property access denied");
+  }
+
+  private async assertInspectionEvidenceAccess(actor: MediaActor, media: any) {
+    if (!this.prisma.inspectionEvidence?.findMany) return;
+    const links = await this.prisma.inspectionEvidence?.findMany?.({
+      where: { mediaId: media.id },
+      include: { inspection: { select: { propertyId: true, verifierId: true, territoryId: true } } },
+    });
+    if (!Array.isArray(links) || links.length === 0) {
+      throw new ForbiddenException("Inspection evidence is not assigned");
+    }
+    const allowed = links.some((link: any) =>
+      link.inspection?.propertyId === media.propertyId &&
+      link.inspection?.verifierId === actor.id &&
+      actor.territoryIds?.includes(link.inspection.territoryId ?? ""),
+    );
+    if (!allowed) throw new ForbiddenException("Inspection evidence access denied");
   }
 
   private async assertMediaCompletionAccess(actor: MediaActor, media: any) {

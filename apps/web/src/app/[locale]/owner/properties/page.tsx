@@ -47,12 +47,12 @@ export default async function OwnerPropertiesPage() {
                     "Managed location"}
                 </p>
               </div>
-              {property.status === "DRAFT" ? (
+              {!["REJECTED", "FRAUD_REVIEW"].includes(property.status) ? (
                 <Link
                   className="button secondary"
                   href={`/owner/properties/${property.id}/edit`}
                 >
-                  Edit draft
+                  {property.status === "DRAFT" ? "Edit draft" : "Request listing edit"}
                 </Link>
               ) : null}
             </article>
