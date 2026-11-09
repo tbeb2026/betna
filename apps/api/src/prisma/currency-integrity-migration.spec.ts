@@ -42,11 +42,38 @@ describe("property currency integrity migration", () => {
   it("serializes conversion changes with linked commission writes", () => {
     const sql = readFileSync(followOnMigrationPath, "utf8");
 
+    expect(sql).toContain("DO $preflight$");
+    expect(sql).toContain("Cannot install property currency integrity: existing Conversion currency mismatch");
+    expect(sql).toContain("Cannot install property currency integrity: existing Commission currency mismatch");
     expect(sql).toContain("CREATE OR REPLACE FUNCTION enforce_property_currency_consistency()");
+    expect(sql).toContain('SELECT v."id"\n      INTO locked_conversion_id\n      FROM "Conversion" v\n     WHERE v."id" = NEW."id"\n     FOR KEY SHARE');
+    expect(sql).toContain('SELECT v."id"\n      INTO locked_conversion_id\n      FROM "Conversion" v\n     WHERE v."id" = NEW."conversionId"\n     FOR KEY SHARE');
     expect(sql).toContain('FOR KEY SHARE OF v, p, c');
     expect(sql).toContain('FROM "Commission" m');
     expect(sql).toContain('m."conversionId" = NEW."id"');
     expect(sql).toContain('m."currency" IS DISTINCT FROM expected_currency');
     expect(sql).toContain('Conversion %s linked Commission %s currency');
+
+    const conversionBranch = sql.slice(sql.indexOf("IF TG_TABLE_NAME = 'Conversion'"));
+    const conversionLock = conversionBranch.indexOf('SELECT v."id"\n      INTO locked_conversion_id');
+    expect(conversionLock).toBeGreaterThanOrEqual(0);
+    expect(conversionLock).toBeLessThan(conversionBranch.indexOf('SELECT c."currency"'));
+    const commissionBranch = sql.slice(sql.indexOf("IF TG_TABLE_NAME = 'Commission'"));
+    const commissionLock = commissionBranch.indexOf('SELECT v."id"\n      INTO locked_conversion_id');
+    expect(commissionLock).toBeGreaterThanOrEqual(0);
+    expect(commissionLock).toBeLessThan(commissionBranch.indexOf('SELECT c."currency"'));
+  });
+
+  it("preflights null conversion currency linked commission mismatches before replacing the trigger", () => {
+    const sql = readFileSync(followOnMigrationPath, "utf8");
+
+    const preflightEnd = sql.indexOf("CREATE OR REPLACE FUNCTION");
+    expect(preflightEnd).toBeGreaterThan(0);
+    const preflight = sql.slice(0, preflightEnd);
+    expect(preflight).toContain('FROM "Commission" m');
+    expect(preflight).toContain('JOIN "Conversion" v ON v."id" = m."conversionId"');
+    expect(preflight).toContain('v."firstPaymentCurrency" IS NOT NULL');
+    expect(preflight).toContain('m."currency" IS DISTINCT FROM c."currency"');
+    expect(preflight).toContain("ERRCODE = '23514'");
   });
 });

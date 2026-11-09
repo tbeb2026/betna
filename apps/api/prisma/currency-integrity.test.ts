@@ -8,6 +8,28 @@ if (!databaseUrl) {
   throw new Error("DATABASE_URL is required to run apps/api/prisma/currency-integrity.test.ts");
 }
 
+async function waitForBlockedInsert(
+  prisma: PrismaClient,
+  backendPid: number,
+  timeoutMs = 2_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const rows = await prisma.$queryRaw<Array<{ waiting: boolean }>>`
+      SELECT EXISTS (
+        SELECT 1
+        FROM pg_stat_activity
+        WHERE pid = ${backendPid}
+          AND state = 'active'
+          AND wait_event_type = 'Lock'
+      ) AS waiting
+    `;
+    if (rows[0]?.waiting) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Commission insert backend ${backendPid} did not reach a lock wait before timeout`);
+}
+
 describe("property currency integrity triggers", () => {
   const prisma = new PrismaClient();
   const ids = {
@@ -241,21 +263,38 @@ describe("property currency integrity triggers", () => {
   });
 
   it("rejects a commission insert that races a committed conversion move", async () => {
-    // Transaction A locks/updates Conversion first. Transaction B's direct SQL
-    // Commission insert takes the same Conversion KEY SHARE lock and waits;
-    // after A commits, B validates against A's committed Kenya destination.
+    // Transaction A locks Conversion first. Transaction B marks its backend
+    // ready with an advisory transaction lock, then its direct SQL Commission
+    // insert takes the same Conversion KEY SHARE lock. pg_stat_activity proves
+    // the insert is waiting before A commits; no fixed sleep controls ordering.
     const concurrentPrisma = new PrismaClient();
-    let insertPromise: Promise<number>;
+    const monitorPrisma = new PrismaClient();
+    const advisoryKey = Math.floor(Math.random() * 2_000_000_000) + 1;
+    let backendReadyResolve!: () => void;
+    const backendReady = new Promise<void>((resolve) => {
+      backendReadyResolve = resolve;
+    });
+    let backendPid: number | undefined;
+    let insertPromise: Promise<number> | undefined;
     try {
       await prisma.$transaction(async (tx) => {
         await tx.$executeRaw`
           SELECT "id" FROM "Conversion" WHERE "id" = ${ids.raceConversion}::uuid FOR UPDATE
         `;
-        insertPromise = concurrentPrisma.$executeRaw`
-          INSERT INTO "Commission" ("id", "conversionId", "ownerId", "percentage", "firstPaymentAmount", "amountDue", "currency")
-          VALUES (${randomUUID()}::uuid, ${ids.raceConversion}::uuid, ${ids.owner}::uuid, 10, 100, 10, 'UGX')
-        `.then((result) => result);
-        await tx.$executeRaw`SELECT pg_sleep(0.05)`;
+        insertPromise = concurrentPrisma.$transaction(async (txB) => {
+          await txB.$executeRaw`SELECT pg_advisory_xact_lock(${advisoryKey}::bigint)`;
+          const backend = await txB.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid()::int AS pid`;
+          backendPid = backend[0]?.pid;
+          if (!backendPid) throw new Error("Commission fixture did not obtain a backend pid");
+          backendReadyResolve();
+          return txB.$executeRaw`
+            INSERT INTO "Commission" ("id", "conversionId", "ownerId", "percentage", "firstPaymentAmount", "amountDue", "currency")
+            VALUES (${randomUUID()}::uuid, ${ids.raceConversion}::uuid, ${ids.owner}::uuid, 10, 100, 10, 'UGX')
+          `;
+        });
+
+        await backendReady;
+        await waitForBlockedInsert(monitorPrisma, backendPid!);
         await tx.$executeRaw`
           UPDATE "Conversion" SET "propertyId" = ${ids.kenyaProperty}::uuid
           WHERE "id" = ${ids.raceConversion}::uuid
@@ -263,7 +302,12 @@ describe("property currency integrity triggers", () => {
       });
 
       await expect(insertPromise!).rejects.toThrow(/Commission.*UGX.*KES/i);
+
+      const conversion = await prisma.conversion.findUniqueOrThrow({ where: { id: ids.raceConversion } });
+      expect(conversion.propertyId).toBe(ids.kenyaProperty);
+      expect(await prisma.commission.count({ where: { conversionId: ids.raceConversion } })).toBe(0);
     } finally {
+      await monitorPrisma.$disconnect();
       await concurrentPrisma.$disconnect();
     }
   });

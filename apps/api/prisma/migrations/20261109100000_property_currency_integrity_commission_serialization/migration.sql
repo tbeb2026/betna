@@ -2,6 +2,39 @@
 -- re-check linked commissions when a conversion moved. This replacement also
 -- locks the Conversion row in the Commission path so conversion changes and
 -- commission writes observe one serialized relationship.
+--
+-- Do this preflight before replacing the trigger. The previous version allowed
+-- a Conversion with a NULL firstPaymentCurrency to move across countries while
+-- retaining a linked Commission, so a pre-existing mismatch must abort this
+-- migration instead of being hidden by the new trigger definition.
+DO $preflight$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM "Conversion" v
+    JOIN "Property" p ON p."id" = v."propertyId"
+    JOIN "Country" c ON c."id" = p."countryId"
+    WHERE v."firstPaymentCurrency" IS NOT NULL
+      AND v."firstPaymentCurrency" IS DISTINCT FROM c."currency"
+  ) THEN
+    RAISE EXCEPTION 'Cannot install property currency integrity: existing Conversion currency mismatch'
+      USING ERRCODE = '23514', CONSTRAINT = 'Conversion_property_currency_check';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM "Commission" m
+    JOIN "Conversion" v ON v."id" = m."conversionId"
+    JOIN "Property" p ON p."id" = v."propertyId"
+    JOIN "Country" c ON c."id" = p."countryId"
+    WHERE m."currency" IS DISTINCT FROM c."currency"
+  ) THEN
+    RAISE EXCEPTION 'Cannot install property currency integrity: existing Commission currency mismatch'
+      USING ERRCODE = '23514', CONSTRAINT = 'Commission_property_currency_check';
+  END IF;
+END
+$preflight$;
+
 CREATE OR REPLACE FUNCTION enforce_property_currency_consistency()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -10,6 +43,7 @@ DECLARE
   expected_currency varchar(3);
   actual_currency varchar(3);
   offending_id uuid;
+  locked_conversion_id uuid;
 BEGIN
   IF TG_TABLE_NAME = 'Offering' THEN
     SELECT c."currency"
@@ -30,15 +64,13 @@ BEGIN
   END IF;
 
   IF TG_TABLE_NAME = 'Conversion' THEN
-    -- An UPDATE already owns the conversion row's UPDATE lock. Re-acquire a
-    -- compatible lock explicitly so this path has the same parent-first lock
-    -- order as Commission writes; INSERT has no visible parent row yet.
-    IF TG_OP = 'UPDATE' THEN
-      PERFORM 1
-        FROM "Conversion" v
-       WHERE v."id" = NEW."id"
-       FOR KEY SHARE;
-    END IF;
+    -- Always establish the Conversion lock before looking up Property/Country.
+    -- INSERT has no visible row yet; UPDATE already owns a compatible lock.
+    SELECT v."id"
+      INTO locked_conversion_id
+      FROM "Conversion" v
+     WHERE v."id" = NEW."id"
+     FOR KEY SHARE;
 
     SELECT c."currency"
       INTO expected_currency
@@ -76,8 +108,14 @@ BEGIN
   END IF;
 
   IF TG_TABLE_NAME = 'Commission' THEN
-    -- Lock the conversion before reading its property. Conversion UPDATEs use
-    -- the same conversion-first order, so neither path can pass a stale check.
+    -- Use the same standalone Conversion-first lock order as the Conversion
+    -- branch, before looking up the linked Property/Country rows.
+    SELECT v."id"
+      INTO locked_conversion_id
+      FROM "Conversion" v
+     WHERE v."id" = NEW."conversionId"
+     FOR KEY SHARE;
+
     SELECT c."currency"
       INTO expected_currency
       FROM "Conversion" v

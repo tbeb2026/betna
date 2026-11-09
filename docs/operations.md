@@ -19,6 +19,12 @@ conversion trigger and commission trigger acquire locks in conversion-then-
 property/country order. If transaction A moves a conversion while transaction
 B inserts or updates its commission, B waits on the conversion row and then
 checks A's committed destination, so no stale-currency commission can commit.
+The follow-on migration preflights existing Conversion and linked Commission
+rows before replacing the trigger, including commissions linked to a conversion
+whose first-payment currency is NULL; any mismatch aborts deployment with a
+constraint error for data correction. The database race fixture coordinates
+transactions with an advisory lock and observes `pg_stat_activity` for the
+expected row-lock wait, so it does not rely on `pg_sleep` timing.
 Apply migrations before starting the API and treat a migration failure caused
 by existing mismatches as a data correction incident; do not bypass the trigger
 with application-side writes.
