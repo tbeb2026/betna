@@ -401,6 +401,7 @@ model InspectionEvidence {
   media        Media      @relation(fields: [mediaId], references: [id], onDelete: Cascade)
 
   @@id([inspectionId, mediaId])
+  @@unique([mediaId])
 }
 
 model Inquiry {

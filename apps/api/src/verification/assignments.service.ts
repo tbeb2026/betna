@@ -17,6 +17,13 @@ export class AssignmentsService {
 
   async assign(inspectionId: string, verifierId: string, actor: Actor) {
     this.assertRole(actor, "ADMIN");
+    if (
+      typeof this.prisma.inspection?.findUnique !== "function" ||
+      typeof this.prisma.user?.findUnique !== "function" ||
+      typeof this.prisma.inspection?.update !== "function"
+    ) {
+      throw new ForbiddenException("Assignment authorization is unavailable");
+    }
     const [inspection, verifier] = await Promise.all([
       this.prisma.inspection.findUnique({ where: { id: inspectionId } }),
       this.prisma.user.findUnique({
@@ -51,6 +58,9 @@ export class AssignmentsService {
   async listForVerifier(verifierId: string, territoryIds?: string[]) {
     let allowedTerritories = territoryIds;
     if (!allowedTerritories) {
+      if (typeof this.prisma.user?.findUnique !== "function") {
+        throw new ForbiddenException("Assignment authorization is unavailable");
+      }
       const verifier = await this.prisma.user.findUnique({
         where: { id: verifierId },
         include: { territoryAssignments: true },
@@ -61,6 +71,9 @@ export class AssignmentsService {
       verifierId,
       territoryId: { in: allowedTerritories },
     };
+    if (typeof this.prisma.inspection?.findMany !== "function") {
+      throw new ForbiddenException("Assignment authorization is unavailable");
+    }
     return this.prisma.inspection.findMany({
       where,
       include: { property: true, evidence: true },

@@ -125,25 +125,49 @@ export class MediaService {
       contentType,
       maxBytes,
     );
-    const media = await this.prisma.media.create({
-      data: {
-        id,
-        propertyId,
-        purpose,
-        status: "PENDING",
-        objectKey,
-        contentType,
-        sizeBytes: BigInt(safeSizeBytes),
-        isPublic: false,
-      },
-    });
-    if (purpose === "INSPECTION_EVIDENCE") {
-      const linkedInspectionId = input.inspectionId as string;
-      await this.prisma.inspectionEvidence.upsert({
-        where: { inspectionId_mediaId: { inspectionId: linkedInspectionId, mediaId: media.id } },
-        create: { inspectionId: linkedInspectionId, mediaId: media.id },
-        update: {},
-      });
+    const mediaData = {
+      id,
+      propertyId,
+      purpose,
+      status: "PENDING" as const,
+      objectKey,
+      contentType,
+      sizeBytes: BigInt(safeSizeBytes),
+      isPublic: false,
+    };
+    let media: any;
+    try {
+      if (purpose === "INSPECTION_EVIDENCE") {
+        const linkedInspectionId = input.inspectionId as string;
+        media = await this.withTransaction(async (tx: any) => {
+          const created = await tx.media.create({ data: mediaData });
+          await tx.inspectionEvidence.upsert({
+            where: {
+              inspectionId_mediaId: {
+                inspectionId: linkedInspectionId,
+                mediaId: created.id,
+              },
+            },
+            create: { inspectionId: linkedInspectionId, mediaId: created.id },
+            update: {},
+          });
+          return created;
+        });
+      } else {
+        media = await this.prisma.media.create({ data: mediaData });
+      }
+    } catch (error) {
+      // Prisma rolls back the transaction. The compensating delete also keeps
+      // lightweight adapters and failed transaction shims from leaving an
+      // orphaned media row behind.
+      if (purpose === "INSPECTION_EVIDENCE" && this.prisma.media?.delete) {
+        try {
+          await this.prisma.media.delete({ where: { id } });
+        } catch {
+          // The transaction may already have rolled the row back.
+        }
+      }
+      throw error;
     }
     return {
       mediaId: media.id,
@@ -217,7 +241,10 @@ export class MediaService {
     await this.assertInspectionEvidenceAccess(normalizedActor, media);
     if (media.status !== "CLEAN")
       throw new ForbiddenException("Media is not available");
-    await this.audit?.record(normalizedActor.id, "INSPECTION_EVIDENCE_VIEWED", {
+    if (!this.audit || typeof this.audit.record !== "function") {
+      throw new ForbiddenException("Evidence audit is unavailable");
+    }
+    await this.audit.record(normalizedActor.id, "INSPECTION_EVIDENCE_VIEWED", {
       type: "Media",
       id: media.id,
       metadata: { propertyId: media.propertyId },
@@ -265,7 +292,9 @@ export class MediaService {
     purpose: MediaPurpose,
     inspectionId?: string,
   ) {
-    if (!this.prisma.property?.findFirst) return;
+    if (typeof this.prisma.property?.findFirst !== "function") {
+      throw new ForbiddenException("Property authorization is unavailable");
+    }
     const roles = this.roles(actor);
     if (purpose === "INSPECTION_EVIDENCE") {
       if (!inspectionId) {
@@ -326,6 +355,33 @@ export class MediaService {
     if (!allowed) throw new ForbiddenException("Inspection evidence access denied");
   }
 
+  private async assertEvidenceMediaOwnership(
+    inspectionId: string,
+    mediaIds: string[],
+    tx: any = this.prisma,
+  ) {
+    const uniqueMediaIds = [...new Set(mediaIds.filter(Boolean))];
+    if (!uniqueMediaIds.length) return;
+    if (typeof tx.inspectionEvidence?.findMany !== "function") {
+      throw new ForbiddenException("Inspection evidence linkage is unavailable");
+    }
+    const links = await tx.inspectionEvidence.findMany({
+      where: { mediaId: { in: uniqueMediaIds } },
+      select: { inspectionId: true, mediaId: true },
+    });
+    if (
+      links.some(
+        (link: any) =>
+          link.inspectionId !== inspectionId &&
+          uniqueMediaIds.includes(link.mediaId),
+      )
+    ) {
+      throw new ForbiddenException(
+        "Evidence media is already linked to another inspection",
+      );
+    }
+  }
+
   private async assertMediaCompletionAccess(actor: MediaActor, media: any) {
     const roles = this.roles(actor);
     if (media.purpose === "INSPECTION_EVIDENCE") {
@@ -375,5 +431,12 @@ export class MediaService {
     return Number.isSafeInteger(configured) && configured > 0
       ? configured
       : DEFAULT_COUNTS[purpose];
+  }
+
+  private async withTransaction<T>(work: (tx: any) => Promise<T>) {
+    if (typeof (this.prisma as any).$transaction === "function") {
+      return (this.prisma as any).$transaction(work);
+    }
+    return work(this.prisma as any);
   }
 }

@@ -177,6 +177,7 @@ export class InspectionsService {
         );
       }
     }
+    await this.assertEvidenceMediaOwnership(inspectionId, [mediaId]);
     const synced = this.syncedEvidence.get(inspectionId) ?? new Set<string>();
     synced.add(mediaId);
     this.syncedEvidence.set(inspectionId, synced);
@@ -305,6 +306,9 @@ export class InspectionsService {
         "Inspection is not assigned to this verifier",
       );
     }
+    if (typeof this.prisma.user?.findUnique !== "function") {
+      throw new ForbiddenException("Verifier authorization is unavailable");
+    }
     const verifier = await this.prisma.user.findUnique({
       where: { id: verifierId },
       include: {
@@ -322,22 +326,53 @@ export class InspectionsService {
     inspectionId: string,
     evidence: Array<{ mediaId: string }>,
   ) {
+    const mediaIds = evidence.map(({ mediaId }) => mediaId);
+    const evidenceStore: any = this.prisma.inspectionEvidence;
+    if (
+      typeof evidenceStore?.deleteMany === "function" &&
+      typeof evidenceStore?.createMany === "function"
+    ) {
+      await this.withTransaction(async (tx: any) => {
+        await this.assertEvidenceMediaOwnership(inspectionId, mediaIds, tx);
+        await tx.inspectionEvidence.deleteMany({
+          where: { inspectionId },
+        });
+        await tx.inspectionEvidence.createMany({
+          data: evidence.map(({ mediaId }) => ({ inspectionId, mediaId })),
+        });
+      });
+    } else {
+      await this.assertEvidenceMediaOwnership(inspectionId, mediaIds);
+    }
     this.syncedEvidence.delete(inspectionId);
     this.validatedEvidence.delete(inspectionId);
-    this.requiredEvidence.set(
-      inspectionId,
-      evidence.map(({ mediaId }) => mediaId),
-    );
+    this.requiredEvidence.set(inspectionId, mediaIds);
+  }
+
+  private async assertEvidenceMediaOwnership(
+    inspectionId: string,
+    mediaIds: string[],
+    tx: any = this.prisma,
+  ) {
+    const uniqueMediaIds = [...new Set(mediaIds.filter(Boolean))];
+    if (!uniqueMediaIds.length) return;
+    if (typeof tx.inspectionEvidence?.findMany !== "function") {
+      throw new ForbiddenException("Inspection evidence linkage is unavailable");
+    }
+    const links = await tx.inspectionEvidence.findMany({
+      where: { mediaId: { in: uniqueMediaIds } },
+      select: { inspectionId: true, mediaId: true },
+    });
     if (
-      this.prisma.inspectionEvidence?.deleteMany &&
-      this.prisma.inspectionEvidence?.createMany
+      links.some(
+        (link: any) =>
+          link.inspectionId !== inspectionId &&
+          uniqueMediaIds.includes(link.mediaId),
+      )
     ) {
-      await this.prisma.inspectionEvidence.deleteMany({
-        where: { inspectionId },
-      });
-      await this.prisma.inspectionEvidence.createMany({
-        data: evidence.map(({ mediaId }) => ({ inspectionId, mediaId })),
-      });
+      throw new ForbiddenException(
+        "Evidence media is already linked to another inspection",
+      );
     }
   }
 

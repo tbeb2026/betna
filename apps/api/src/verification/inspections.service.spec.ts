@@ -115,7 +115,14 @@ function makePrisma() {
         const inspectionId = data[0]?.inspectionId;
         evidenceRows.set(inspectionId, data.map((entry: any) => ({ ...entry })));
       }),
-      findMany: vi.fn(async ({ where }: any) => evidenceRows.get(where.inspectionId) ?? []),
+      findMany: vi.fn(async ({ where }: any) => {
+        if (where.mediaId?.in) {
+          return [...evidenceRows.values()]
+            .flat()
+            .filter((entry) => where.mediaId.in.includes(entry.mediaId));
+        }
+        return evidenceRows.get(where.inspectionId) ?? [];
+      }),
       upsert: vi.fn(async ({ where, create, update }: any) => {
         const inspectionId = where.inspectionId_mediaId.inspectionId;
         const mediaId = where.inspectionId_mediaId.mediaId;
@@ -501,6 +508,29 @@ describe("InspectionsService", () => {
     ).rejects.toThrow(/required evidence/i);
   });
 
+  it("rejects evidence media already linked to another inspection", async () => {
+    const { prisma, rows, evidenceRows } = makePrisma();
+    rows.set("inspection-2", {
+      ...structuredClone(inspection),
+      id: "inspection-2",
+      verifierId: "verifier-2",
+      territoryId: "territory-2",
+    });
+    evidenceRows.set("inspection-2", [
+      { inspectionId: "inspection-2", mediaId: "media-1" },
+    ]);
+    const service = makeService(prisma);
+    await service.assign("inspection-1", "verifier-1", {
+      id: "admin-1",
+      roles: ["ADMIN"],
+    });
+
+    await expect(service.submitPendingUpload("inspection-1", "verifier-1", {
+      checklist: completeChecklist,
+      evidence: [{ mediaId: "media-1" }],
+    })).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it("rejects synchronization for evidence media that does not exist", async () => {
     const { prisma } = makePrisma();
     prisma.media.findUnique = vi.fn(async () => null);
@@ -545,6 +575,16 @@ describe("InspectionsService", () => {
         "verifier-2",
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("fails closed when verifier persistence queries are unavailable", async () => {
+    const { prisma, rows } = makePrisma();
+    Object.assign(rows.get("inspection-1"), { verifierId: "verifier-1" });
+    delete prisma.user.findUnique;
+    const service = makeService(prisma);
+
+    await expect(service.getForVerifier("inspection-1", "verifier-1"))
+      .rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it("rejects an invalid admin review decision", async () => {
