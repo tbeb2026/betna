@@ -95,15 +95,20 @@ describe("runtime mutation validation over the Nest HTTP pipeline", () => {
   });
 
   async function request(path: string, method: "PATCH" | "POST", body: unknown) {
-    return fetch(`${baseUrl}${path}`, {
+    const init: RequestInit = {
       method,
       headers: { "content-type": "application/json", authorization: "Bearer test" },
-      body: JSON.stringify(body),
-    });
+    };
+    if (body !== undefined) init.body = JSON.stringify(body);
+    return fetch(`${baseUrl}${path}`, init);
   }
 
   it.each([
+    ["missing", undefined],
     ["null", null],
+    ["string", "malformed"],
+    ["number", 42],
+    ["boolean", true],
     ["array", []],
   ])("rejects top-level %s update payload before service mutation", async (_label, body) => {
     const response = await request("/owner/properties/property-1", "PATCH", body);
@@ -134,8 +139,8 @@ describe("runtime mutation validation over the Nest HTTP pipeline", () => {
     ["material edit", "/admin/publishing/property-1/material-edit", "PATCH", services.publishing.createMaterialEditReview],
     ["evidence verification", "/admin/conversions/conversion-1/verify", "POST", services.conversions.verifyEvidence],
     ["location release", "/admin/inquiries/inquiry-1/location-release", "POST", services.inquiries.adminReleaseLocation],
-  ] as const)("rejects top-level null and arrays for %s", async (_label, path, method, service) => {
-    for (const body of [null, []]) {
+  ] as const)("rejects missing and non-object bodies for %s", async (_label, path, method, service) => {
+    for (const body of [undefined, null, "malformed", 42, true, []]) {
       const response = await request(path, method, body);
       expect(response.status).toBe(400);
     }
