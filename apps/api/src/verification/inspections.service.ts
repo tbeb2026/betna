@@ -45,16 +45,61 @@ export class InspectionsService {
   async createDraft(propertyId: string, territoryId?: string, cityId?: string) {
     const property = await this.prisma.property.findUnique?.({
       where: { id: propertyId },
+      include: { city: true },
     });
     if (!property) throw new NotFoundException("Property not found");
     return this.prisma.inspection.create({
       data: {
         propertyId,
-        territoryId,
-        cityId,
+        territoryId: territoryId ?? property.city?.territoryId,
+        cityId: cityId ?? property.cityId,
         status: "DRAFT",
         checklist: {},
       },
+      include: { evidence: true, property: true },
+    });
+  }
+
+  /**
+   * Create the first inspection for a normal owner submission. The stable
+   * request key makes retries and concurrent submissions converge on the same
+   * row while the city relation supplies the verifier territory scope.
+   */
+  async createDraftForSubmission(propertyId: string, db: any = this.prisma) {
+    const property = await db.property.findUnique({
+      where: { id: propertyId },
+      include: { city: true },
+    });
+    if (!property) throw new NotFoundException("Property not found");
+
+    const submissionRequestKey = `owner-submit:${propertyId}`;
+    const data = {
+      propertyId,
+      territoryId: property.city?.territoryId ?? null,
+      cityId: property.cityId,
+      status: "DRAFT" as const,
+      checklist: {},
+      submissionRequestKey,
+    };
+
+    if (typeof db.inspection.upsert === "function") {
+      return db.inspection.upsert({
+        where: { submissionRequestKey },
+        create: data,
+        update: {},
+        include: { evidence: true, property: true },
+      });
+    }
+
+    const existing = typeof db.inspection.findUnique === "function"
+      ? await db.inspection.findUnique({
+          where: { submissionRequestKey },
+          include: { evidence: true, property: true },
+        })
+      : null;
+    if (existing) return existing;
+    return db.inspection.create({
+      data,
       include: { evidence: true, property: true },
     });
   }
@@ -71,7 +116,7 @@ export class InspectionsService {
 
   listForAdmin() {
     return this.prisma.inspection.findMany({
-      where: { status: "READY_FOR_REVIEW" },
+      where: { status: { in: ["DRAFT", "READY_FOR_REVIEW"] } },
       include: { property: true, evidence: true },
       orderBy: { updatedAt: "desc" },
     });

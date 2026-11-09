@@ -13,9 +13,10 @@ import { PublicPropertiesController } from "./public-properties.controller";
 import { SearchService } from "./search.service";
 import { AuditModule } from "../audit/audit.module";
 import { MediaModule } from "../media/media.module";
+import { VerificationModule } from "../verification/verification.module";
 
 @Module({
-  imports: [PrismaModule, AuthModule, UsersModule, AuditModule, MediaModule],
+  imports: [PrismaModule, AuthModule, UsersModule, AuditModule, MediaModule, VerificationModule],
   controllers: [PropertiesController, PublishingController, PublicPropertiesController],
   providers: [
     PropertiesService,

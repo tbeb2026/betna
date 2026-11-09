@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import {
@@ -16,6 +17,8 @@ import { PrismaService } from "../prisma/prisma.service";
 import { CreatePropertyInput, OfferingInput, UpdatePropertyInput } from "./dto";
 import { TaxonomyService } from "./taxonomy.service";
 import { PublishingService } from "./publishing.service";
+import { InspectionsService } from "../verification/inspections.service";
+import { AuditService } from "../audit/audit.service";
 
 type PropertyRecord = any;
 
@@ -29,6 +32,8 @@ export class PropertiesService {
     private readonly prisma: PrismaService,
     private readonly taxonomy: TaxonomyService = new TaxonomyService(),
     private readonly publishing?: PublishingService,
+    @Optional() private readonly inspections?: InspectionsService,
+    @Optional() private readonly audit?: AuditService,
   ) {}
 
   async createDraft(
@@ -160,24 +165,71 @@ export class PropertiesService {
 
   async submit(propertyId: string, ownerId: string): Promise<PropertyRecord> {
     await this.assertIndividualOwner(ownerId);
-    const property = await this.findOwnedProperty(propertyId, ownerId);
-    if (property.status !== "DRAFT") {
-      throw new ConflictException("Only drafts can be submitted");
-    }
-    if (!property.authorizationAttested) {
-      throw new BadRequestException(
-        "Owner authorization attestation is required",
-      );
-    }
-    if (!Array.isArray(property.offerings) || property.offerings.length === 0) {
-      throw new BadRequestException(
-        "At least one public-priced offering is required",
-      );
-    }
-    return this.prisma.property.update({
-      where: { id: propertyId },
-      data: { status: "PENDING_REVIEW" },
-      include: { offerings: true },
+    return this.withTransaction(async (tx: any) => {
+      const property = await this.findOwnedProperty(propertyId, ownerId, tx);
+      if (property.status !== "DRAFT") {
+        // A retry after the lifecycle transition must return the same
+        // submission rather than creating a second inspection or bypassing
+        // the owner-only boundary.
+        if (property.status === "PENDING_REVIEW" && this.inspections) {
+          const requestKey = `owner-submit:${propertyId}`;
+          const existing = typeof tx.inspection?.findUnique === "function"
+            ? await tx.inspection.findUnique({ where: { submissionRequestKey: requestKey } })
+            : null;
+          if (!existing) throw new ConflictException("Only drafts can be submitted");
+          return property;
+        }
+        throw new ConflictException("Only drafts can be submitted");
+      }
+      if (!property.authorizationAttested) {
+        throw new BadRequestException(
+          "Owner authorization attestation is required",
+        );
+      }
+      if (!Array.isArray(property.offerings) || property.offerings.length === 0) {
+        throw new BadRequestException(
+          "At least one public-priced offering is required",
+        );
+      }
+
+      const transition = typeof tx.property.updateMany === "function"
+        ? await tx.property.updateMany({
+            where: { id: propertyId, ownerId, status: "DRAFT" },
+            data: { status: "PENDING_REVIEW" },
+          })
+        : null;
+      let transitioned = !transition;
+      if (transition && transition.count !== 1) {
+        const current = await this.findOwnedProperty(propertyId, ownerId, tx);
+        if (current.status !== "PENDING_REVIEW") {
+          throw new ConflictException("Property lifecycle changed during submission");
+        }
+      } else if (!transition) {
+        await tx.property.update({
+          where: { id: propertyId },
+          data: { status: "PENDING_REVIEW" },
+          include: { offerings: true },
+        });
+      } else {
+        transitioned = true;
+      }
+
+      const inspection = this.inspections
+        ? await this.inspections.createDraftForSubmission(propertyId, tx)
+        : null;
+      const updated = transition
+        ? await this.findOwnedProperty(propertyId, ownerId, tx)
+        : await tx.property.findFirst({
+            where: { id: propertyId, ownerId },
+            include: { offerings: true, country: true },
+          });
+      if (transitioned) {
+        await this.recordAudit(tx, ownerId, "PROPERTY_SUBMITTED", propertyId, {
+          inspectionId: inspection?.id ?? null,
+          status: "PENDING_REVIEW",
+        });
+      }
+      return updated;
     });
   }
 
@@ -274,13 +326,49 @@ export class PropertiesService {
   private async findOwnedProperty(
     propertyId: string,
     ownerId: string,
+    db: any = this.prisma,
   ): Promise<PropertyRecord> {
-    const property = await this.prisma.property.findFirst({
+    const property = await db.property.findFirst({
       where: { id: propertyId, ownerId },
       include: { offerings: true, country: true },
     });
     if (!property) throw new NotFoundException("Property not found");
     return property;
+  }
+
+  private async withTransaction<T>(work: (tx: any) => Promise<T>): Promise<T> {
+    if (typeof (this.prisma as any).$transaction === "function") {
+      return (this.prisma as any).$transaction(work);
+    }
+    return work(this.prisma as any);
+  }
+
+  private async recordAudit(
+    tx: any,
+    actorId: string,
+    action: string,
+    propertyId: string,
+    metadata: Record<string, unknown>,
+  ) {
+    if (this.audit?.record) {
+      await this.audit.record(tx, {
+        actor: actorId,
+        action,
+        entity: { type: "Property", id: propertyId, metadata: metadata as any },
+      });
+      return;
+    }
+    if (typeof tx.auditEvent?.create === "function") {
+      await tx.auditEvent.create({
+        data: {
+          actorId,
+          action,
+          entityType: "Property",
+          entityId: propertyId,
+          metadata,
+        },
+      });
+    }
   }
 
   private async resolveCountryId(
