@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { getApiBaseUrl } from "../../lib/api-client";
 
 export function GuestInquiryForm({
@@ -14,6 +14,7 @@ export function GuestInquiryForm({
   defaultMode?: "SHORT_STAY" | "LONG_TERM";
 }) {
   const t = useTranslations("publicInquiry");
+  const locale = useLocale();
   const [status, setStatus] = useState("");
   const [reference, setReference] = useState("");
 
@@ -32,6 +33,7 @@ export function GuestInquiryForm({
       startDate: form.get("startDate") || undefined,
       endDate: form.get("endDate") || undefined,
       guests: form.get("guests") ? Number(form.get("guests")) : undefined,
+      locale,
       honeypot: form.get("website") || undefined,
     };
     try {

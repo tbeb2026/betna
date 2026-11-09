@@ -54,6 +54,25 @@ export function PropertyForm({
   const selectedCategory = options.taxonomy.find(
     (entry) => entry.category === category,
   );
+  const categoryLabels: Record<string, string> = {
+    residential: t("categories.residential"),
+    land: t("categories.land"),
+    commercial: t("categories.commercial"),
+  };
+  const subcategoryLabels: Record<string, string> = {
+    apartment: t("subcategories.apartment"),
+    house: t("subcategories.house"),
+    room: t("subcategories.room"),
+    furnished_stay: t("subcategories.furnished_stay"),
+    guesthouse: t("subcategories.guesthouse"),
+    vacation_home: t("subcategories.vacation_home"),
+    land: t("subcategories.land"),
+    office: t("subcategories.office"),
+    shop: t("subcategories.shop"),
+    warehouse: t("subcategories.warehouse"),
+    commercial_space: t("subcategories.commercial_space"),
+    other: t("subcategories.other"),
+  };
   const initialPublicLatitude = Number(
     initialProperty?.publicLatitude ?? -1.2921,
   );
@@ -131,7 +150,7 @@ export function PropertyForm({
         >
           {options.taxonomy.map((entry) => (
             <option key={entry.category} value={entry.category}>
-              {entry.label}
+              {categoryLabels[entry.category] ?? entry.label}
             </option>
           ))}
         </select>
@@ -151,7 +170,7 @@ export function PropertyForm({
         >
           {selectedCategory?.subcategories.map((subcategory) => (
             <option key={subcategory.value} value={subcategory.value}>
-              {subcategory.label}
+              {subcategoryLabels[subcategory.value] ?? subcategory.label}
             </option>
           ))}
         </select>

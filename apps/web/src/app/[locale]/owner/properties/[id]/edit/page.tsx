@@ -5,6 +5,7 @@ import {
   getOwnerProperty,
   getOwnerPropertyOptions,
 } from "../../../../../../features/properties/owner-properties";
+import { getTranslations } from "next-intl/server";
 
 export default async function EditOwnerPropertyPage({
   params,
@@ -12,6 +13,8 @@ export default async function EditOwnerPropertyPage({
   params: Promise<{ locale: string; id: string }>;
 }) {
   const { id } = await params;
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "portal.propertyForm" });
   const [options, property, session] = await Promise.all([
     getOwnerPropertyOptions(),
     getOwnerProperty<{ status?: string }>(id),
@@ -19,9 +22,9 @@ export default async function EditOwnerPropertyPage({
   ]);
   return (
     <div className="portal-card property-card">
-      <p className="eyebrow">Owner submission</p>
-      <h2>{property?.status === "DRAFT" ? "Edit your draft" : "Request a listing edit"}</h2>
-      {property?.status !== "DRAFT" ? <p className="form-help">Material changes remain under review while the last approved listing stays public.</p> : null}
+      <p className="eyebrow">{t("ownerSubmission")}</p>
+      <h2>{property?.status === "DRAFT" ? t("editDraft") : t("requestEdit")}</h2>
+      {property?.status !== "DRAFT" ? <p className="form-help">{t("materialEditHelp")}</p> : null}
       <PropertyForm
         propertyId={id}
         options={options}

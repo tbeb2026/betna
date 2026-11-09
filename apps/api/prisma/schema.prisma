@@ -106,6 +106,7 @@ model User {
   emailVerified         Boolean         @default(false)
   phoneVerified         Boolean         @default(false)
   authorizationAttested Boolean         @default(false)
+  preferredLocale      String            @default("en") @db.VarChar(10)
   countryId             String?         @db.Uuid
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
@@ -416,6 +417,7 @@ model Inquiry {
   guestName                String             @db.VarChar(160)
   guestEmail               String             @db.VarChar(320)
   guestPhone               String             @db.VarChar(40)
+  guestLocale              String             @default("en") @db.VarChar(10)
   message                  String
   ownerResponseMessage     String?
   startDate                DateTime?

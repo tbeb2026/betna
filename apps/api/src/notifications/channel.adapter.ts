@@ -4,6 +4,8 @@ export interface NotificationRecipient {
   userId?: string;
   email?: string | null;
   phone?: string | null;
+  /** Recipient preference; unknown values intentionally fall back to English. */
+  locale?: string | null;
 }
 
 export interface NotificationMessage {

@@ -12,8 +12,9 @@ function canonical(locale: string, slug: string) { return `${siteUrl}/${locale}/
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string; slug: string }> }): Promise<Metadata> {
   const { locale, slug } = await params;
+  const t = await getTranslations({ locale, namespace: "errors" });
   const property = await getPublicProperty(slug, locale);
-  if (!property) return { title: "Property not found | Betna" };
+  if (!property) return { title: `${t("notFound")} | Betna` };
   const resolvedLocale = property.locale ?? "en";
   const languages = Object.fromEntries((property.availableLocales ?? ["en"]).map((item) => [item, canonical(item, slug)]));
   return { title: `${property.title} | Betna`, description: property.description, alternates: { canonical: canonical(resolvedLocale, slug), languages }, openGraph: { title: property.title, description: property.description, url: canonical(resolvedLocale, slug), type: "website" } };
@@ -21,7 +22,7 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
 
 export default async function PropertyPage({ params }: { params: Promise<{ locale: string; slug: string }> }) {
   const { locale, slug } = await params;
-  const t = await getTranslations("publicProperty");
+  const t = await getTranslations({ locale, namespace: "publicProperty" });
   const property = await getPublicProperty(slug, locale);
   if (!property) notFound();
   return (

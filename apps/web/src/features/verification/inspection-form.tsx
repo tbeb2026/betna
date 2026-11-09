@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { OfflineInspectionQueue } from "./offline-queue";
 import { UploadStatus } from "./upload-status";
 
@@ -13,6 +14,7 @@ export function InspectionForm({
   propertyId?: string;
   category?: string;
 }) {
+  const t = useTranslations("portal.inspection");
   const [notes, setNotes] = useState("");
   const [evidence, setEvidence] = useState<
     Array<{
@@ -23,9 +25,7 @@ export function InspectionForm({
       mediaId?: string;
     }>
   >([]);
-  const [status, setStatus] = useState(
-    "Offline drafts are encrypted on this device.",
-  );
+  const [status, setStatus] = useState(t("offlineDrafts"));
   const [pending, setPending] = useState(false);
   const checklistItems = [
     "identityAuthorization",
@@ -57,7 +57,7 @@ export function InspectionForm({
     return new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(reader.error ?? new Error("Could not read evidence"));
+      reader.onerror = () => reject(reader.error ?? new Error(t("readEvidenceFailed")));
       reader.readAsDataURL(file);
     });
   }
@@ -75,29 +75,29 @@ export function InspectionForm({
           })),
         ),
       );
-      setStatus(`${files.length} evidence item${files.length === 1 ? "" : "s"} ready offline`);
+      setStatus(t("evidenceReady", { count: files.length }));
     } catch {
-      setStatus("Unable to read inspection evidence");
+      setStatus(t("readEvidenceFailed"));
     }
   }
 
   async function saveDraft() {
     try {
       await queue.enqueue(draft(false));
-      setStatus("Draft saved offline");
+      setStatus(t("draftSaved"));
     } catch {
-      setStatus("Unable to encrypt this draft on the device");
+      setStatus(t("draftSaveFailed"));
     }
   }
 
   async function submit() {
     if (!evidence.length) {
-      setStatus("Add at least one inspection evidence image");
+      setStatus(t("evidenceRequired"));
       return;
     }
     setPending(true);
     await queue.enqueue(draft(true));
-    setStatus("Pending upload — reconnect to sync evidence");
+    setStatus(t("pendingUpload"));
   }
 
   function dataUrlToBlob(value: string) {
@@ -128,7 +128,7 @@ export function InspectionForm({
           const item = syncedEvidence[index];
           if (!item.mediaId) {
             if (!item.file || !propertyId) {
-              throw new Error("Evidence is missing its property or file");
+              throw new Error(t("evidenceMissing"));
             }
             const target = await apiJson<{
               mediaId: string;
@@ -150,7 +150,7 @@ export function InspectionForm({
               headers: target.headers,
               body: dataUrlToBlob(item.file),
             });
-            if (!upload.ok) throw new Error("Evidence upload failed");
+            if (!upload.ok) throw new Error(t("evidenceUploadFailed"));
             await apiJson(`/media/${target.mediaId}/complete`, {
               method: "POST",
               body: "{}",
@@ -171,9 +171,9 @@ export function InspectionForm({
             }),
           },
         );
-        if (!submission.status) throw new Error("Inspection submission failed");
+        if (!submission.status) throw new Error(t("submissionFailed"));
         for (const item of syncedEvidence) {
-          if (!item.mediaId) throw new Error("Evidence media ID is missing");
+          if (!item.mediaId) throw new Error(t("evidenceMediaMissing"));
           await apiJson(
             `/verification/inspections/${entry.inspectionId}/evidence/${item.mediaId}/sync`,
             {
@@ -183,10 +183,10 @@ export function InspectionForm({
           );
         }
       });
-      setStatus("Upload synced");
+      setStatus(t("uploadSynced"));
       setPending(false);
     } catch {
-      setStatus("Pending upload — retry when online");
+      setStatus(t("uploadPending"));
     }
   }
 
@@ -195,20 +195,19 @@ export function InspectionForm({
       className="portal-card property-card"
       onSubmit={(event) => event.preventDefault()}
     >
-      <p className="eyebrow">Offline capable</p>
-      <h2>Inspection form</h2>
+      <p className="eyebrow">{t("eyebrow")}</p>
+      <h2>{t("title")}</h2>
       <p className="form-help">
-        Required checklist and evidence remain encrypted offline until upload
-        succeeds.
+        {t("help")}
       </p>
-      <label htmlFor="inspection-notes">Inspection notes</label>
+      <label htmlFor="inspection-notes">{t("notes")}</label>
       <textarea
         id="inspection-notes"
         value={notes}
         onChange={(event) => setNotes(event.target.value)}
         rows={5}
       />
-      <label htmlFor="inspection-evidence">Inspection evidence</label>
+      <label htmlFor="inspection-evidence">{t("evidence")}</label>
       <input
         id="inspection-evidence"
         type="file"
@@ -217,35 +216,35 @@ export function InspectionForm({
         onChange={chooseEvidence}
       />
       <fieldset className="form-section" aria-labelledby="inspection-checklist-title">
-        <legend id="inspection-checklist-title">Inspection checklist</legend>
-        <p className="form-help">Record the observed result for every required item. A report cannot be approved from unfilled defaults.</p>
+        <legend id="inspection-checklist-title">{t("checklist")}</legend>
+        <p className="form-help">{t("checklistHelp")}</p>
         {checklistItems.map((item) => (
           <label key={item} htmlFor={`check-${item}`}>
-            {item.replaceAll(/([A-Z])/g, " $1")}
+            {t(`items.${item}`)}
             <select
               id={`check-${item}`}
               value={String((checklist[item] as { status?: string })?.status ?? "")}
               onChange={(event) => setChecklist((current) => ({ ...current, [item]: { status: event.target.value } }))}
               required
             >
-              <option value="">Choose result</option>
-              <option value="PASS">Pass</option>
-              <option value="FAIL">Fail</option>
-              <option value="ESCALATE">Escalate for documents</option>
+              <option value="">{t("chooseResult")}</option>
+              <option value="PASS">{t("pass")}</option>
+              <option value="FAIL">{t("fail")}</option>
+              <option value="ESCALATE">{t("escalate")}</option>
             </select>
           </label>
         ))}
       </fieldset>
       <div className="actions">
         <button className="button secondary" type="button" onClick={saveDraft}>
-          Save draft
+          {t("saveDraft")}
         </button>
         <button className="button primary" type="button" onClick={submit}>
-          Submit inspection
+          {t("submit")}
         </button>
         {pending ? (
           <button className="button secondary" type="button" onClick={retry}>
-            Retry upload
+            {t("retry")}
           </button>
         ) : null}
       </div>

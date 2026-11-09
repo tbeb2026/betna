@@ -1,7 +1,7 @@
 "use client";
 
 import { getApiBaseUrl } from "../../lib/api-client";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 
 function whatsappUrl(phone: string, message: string) {
   const normalized = phone.replace(/[^0-9]/g, "");
@@ -34,14 +34,15 @@ export function ContactButtons({
   betnaEmail?: string;
 }) {
   const t = useTranslations("publicProperty");
-  const message = `Hello Betna, I am asking about ${propertyTitle}.`;
+  const locale = useLocale();
+  const message = t("contactMessage", { propertyTitle });
   const betnaWhatsApp = whatsappUrl(betnaPhone, message);
-  const ownerContactUrl = `${getApiBaseUrl()}/public/properties/${encodeURIComponent(propertyId)}/contact-owner`;
+  const ownerContactUrl = `${getApiBaseUrl()}/public/properties/${encodeURIComponent(propertyId)}/contact-owner?locale=${encodeURIComponent(locale)}`;
   return (
     <div className="actions contact-buttons" aria-label={t("contactOptions")}>
       {betnaWhatsApp ? <a className="button primary" data-testid="contact-betna-whatsapp" href={betnaWhatsApp} target="_blank" rel="noreferrer" onClick={() => void logClick(propertyId, "BETNA", "WHATSAPP")}>{t("contactBetnaWhatsApp")}</a> : null}
       <a className="button secondary" data-testid="contact-owner-whatsapp" href={ownerContactUrl} target="_blank" rel="noreferrer">{t("contactOwnerWhatsApp")}</a>
-      <a className="button secondary" data-testid="contact-betna-email" href={`mailto:${betnaEmail}?subject=${encodeURIComponent(`Betna inquiry: ${propertyTitle}`)}`} onClick={() => void logClick(propertyId, "BETNA", "EMAIL")}>{t("emailBetna")}</a>
+      <a className="button secondary" data-testid="contact-betna-email" href={`mailto:${betnaEmail}?subject=${encodeURIComponent(t("emailSubject", { propertyTitle }))}`} onClick={() => void logClick(propertyId, "BETNA", "EMAIL")}>{t("emailBetna")}</a>
     </div>
   );
 }

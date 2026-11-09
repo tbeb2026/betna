@@ -1,4 +1,5 @@
 import { Link } from "../../i18n/navigation";
+import { useTranslations } from "next-intl";
 
 export type PublicProperty = {
   id: string;
@@ -16,13 +17,14 @@ export type PublicProperty = {
   verification?: { badge?: string; validUntil?: string | null };
 };
 
-function price(property: PublicProperty) {
+function price(property: PublicProperty, onRequest: string) {
   const offering = property.offerings[0];
-  if (!offering) return "Price on request";
+  if (!offering) return onRequest;
   return `${offering.currency} ${offering.basePrice.toLocaleString()}`;
 }
 
 export function PropertyCard({ property }: { property: PublicProperty }) {
+  const t = useTranslations("publicProperty");
   return (
     <article className="portal-card property-card" data-testid="property-card">
       <div className="property-card-media" aria-hidden="true">
@@ -32,16 +34,16 @@ export function PropertyCard({ property }: { property: PublicProperty }) {
             alt=""
             loading="lazy"
           />
-        ) : <span>Betna verified place</span>}
+        ) : <span>{t("verifiedPlace")}</span>}
       </div>
       <div className="section-heading">
         <div><p className="eyebrow">{property.category.replaceAll("_", " ")}</p><h2>{property.title}</h2></div>
-        <span className="verification-badge">{property.verification?.badge ?? "VERIFIED_BY_BETNA"}</span>
+        <span className="verification-badge">{property.verification?.badge ?? t("verifiedByBetna")}</span>
       </div>
       <p className="form-help">{property.location.label} · {property.location.city ?? property.location.country}</p>
       <p>{property.description}</p>
-      <div className="property-card-meta"><strong>{price(property)}</strong><span>{property.offerings[0]?.mode === "LONG_TERM" ? "Long-term" : "Short-stay"}</span></div>
-      <div className="actions"><Link className="button primary" href={`/property/${property.slug}`}>View property</Link></div>
+      <div className="property-card-meta"><strong>{price(property, t("priceOnRequest"))}</strong><span>{property.offerings[0]?.mode === "LONG_TERM" ? t("longTerm") : t("shortStay")}</span></div>
+      <div className="actions"><Link className="button primary" href={`/property/${property.slug}`}>{t("viewProperty")}</Link></div>
     </article>
   );
 }

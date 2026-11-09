@@ -11,6 +11,8 @@ export interface GuestInquiryInput {
   startDate?: string;
   endDate?: string;
   guests?: number;
+  /** Requested UI/notification locale. Unsupported values normalize to English. */
+  locale?: string;
 }
 
 export interface InquirySummary {

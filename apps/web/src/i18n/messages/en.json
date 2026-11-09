@@ -101,7 +101,32 @@
       "minimumNights": "Minimum nights",
       "leaseDuration": "Lease duration (months)",
       "saveDraft": "Save draft",
-      "submitReview": "Submit for review"
+      "submitReview": "Submit for review",
+      "ownerSubmission": "Owner submission",
+      "listPlace": "List a place",
+      "submissionHelp": "Tell us about your place. Your exact address is private and used for verification.",
+      "editDraft": "Edit your draft",
+      "requestEdit": "Request a listing edit",
+      "materialEditHelp": "Material changes remain under review while the last approved listing stays public."
+      ,"categories": {
+        "residential": "Residential",
+        "land": "Land",
+        "commercial": "Commercial"
+      },
+      "subcategories": {
+        "apartment": "Apartment",
+        "house": "House",
+        "room": "Room",
+        "furnished_stay": "Furnished stay",
+        "guesthouse": "Guesthouse",
+        "vacation_home": "Vacation home",
+        "land": "Land",
+        "office": "Office",
+        "shop": "Shop",
+        "warehouse": "Warehouse",
+        "commercial_space": "Commercial space",
+        "other": "Other"
+      }
     },
     "statuses": {
       "DRAFT": "Draft",
@@ -121,6 +146,113 @@
       "inquiryCreated": "Your inquiry was sent.",
       "locationApproved": "Betna approved the protected location.",
       "verification": "Your inspection status changed."
+    },
+    "ownerInquiries": {
+      "eyebrow": "Owner inquiries",
+      "title": "Guest messages",
+      "description": "Respond to guests here; exact addresses remain protected until Betna staff approve release.",
+      "empty": "No inquiries yet.",
+      "propertyFallback": "Property inquiry",
+      "confirm": "Confirm",
+      "decline": "Decline",
+      "confirmed": "Inquiry confirmed.",
+      "declined": "Inquiry declined.",
+      "decisionRecorded": "Decision recorded",
+      "actionFailed": "Inquiry action failed",
+      "couldNotUpdate": "Could not update inquiry."
+    },
+    "adminInquiries": {
+      "eyebrow": "Inquiry operations",
+      "title": "Managed guest inquiries",
+      "description": "Review legitimacy before releasing exact locations. Every release is audited.",
+      "empty": "No inquiries waiting for review.",
+      "propertyFallback": "Property inquiry",
+      "released": "Location released",
+      "revoke": "Revoke release",
+      "release": "Release exact location",
+      "releaseReason": "Admin review",
+      "revoked": "Location release revoked.",
+      "releasedMessage": "Exact location released.",
+      "actionFailed": "Location action failed",
+      "couldNotUpdate": "Could not update location release."
+    },
+    "inspection": {
+      "eyebrow": "Offline capable",
+      "title": "Inspection form",
+      "help": "Required checklist and evidence remain encrypted offline until upload succeeds.",
+      "notes": "Inspection notes",
+      "evidence": "Inspection evidence",
+      "checklist": "Inspection checklist",
+      "checklistHelp": "Record the observed result for every required item. A report cannot be approved from unfilled defaults.",
+      "chooseResult": "Choose result",
+      "pass": "Pass",
+      "fail": "Fail",
+      "escalate": "Escalate for documents",
+      "saveDraft": "Save draft",
+      "submit": "Submit inspection",
+      "retry": "Retry upload",
+      "offlineDrafts": "Offline drafts are encrypted on this device.",
+      "evidenceReady": "{count} evidence items ready offline",
+      "readEvidenceFailed": "Unable to read inspection evidence",
+      "draftSaved": "Draft saved offline",
+      "draftSaveFailed": "Unable to encrypt this draft on the device",
+      "evidenceRequired": "Add at least one inspection evidence image",
+      "pendingUpload": "Pending upload — reconnect to sync evidence",
+      "uploadSynced": "Upload synced",
+      "uploadPending": "Pending upload — retry when online",
+      "evidenceMissing": "Evidence is missing its property or file",
+      "evidenceUploadFailed": "Evidence upload failed",
+      "submissionFailed": "Inspection submission failed",
+      "evidenceMediaMissing": "Evidence media ID is missing",
+      "items": {
+        "identityAuthorization": "Identity and authorization",
+        "exactLocation": "Exact location",
+        "currentPhotos": "Current photos",
+        "statedPrice": "Stated price",
+        "category": "Category",
+        "safetyCondition": "Safety and condition",
+        "landBoundaries": "Land boundaries",
+        "landAccess": "Land access",
+        "commercialUse": "Commercial use",
+        "commercialSafety": "Commercial safety",
+        "residentialUtilities": "Residential utilities"
+      }
+    },
+    "availability": {
+      "title": "Availability calendar",
+      "description": "Confirmed short stays block these dates automatically.",
+      "empty": "No confirmed dates yet.",
+      "property": "Property",
+      "confirmedInquiry": "Confirmed inquiry",
+      "propertyId": "Property ID",
+      "startDate": "Start date",
+      "endDate": "End date",
+      "reason": "Reason (optional)",
+      "edit": "Edit unavailable dates",
+      "block": "Block unavailable dates",
+      "save": "Save unavailable dates",
+      "update": "Update unavailable dates",
+      "remove": "Remove",
+      "cancel": "Cancel edit",
+      "saving": "Saving…",
+      "saved": "Unavailable dates saved.",
+      "saveFailed": "Unavailable dates could not be saved",
+      "removed": "Unavailable dates removed.",
+      "removeFailed": "Unavailable dates could not be removed"
+    },
+    "ownerListings": {
+      "eyebrow": "Owner listings",
+      "title": "Your places",
+      "listPlace": "List a place",
+      "empty": "Create a draft for each place you own. Betna reviews every submission before it appears publicly.",
+      "managedLocation": "Managed location",
+      "editDraft": "Edit draft",
+      "requestEdit": "Request listing edit"
+    },
+    "ownerHome": {
+      "title": "Listings",
+      "description": "Your places and review progress will appear here.",
+      "manage": "Manage places"
     }
   },
   "publicInquiry": {
@@ -161,6 +293,47 @@
     ,"longTerm": "Long-term"
     ,"minimumNights": "Minimum {count} nights"
     ,"leaseDuration": "{count}-month lease"
+    ,"priceOnRequest": "Price on request"
+    ,"verifiedPlace": "Betna verified place"
+    ,"viewProperty": "View property"
+    ,"contactMessage": "Hello Betna, I am asking about {propertyTitle}."
+    ,"emailSubject": "Betna inquiry: {propertyTitle}"
+  },
+  "search": {
+    "filters": {
+      "ariaLabel": "Property filters",
+      "country": "Country",
+      "everyCountry": "Every country",
+      "kenya": "Kenya",
+      "uganda": "Uganda",
+      "city": "City",
+      "cityPlaceholder": "nairobi",
+      "category": "Category",
+      "everyCategory": "Every category",
+      "residential": "Residential",
+      "land": "Land",
+      "commercial": "Commercial",
+      "minimumPrice": "Minimum price",
+      "maximumPrice": "Maximum price",
+      "apply": "Apply filters"
+    },
+    "mode": {
+      "legend": "Rental mode",
+      "all": "All modes",
+      "shortStay": "Short-stay",
+      "longTerm": "Long-term"
+    },
+    "page": {
+      "eyebrow": "Betna discovery",
+      "title": "Find a verified place",
+      "description": "Browse approximate locations and local prices for places inspected by Betna.",
+      "mapLabel": "Approximate map area",
+      "mapDescription": "Exact addresses remain protected until managed release.",
+      "empty": "No published places match these filters.",
+      "cityTitle": "Verified places in {city}",
+      "cityDescription": "Explore Betna-inspected places with approximate map locations.",
+      "cityEmpty": "No published places are available in this city."
+    }
   },
   "errors": {
     "notFound": "This page could not be found.",

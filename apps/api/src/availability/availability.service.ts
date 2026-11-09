@@ -280,9 +280,8 @@ export class AvailabilityService {
         type: "INQUIRY_AUTO_DECLINED_OVERLAP",
         inquiryId: candidate.id,
         reference: candidate.reference,
-        recipients: [{ userId: candidate.guestUserId, email: candidate.guestEmail, phone: candidate.guestPhone }],
-        subject: `Betna update for inquiry ${candidate.reference ?? candidate.id}`,
-        body: `The dates requested in inquiry ${candidate.reference ?? candidate.id} are no longer available because another inquiry was confirmed.`,
+        recipients: [{ userId: candidate.guestUserId, email: candidate.guestEmail, phone: candidate.guestPhone, locale: candidate.guestLocale }],
+        messageKey: "availability.autoDeclined",
         idempotencyKey: `inquiry-auto-declined-overlap:${winner.id}:${candidate.id}`,
         payload: { status: "OWNER_DECLINED", winnerInquiryId: winner.id },
       };

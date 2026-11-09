@@ -3,6 +3,7 @@ import { Filters, type SearchFilterValues } from "../../../../features/search/fi
 import { getPublicProperties } from "../../../../features/search/data";
 import { PropertyCard } from "../../../../features/search/property-card";
 import { canonicalLocale, collectionJsonLd, collectionMetadata, jsonLd, siteUrl } from "../../../../features/search/seo";
+import { getTranslations } from "next-intl/server";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 function first(value: string | string[] | undefined) { return Array.isArray(value) ? value[0] : value; }
@@ -10,21 +11,23 @@ function first(value: string | string[] | undefined) { return Array.isArray(valu
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
   const { locale } = await params;
   const properties = await getPublicProperties({ locale });
-  return collectionMetadata(locale, "/search", properties, "Find a verified place", "Browse verified places inspected by Betna.");
+  const t = await getTranslations({ locale, namespace: "search.page" });
+  return collectionMetadata(locale, "/search", properties, t("title"), t("description"));
 }
 
 export default async function SearchPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<SearchParams> }) {
   const { locale } = await params;
   const raw = await searchParams;
+  const t = await getTranslations({ locale, namespace: "search.page" });
   const values: SearchFilterValues = { country: first(raw.country), city: first(raw.city), category: first(raw.category), minPrice: first(raw.minPrice), maxPrice: first(raw.maxPrice), mode: first(raw.mode) };
   const properties = await getPublicProperties({ ...values, locale });
   return (
     <section className="search-page">
-      {jsonLd(collectionJsonLd(`${siteUrl}/${canonicalLocale(locale, properties)}/search`, "Betna verified property discovery", properties))}
-      <div className="search-intro"><p className="eyebrow">Betna discovery</p><h1>Find a verified place</h1><p className="lede">Browse approximate locations and local prices for places inspected by Betna.</p></div>
+      {jsonLd(collectionJsonLd(`${siteUrl}/${canonicalLocale(locale, properties)}/search`, t("title"), properties))}
+      <div className="search-intro"><p className="eyebrow">{t("eyebrow")}</p><h1>{t("title")}</h1><p className="lede">{t("description")}</p></div>
       <Filters locale={locale} values={values} />
-      <div className="map-summary" aria-label="Approximate map area"><span>Approximate map display</span><span>Exact addresses remain protected until managed release.</span></div>
-      {properties.length ? <div className="property-grid">{properties.map((property) => <PropertyCard key={property.id} property={property} />)}</div> : <p className="empty-state">No published places match these filters.</p>}
+      <div className="map-summary" aria-label={t("mapLabel")}><span>{t("mapLabel")}</span><span>{t("mapDescription")}</span></div>
+      {properties.length ? <div className="property-grid">{properties.map((property) => <PropertyCard key={property.id} property={property} />)}</div> : <p className="empty-state">{t("empty")}</p>}
     </section>
   );
 }

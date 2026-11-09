@@ -12,6 +12,7 @@ import { OtpService, normalizePhone } from "./otp.service";
 import { AuthenticationError, SessionService } from "./session.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { NotificationService } from "../notifications/notifications.service";
+import { notificationMessage } from "../i18n/messages";
 
 const scrypt = promisify(scryptCallback);
 
@@ -128,12 +129,15 @@ export class AuthService {
     if (!this.notifications) {
       throw new Error("Email notification provider is not configured");
     }
+    const emailContent = notificationMessage("en", "auth.ownerEmailVerification", { code });
     const deliveries = await this.notifications.enqueue({
       type: "OWNER_EMAIL_VERIFICATION",
       recipients: [{ email }],
       channels: ["EMAIL"],
-      subject: "Verify your Betna owner account",
-      body: `Your Betna owner verification code is ${code}. It expires in 10 minutes.`,
+      messageKey: "auth.ownerEmailVerification",
+      messageValues: { code },
+      subject: emailContent.subject,
+      body: emailContent.body,
       payload: { email, expiresAt: expiresAt.toISOString() },
       idempotencyKey: `owner-email-verification:${email}:${expiresAt.getTime()}`,
     });

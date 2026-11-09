@@ -14,6 +14,7 @@ export class GuestInquiryDto {
   @IsOptional() @IsString() startDate?: string;
   @IsOptional() @IsString() endDate?: string;
   @IsOptional() @IsInt() @Min(1) @Max(100) guests?: number;
+  @IsOptional() @IsString() @MaxLength(10) locale?: string;
   @IsOptional() @IsString() @MaxLength(128) honeypot?: string;
   @IsOptional() @IsString() @MaxLength(128) fingerprint?: string;
 }
@@ -69,9 +70,10 @@ export class PublicContactController {
   @Get("properties/:propertyId/contact-owner")
   async ownerContact(
     @Param("propertyId", new ParseUUIDPipe({ version: "4" })) propertyId: string,
+    @Query("locale") locale: string | undefined,
     @Res() response: { redirect: (status: number, url: string) => unknown },
   ) {
-    const target = await this.inquiries.ownerContactRedirect(propertyId);
+    const target = await this.inquiries.ownerContactRedirect(propertyId, locale);
     return response.redirect(302, target);
   }
 }

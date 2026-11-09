@@ -101,7 +101,32 @@
       "minimumNights": "ዝተሓተ ለይቲ",
       "leaseDuration": "ግዜ ውዕል (ኣዋርሕ)",
       "saveDraft": "ረቂቕ ዓቅብ",
-      "submitReview": "ንግምገማ ስደድ"
+      "submitReview": "ንግምገማ ስደድ",
+      "ownerSubmission": "ምቕራብ ባለቤት",
+      "listPlace": "ቦታ ዘርዝር",
+      "submissionHelp": "ብዛዕባ ቦታኻ ንገረና። ትኽክለኛ ኣድራሻኻ ብምስጢር ንምርመራ ይጥቀም።",
+      "editDraft": "ረቂቕካ ኣርም",
+      "requestEdit": "ምምሕያሽ ዝርዝር ሕተት",
+      "materialEditHelp": "ኣገደስቲ ለውጥታት ኣብ ግምገማ እንከለዉ እቲ ዝሓለፈ ዝተፈቐደ ዝርዝር ህዝባዊ ይኸውን።"
+      ,"categories": {
+        "residential": "መንበሪ",
+        "land": "መሬት",
+        "commercial": "ንግዳዊ"
+      },
+      "subcategories": {
+        "apartment": "ኣፓርታማ",
+        "house": "ገዛ",
+        "room": "ክፍሊ",
+        "furnished_stay": "ዝተዳለወ መንበሪ",
+        "guesthouse": "ናይ ኣጋይሽ ገዛ",
+        "vacation_home": "ናይ ዕረፍቲ ገዛ",
+        "land": "መሬት",
+        "office": "ቤት ጽሕፈት",
+        "shop": "ድኳን",
+        "warehouse": "መኽዘን",
+        "commercial_space": "ንግዳዊ ቦታ",
+        "other": "ካልእ"
+      }
     },
     "statuses": {
       "DRAFT": "ረቂቕ",
@@ -121,6 +146,113 @@
       "inquiryCreated": "ሕቶኻ ተላኢኹ።",
       "locationApproved": "Betna ዕቑብ ቦታ ኣጽዲቑ።",
       "verification": "ኩነታት ምርመራኻ ተቐይሩ።"
+    },
+    "ownerInquiries": {
+      "eyebrow": "ሕቶታት ባለቤት",
+      "title": "መልእኽቲ በጻሕቲ",
+      "description": "ኣብዚ ንበጻሕቲ መልሲ ሃብ፤ ትኽክለኛ ኣድራሻ ክሳብ ሰራሕተኛታት Betna ዘጽድቑዎ ምስጢር እዩ።",
+      "empty": "ገና ሕቶ የለን።",
+      "propertyFallback": "ሕቶ ንብረት",
+      "confirm": "ኣረጋግጽ",
+      "decline": "ንጸግ",
+      "confirmed": "ሕቶ ተረጋጊጹ።",
+      "declined": "ሕቶ ተነጺጉ።",
+      "decisionRecorded": "ውሳነ ተመዝጊቡ",
+      "actionFailed": "ስራሕ ሕቶ ኣይተዓወተን",
+      "couldNotUpdate": "ሕቶ ክመሓየሽ ኣይከኣለን።"
+    },
+    "adminInquiries": {
+      "eyebrow": "ምምሕዳር ሕቶታት",
+      "title": "ዝተመሓደሩ ሕቶታት በጻሕቲ",
+      "description": "ቅድሚ ትኽክለኛ ቦታ ምልቃቕ ሕጋውነት ገምግም። ኩሉ ምልቃቕ ይመዝገብ።",
+      "empty": "ንግምገማ ዝጽበዩ ሕቶታት የለዉን።",
+      "propertyFallback": "ሕቶ ንብረት",
+      "released": "ቦታ ተለቒቑ",
+      "revoke": "ምልቃቕ ሰርዝ",
+      "release": "ትኽክለኛ ቦታ ልቀቕ",
+      "releaseReason": "ግምገማ ኣስተዳዳሪ",
+      "revoked": "ምልቃቕ ቦታ ተሰሪዙ።",
+      "releasedMessage": "ትኽክለኛ ቦታ ተለቒቑ።",
+      "actionFailed": "ስራሕ ቦታ ኣይተዓወተን",
+      "couldNotUpdate": "ምልቃቕ ቦታ ክመሓየሽ ኣይከኣለን።"
+    },
+    "inspection": {
+      "eyebrow": "ብዘይ መስመር ዝሰርሕ",
+      "title": "ቅጥዒ ምርመራ",
+      "help": "ኣድላዪ ዝርዝር ምርመራን መርትዖን ክሳብ ምልኣኽ ይስጠር።",
+      "notes": "ማስታወሻታት ምርመራ",
+      "evidence": "መርትዖ ምርመራ",
+      "checklist": "ዝርዝር ምርመራ",
+      "checklistHelp": "ንነፍሲ ወከፍ ኣድላዪ ነገር ዝተዓዘብካዮ ውጽኢት መዝግብ።",
+      "chooseResult": "ውጽኢት ምረጽ",
+      "pass": "ሓሊፉ",
+      "fail": "ኣይሓለፈን",
+      "escalate": "ንሰነዳት ኣልዕል",
+      "saveDraft": "ረቂቕ ዓቅብ",
+      "submit": "ምርመራ ስደድ",
+      "retry": "ምልኣኽ እንደገና ፈትን",
+      "offlineDrafts": "ናይ ዘይመስመር ረቂቓት ኣብዚ መሳርሒ ብምስጢር ይዕቀቡ።",
+      "evidenceReady": "{count} መርትዖ ንዘይመስመር ድሉው እዩ",
+      "readEvidenceFailed": "መርትዖ ምርመራ ክንንብብ ኣይከኣልናን",
+      "draftSaved": "ረቂቕ ኣብ ዘይመስመር ተዓቂቡ",
+      "draftSaveFailed": "እዚ ረቂቕ ኣብ መሳርሒ ብምስጢር ክዕቀብ ኣይከኣለን",
+      "evidenceRequired": "ብውሑዱ ሓደ ስእሊ መርትዖ ምርመራ ወስኽ",
+      "pendingUpload": "ምልኣኽ ይጽበ — መርትዖ ንምስማር እንደገና ተራኸብ",
+      "uploadSynced": "ምልኣኽ ተሰማሚዑ",
+      "uploadPending": "ምልኣኽ ይጽበ — ኣብ መስመር እንከለኻ እንደገና ፈትን",
+      "evidenceMissing": "መርትዖ ንብረቱ ወይ ፋይሉ የለዎን",
+      "evidenceUploadFailed": "መርትዖ ክለኣኽ ኣይከኣለን",
+      "submissionFailed": "ምርመራ ክስደድ ኣይከኣለን",
+      "evidenceMediaMissing": "መለለዪ ሚድያ መርትዖ የለን",
+      "items": {
+        "identityAuthorization": "መንነትን ስልጣንን",
+        "exactLocation": "ትኽክለኛ ቦታ",
+        "currentPhotos": "ሓደሽቲ ስእልታት",
+        "statedPrice": "ዝተገልጸ ዋጋ",
+        "category": "ምድብ",
+        "safetyCondition": "ድሕነትን ኩነታትን",
+        "landBoundaries": "ወሰናት መሬት",
+        "landAccess": "መእተዊ መሬት",
+        "commercialUse": "ንግዳዊ ኣጠቓቕማ",
+        "commercialSafety": "ንግዳዊ ድሕነት",
+        "residentialUtilities": "ኣገልግሎታት መንበሪ"
+      }
+    },
+    "availability": {
+      "title": "ካሌንደር ተወሳኺ ግዜ",
+      "description": "ዝተረጋገጹ ሓጺር ግዜ ቆይታታት ነዞም ዕለታት ብኣውቶማቲክ ይዓግቱ።",
+      "empty": "ገና ዝተረጋገጹ ዕለታት የለዉን።",
+      "property": "ንብረት",
+      "confirmedInquiry": "ዝተረጋገጸ ሕቶ",
+      "propertyId": "መለለዪ ንብረት",
+      "startDate": "ዕለት መጀመርታ",
+      "endDate": "ዕለት መወዳእታ",
+      "reason": "ምኽንያት (ኣማራጺ)",
+      "edit": "ዘይርከቡ ዕለታት ኣርም",
+      "block": "ዘይርከቡ ዕለታት ዓግት",
+      "save": "ዘይርከቡ ዕለታት ዓቅብ",
+      "update": "ዘይርከቡ ዕለታት ኣመሓይሽ",
+      "remove": "ኣልግስ",
+      "cancel": "ምምሕያሽ ሰርዝ",
+      "saving": "ይዕቀብ ኣሎ…",
+      "saved": "ዘይርከቡ ዕለታት ተዓቂቦም።",
+      "saveFailed": "ዘይርከቡ ዕለታት ክዕቀቡ ኣይከኣሉን",
+      "removed": "ዘይርከቡ ዕለታት ተኣልዮም።",
+      "removeFailed": "ዘይርከቡ ዕለታት ክኣልዩ ኣይከኣሉን"
+    },
+    "ownerListings": {
+      "eyebrow": "ዝርዝራት ባለቤት",
+      "title": "ቦታታትካ",
+      "listPlace": "ቦታ ዘርዝር",
+      "empty": "ንነፍሲ ወከፍ ቦታኻ ረቂቕ ፍጠር። Betna ቅድሚ ህዝባዊ ምውጻእ ኩሉ ምቕራብ ትግምግም።",
+      "managedLocation": "ዝተመሓደረ ቦታ",
+      "editDraft": "ረቂቕ ኣርም",
+      "requestEdit": "ምምሕያሽ ዝርዝር ሕተት"
+    },
+    "ownerHome": {
+      "title": "ዝርዝራት",
+      "description": "ቦታታትካን ምዕባለ ግምገማን ኣብዚ ክርአ እዩ።",
+      "manage": "ቦታታት ኣመሓድር"
     }
   },
   "publicInquiry": {
@@ -161,6 +293,47 @@
     ,"longTerm": "ነዊሕ ግዜ"
     ,"minimumNights": "ዝተሓተ {count} ለይቲ"
     ,"leaseDuration": "ውዕል {count} ወርሒ"
+    ,"priceOnRequest": "ዋጋ ብሕቶ"
+    ,"verifiedPlace": "ብ Betna ዝተረጋገጸ ቦታ"
+    ,"viewProperty": "ንብረት ርአ"
+    ,"contactMessage": "ሰላም Betna፣ ብዛዕባ {propertyTitle} ክሓትት እየ።"
+    ,"emailSubject": "ሕቶ Betna: {propertyTitle}"
+  },
+  "search": {
+    "filters": {
+      "ariaLabel": "መጣሪያታት ንብረት",
+      "country": "ሃገር",
+      "everyCountry": "ኩለን ሃገራት",
+      "kenya": "ኬንያ",
+      "uganda": "ኡጋንዳ",
+      "city": "ከተማ",
+      "cityPlaceholder": "ናይሮቢ",
+      "category": "ምድብ",
+      "everyCategory": "ኩሎም ምድባት",
+      "residential": "መንበሪ",
+      "land": "መሬት",
+      "commercial": "ንግዳዊ",
+      "minimumPrice": "ዝተሓተ ዋጋ",
+      "maximumPrice": "ዝለዓለ ዋጋ",
+      "apply": "መጣሪያታት ኣተግብር"
+    },
+    "mode": {
+      "legend": "ዓይነት ኪራይ",
+      "all": "ኩሎም ዓይነታት",
+      "shortStay": "ሓጺር ግዜ",
+      "longTerm": "ነዊሕ ግዜ"
+    },
+    "page": {
+      "eyebrow": "ምድላይ Betna",
+      "title": "ዝተረጋገጸ ቦታ ድለ",
+      "description": "ብ Betna ዝተመርመሩ ቦታታት ግምታዊ ቦታን ናይ ከባቢ ዋጋታትን ተመልከት።",
+      "mapLabel": "ግምታዊ ከባቢ ካርታ",
+      "mapDescription": "ትኽክለኛ ኣድራሻ ክሳብ ብምምሕዳር ዝለቀቕ ምስጢር እዩ።",
+      "empty": "ነዞም መጣሪያታት ዝሰማምዑ ዝተዘርዘሩ ቦታታት የለዉን።",
+      "cityTitle": "ዝተረጋገጹ ቦታታት ኣብ {city}",
+      "cityDescription": "ግምታዊ ቦታ ዘለዎም ብ Betna ዝተመርመሩ ቦታታት ተመልከት።",
+      "cityEmpty": "ኣብዛ ከተማ ዝተዘርዘሩ ቦታታት የለዉን።"
+    }
   },
   "errors": {
     "notFound": "እዚ ገጽ ክርከብ ኣይከኣለን።",

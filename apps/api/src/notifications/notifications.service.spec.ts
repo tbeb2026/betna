@@ -3,6 +3,25 @@ import { NotificationEvent, NotificationService } from "./notifications.service"
 import { ChannelAdapter } from "./channel.adapter";
 
 describe("NotificationService", () => {
+  it("localizes each recipient from their preference without changing the event key", async () => {
+    const sends = vi.fn().mockResolvedValue(undefined);
+    const service = new NotificationService({} as any, [{ channel: "EMAIL", send: sends }]);
+    await service.enqueue({
+      type: "INQUIRY_CREATED",
+      reference: "BTNA-123",
+      recipients: [
+        { email: "english@example.com", locale: "en" },
+        { email: "tigrinya@example.com", locale: "ti-ER" },
+      ],
+      channels: ["EMAIL"],
+      messageKey: "inquiry.created",
+    });
+    expect(sends).toHaveBeenCalledTimes(2);
+    expect(sends.mock.calls[0][0].subject).toContain("New Betna inquiry");
+    expect(sends.mock.calls[1][0].subject).not.toContain("New Betna inquiry");
+    expect(sends.mock.calls[1][0].subject).toContain("BTNA-123");
+  });
+
   it("does not send from the unique-key loser across service instances", async () => {
     const rows = new Map<string, any>();
     let firstSendStarted!: () => void;

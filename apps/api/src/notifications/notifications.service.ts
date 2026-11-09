@@ -9,15 +9,19 @@ import {
   NotificationRecipient,
   NOTIFICATION_CHANNEL_ADAPTERS,
 } from "./channel.adapter";
+import { notificationMessage, type NotificationTemplateKey } from "../i18n/messages";
 
 export interface NotificationEvent {
   type: string;
   inquiryId?: string;
   reference?: string;
   recipients: NotificationRecipient[];
+  locale?: string;
   channels?: readonly NotificationChannel[];
   subject?: string;
   body?: string;
+  messageKey?: NotificationTemplateKey;
+  messageValues?: Record<string, string | number | undefined>;
   payload?: Record<string, unknown>;
   idempotencyKey?: string;
 }
@@ -179,8 +183,8 @@ export class NotificationService {
         channel,
         recipient,
         idempotencyKey: row.idempotencyKey,
-        subject: row.subject ?? undefined,
-        body: row.body ?? `Betna update${row.reference ? ` for ${row.reference}` : ""}.`,
+        subject: row.subject ?? notificationMessage("en", "system.generic").subject,
+        body: row.body ?? notificationMessage("en", "system.generic", { referenceSuffix: row.reference ? ` for ${row.reference}` : "" }).body,
         payload: row.payload,
       });
       return this.markSent(row, store);
@@ -212,17 +216,31 @@ export class NotificationService {
   }
 
   private rowData(event: NotificationEvent, recipient: NotificationRecipient, channel: NotificationChannel, idempotencyKey: string, token: string, now: Date) {
+    const content = this.content(event, recipient);
     return {
       id: randomUUID(), idempotencyKey, event: event.type, channel, status: "PROCESSING", attempts: 1,
       processingToken: token, processingAt: now, recipientId: recipient.userId,
       recipientEmail: recipient.email ?? undefined, recipientPhone: recipient.phone ?? undefined,
-      inquiryId: event.inquiryId, reference: event.reference, subject: event.subject, body: event.body,
+      inquiryId: event.inquiryId, reference: event.reference, subject: content.subject, body: content.body,
       payload: event.payload ?? {},
     };
   }
 
   private message(event: NotificationEvent, recipient: NotificationRecipient, channel: NotificationChannel, idempotencyKey?: string): NotificationMessage {
-    return { event: event.type, channel, recipient, idempotencyKey, subject: event.subject, body: event.body ?? `Betna update${event.reference ? ` for ${event.reference}` : ""}.`, payload: event.payload };
+    const content = this.content(event, recipient);
+    return { event: event.type, channel, recipient, idempotencyKey, subject: content.subject, body: content.body, payload: event.payload };
+  }
+
+  private content(event: NotificationEvent, recipient: NotificationRecipient) {
+    if (event.messageKey) {
+      return notificationMessage(
+        recipient.locale ?? event.locale,
+        event.messageKey,
+        { reference: event.reference, ...(event.messageValues ?? {}) },
+      );
+    }
+    if (event.subject || event.body) return { subject: event.subject, body: event.body ?? notificationMessage(event.locale, "system.generic", { referenceSuffix: event.reference ? ` for ${event.reference}` : "" }).body };
+    return notificationMessage(event.locale, "system.generic", { referenceSuffix: event.reference ? ` for ${event.reference}` : "" });
   }
 
   private store() { return (this.prisma as any).notification as NotificationStore | undefined; }

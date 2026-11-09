@@ -16,6 +16,7 @@ import { NotificationEvent, NotificationService } from "../notifications/notific
 import { InquiryActor, LocationReleaseService } from "./location-release.service";
 import { AvailabilityService } from "../availability/availability.service";
 import { isCurrentPublicVerification } from "../properties/public-verification";
+import { normalizeNotificationLocale, notificationMessage } from "../i18n/messages";
 
 export type GuestInquiryRequest = GuestInquiryInput & {
   honeypot?: string;
@@ -71,6 +72,7 @@ export class InquiriesService {
           offeringId: input.offeringId ?? offering?.id, status: "NEW",
           guestName: input.name.trim(), guestEmail: input.email.trim().toLowerCase(),
           guestPhone: input.phone.trim(), message: input.message.trim(),
+          guestLocale: normalizeNotificationLocale(input.locale),
           startDate: this.optionalDate(input.startDate, "startDate"),
           endDate: this.optionalDate(input.endDate, "endDate"), guests: input.guests,
         },
@@ -86,17 +88,16 @@ export class InquiriesService {
     const owner = property.owner ?? (property.ownerId ? await this.findUser(property.ownerId) : null);
     const staff = await this.findStaffRecipients();
     const recipients = [
-      ...(owner ? [{ userId: owner.id, email: owner.email, phone: owner.phone }] : []),
+      ...(owner ? [{ userId: owner.id, email: owner.email, phone: owner.phone, locale: owner.preferredLocale ?? owner.locale }] : []),
       ...staff,
-      { email: inquiry.guestEmail, phone: inquiry.guestPhone },
+      { email: inquiry.guestEmail, phone: inquiry.guestPhone, locale: inquiry.guestLocale },
     ];
     const event: NotificationEvent = {
       type: "INQUIRY_CREATED",
       inquiryId: inquiry.id,
       reference: inquiry.reference,
       recipients,
-      subject: `New Betna inquiry ${inquiry.reference}`,
-      body: `Betna received inquiry ${inquiry.reference}. We review inquiries during business hours; urgent cases may be handled by staff outside those hours.`,
+      messageKey: "inquiry.created",
       idempotencyKey: `inquiry-created:${inquiry.id}`,
       payload: { propertyId: property.id, status: inquiry.status },
     };
@@ -132,8 +133,8 @@ export class InquiriesService {
         idempotencyKey: `inquiry-owner:${inquiryId}:CONFIRMED`,
         inquiryId,
         reference: inquiry.reference,
-        recipients: [{ email: inquiry.guestEmail, phone: inquiry.guestPhone }],
-        body: `The owner has confirmed inquiry ${inquiry.reference}.`,
+        recipients: [{ email: inquiry.guestEmail, phone: inquiry.guestPhone, locale: inquiry.guestLocale }],
+        messageKey: "inquiry.ownerConfirmed",
         payload: { status: "OWNER_CONFIRMED" },
       });
       return this.publicInquiry(blocked.inquiry);
@@ -177,8 +178,8 @@ export class InquiriesService {
       idempotencyKey: `inquiry-owner:${inquiryId}:${decision}`,
       inquiryId,
       reference: inquiry.reference,
-      recipients: [{ email: inquiry.guestEmail, phone: inquiry.guestPhone }],
-      body: `The owner has ${decision === "CONFIRMED" ? "confirmed" : "declined"} inquiry ${inquiry.reference}.`,
+      recipients: [{ email: inquiry.guestEmail, phone: inquiry.guestPhone, locale: inquiry.guestLocale }],
+      messageKey: decision === "CONFIRMED" ? "inquiry.ownerConfirmed" : "inquiry.ownerDeclined",
       payload: { status },
     });
     return this.publicInquiry(updated);
@@ -194,8 +195,8 @@ export class InquiriesService {
       idempotencyKey: `inquiry-location-approved:${inquiryId}:${released.releaseId}`,
       inquiryId,
       reference: released.inquiry.reference,
-      recipients: [{ email: released.inquiry.guestEmail, phone: released.inquiry.guestPhone }],
-      body: `Betna approved the protected location for inquiry ${released.inquiry.reference}.`,
+      recipients: [{ email: released.inquiry.guestEmail, phone: released.inquiry.guestPhone, locale: released.inquiry.guestLocale }],
+      messageKey: "inquiry.locationApproved",
       payload: { status: released.inquiry.status },
     });
     return released;
@@ -252,7 +253,7 @@ export class InquiriesService {
    * Resolves an owner contact only at click time. The phone number never
    * appears in a public property response or in a client-rendered URL.
    */
-  async ownerContactRedirect(propertyId: string) {
+  async ownerContactRedirect(propertyId: string, locale?: string) {
     const property = await (this.prisma as any).property.findUnique?.({
       where: { id: propertyId },
       include: { owner: true },
@@ -273,7 +274,8 @@ export class InquiriesService {
     if (phone.length < 7 || phone.length > 15) {
       throw new NotFoundException("Published owner contact is unavailable");
     }
-    return `https://wa.me/${phone}?text=${encodeURIComponent(`Hello, I am asking about ${property.title} on Betna.`)}`;
+    const message = notificationMessage(locale, "contact.owner", { propertyTitle: property.title }).body;
+    return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
   }
 
   private async findInquiry(id: string) {
@@ -292,7 +294,7 @@ export class InquiriesService {
   private async findStaffRecipients() {
     const rows = await (this.prisma as any).user?.findMany?.({
       where: { status: "ACTIVE", roles: { some: { role: { name: "ADMIN" } } } },
-      select: { id: true, email: true, phone: true },
+      select: { id: true, email: true, phone: true, preferredLocale: true },
     });
     if (Array.isArray(rows) && rows.length) return rows;
     return [{ email: process.env.BETNA_INQUIRY_EMAIL ?? "inquiries@betna.example", phone: process.env.BETNA_INQUIRY_PHONE }];
@@ -310,6 +312,7 @@ export class InquiriesService {
     if (input.offeringId !== undefined && typeof input.offeringId !== "string") throw new BadRequestException("A valid offering is required");
     if (typeof input.offeringId === "string" && !input.offeringId.trim()) throw new BadRequestException("A valid offering is required");
     if (input.fingerprint !== undefined && typeof input.fingerprint !== "string") throw new BadRequestException("Inquiry payload is invalid");
+    if (input.locale !== undefined && (typeof input.locale !== "string" || input.locale.length > 10)) throw new BadRequestException("Inquiry locale is invalid");
     if (input.startDate !== undefined && typeof input.startDate !== "string") throw new BadRequestException("startDate must be a valid date");
     if (input.endDate !== undefined && typeof input.endDate !== "string") throw new BadRequestException("endDate must be a valid date");
     if (input.guests != null && (!Number.isInteger(input.guests) || input.guests < 1 || input.guests > 100)) throw new BadRequestException("Guests must be between 1 and 100");
