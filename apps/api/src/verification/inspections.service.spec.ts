@@ -7,6 +7,7 @@ import {
 import { InspectionsService } from "./inspections.service";
 import { AssignmentsService } from "./assignments.service";
 import { ChecklistService } from "./checklist.service";
+import { AuditService } from "../audit/audit.service";
 
 const inspection = {
   id: "inspection-1",
@@ -646,5 +647,57 @@ describe("InspectionsService", () => {
         "ARCHIVED" as any,
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("re-reads and locks the inspection before review so a stale approval cannot win", async () => {
+    const { prisma, rows } = makePrisma();
+    Object.assign(rows.get("inspection-1"), {
+      status: "READY_FOR_REVIEW",
+      requiredEvidenceSynced: true,
+      checklist: completeChecklist,
+    });
+    prisma.$queryRaw = vi.fn().mockResolvedValue([]);
+    prisma.$transaction = vi.fn(async (work: any) => {
+      // Simulate another reviewer changing the row after the preflight read,
+      // but before this transaction acquires its lock.
+      rows.get("inspection-1")!.status = "REJECTED";
+      return work(prisma);
+    });
+    const service = makeService(prisma);
+
+    await expect(
+      service.adminReview("inspection-1", { id: "admin-1", roles: ["ADMIN"] }, "APPROVED"),
+    ).rejects.toThrow(/ready/i);
+    expect(rows.get("inspection-1")?.status).toBe("REJECTED");
+    expect(prisma.inspection.update).not.toHaveBeenCalled();
+  });
+
+  it("leaves inspection and property state unchanged when the transaction audit fails", async () => {
+    const { prisma, rows } = makePrisma();
+    const row = rows.get("inspection-1")!;
+    Object.assign(row, { status: "READY_FOR_REVIEW", requiredEvidenceSynced: true, checklist: completeChecklist });
+    const auditCreate = vi.fn().mockRejectedValue(new Error("audit unavailable"));
+    prisma.$transaction = vi.fn(async (work: any) => {
+      const txRow = { ...row };
+      const tx: any = {
+        ...prisma,
+        inspection: {
+          ...prisma.inspection,
+          findUnique: vi.fn(async () => txRow),
+          updateMany: vi.fn(async ({ data }: any) => { Object.assign(txRow, data); return { count: 1 }; }),
+          update: vi.fn(async ({ data }: any) => { Object.assign(txRow, data); return txRow; }),
+        },
+        property: { ...prisma.property, update: vi.fn(async ({ data }: any) => ({ id: "property-1", ...data })) },
+        auditEvent: { create: auditCreate },
+      };
+      return work(tx);
+    });
+    const audit = new AuditService({ auditEvent: { create: vi.fn() } } as any);
+    const service = new InspectionsService(prisma, new AssignmentsService(prisma), new ChecklistService(prisma), audit);
+
+    await expect(service.adminReview("inspection-1", { id: "admin-1", roles: ["ADMIN"] }, "APPROVED"))
+      .rejects.toThrow("audit unavailable");
+    expect(row.status).toBe("READY_FOR_REVIEW");
+    expect(auditCreate).toHaveBeenCalled();
   });
 });

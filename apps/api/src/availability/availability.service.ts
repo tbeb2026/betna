@@ -25,6 +25,13 @@ export class AvailabilityService {
   async confirmInquiryAndBlockDates(inquiryId: string, ownerId: string, ownerResponseMessage?: string) {
     if (!inquiryId || !ownerId) throw new BadRequestException("Inquiry and owner are required");
     const result = await this.withTransaction(async (tx: any) => {
+      // The first read only discovers the property key. Every authorization and
+      // state decision below is made again after the same lock order used by
+      // owner decline (property, then inquiry), so the two transitions cannot
+      // observe and overwrite one another.
+      const inquiryHint = await this.findInquiry(tx, inquiryId);
+      await this.lockProperty(tx, inquiryHint.propertyId);
+      await this.lockInquiry(tx, inquiryId);
       const inquiry = await this.findInquiry(tx, inquiryId);
       this.assertOwner(inquiry, ownerId);
       if (inquiry.status === "OWNER_DECLINED") throw new ConflictException("Inquiry has been declined");
@@ -41,9 +48,15 @@ export class AvailabilityService {
         throw new BadRequestException("Short-stay confirmation requires startDate and endDate");
       }
       if (!shortStay) {
-        const updated = inquiry.status === "OWNER_CONFIRMED"
-          ? inquiry
-          : await tx.inquiry.update({ where: { id: inquiryId }, data: { status: "OWNER_CONFIRMED" } });
+        let updated = inquiry;
+        if (inquiry.status !== "OWNER_CONFIRMED") {
+          const transition = await tx.inquiry.updateMany({
+            where: { id: inquiryId, status: { in: PENDING_INQUIRY_STATUSES } },
+            data: { status: "OWNER_CONFIRMED" },
+          });
+          if (transition?.count !== 1) throw new ConflictException("Inquiry has already been decided");
+          updated = await this.findInquiry(tx, inquiryId);
+        }
         await this.recordAudit(tx, { id: ownerId }, "INQUIRY_OWNER_CONFIRMED", { type: "Inquiry", id: inquiryId });
         return { inquiry: updated, blocked: false, declinedInquiryIds: [] };
       }
@@ -51,12 +64,6 @@ export class AvailabilityService {
       const startDate = this.date(inquiry.startDate, "startDate");
       const endDate = this.date(inquiry.endDate, "endDate");
       if (endDate <= startDate) throw new BadRequestException("endDate must be after startDate");
-
-      // Locking the property serializes confirmations across API instances. The
-      // exclusion constraint in the migration is the final database backstop.
-      if (typeof tx.$queryRaw === "function") {
-        await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Property" WHERE "id" = ${inquiry.propertyId} FOR UPDATE`);
-      }
 
       const blockStore = tx.availabilityBlock;
       const existingBlocks = typeof blockStore?.findMany === "function"
@@ -104,9 +111,20 @@ export class AvailabilityService {
       const responseData = ownerResponseMessage?.trim()
         ? { ownerResponseMessage: ownerResponseMessage.trim() }
         : {};
-      const updated = inquiry.status === "OWNER_CONFIRMED" && !Object.keys(responseData).length
-        ? inquiry
-        : await tx.inquiry.update({ where: { id: inquiryId }, data: { status: "OWNER_CONFIRMED", ...responseData } });
+      let updated = inquiry;
+      if (inquiry.status !== "OWNER_CONFIRMED" || Object.keys(responseData).length) {
+        const transition = await tx.inquiry.updateMany({
+          where: {
+            id: inquiryId,
+            status: inquiry.status === "OWNER_CONFIRMED"
+              ? "OWNER_CONFIRMED"
+              : { in: PENDING_INQUIRY_STATUSES },
+          },
+          data: { status: "OWNER_CONFIRMED", ...responseData },
+        });
+        if (transition?.count !== 1) throw new ConflictException("Inquiry has already been decided");
+        updated = await this.findInquiry(tx, inquiryId);
+      }
       const overlapping = await this.findOverlappingPending(tx, inquiry, startDate, endDate);
       const declinedInquiryIds: string[] = [];
       const declinedInquiries: any[] = [];
@@ -135,10 +153,18 @@ export class AvailabilityService {
 
   async ownerDeclineInquiry(inquiryId: string, ownerId: string) {
     return this.withTransaction(async (tx: any) => {
+      const inquiryHint = await this.findInquiry(tx, inquiryId);
+      await this.lockProperty(tx, inquiryHint.propertyId);
+      await this.lockInquiry(tx, inquiryId);
       const inquiry = await this.findInquiry(tx, inquiryId);
       this.assertOwner(inquiry, ownerId);
       if (!PENDING_INQUIRY_STATUSES.includes(inquiry.status)) throw new ConflictException("Inquiry has already been decided");
-      const updated = await tx.inquiry.update({ where: { id: inquiryId }, data: { status: "OWNER_DECLINED" } });
+      const transition = await tx.inquiry.updateMany({
+        where: { id: inquiryId, status: { in: PENDING_INQUIRY_STATUSES } },
+        data: { status: "OWNER_DECLINED" },
+      });
+      if (transition?.count !== 1) throw new ConflictException("Inquiry has already been decided");
+      const updated = await this.findInquiry(tx, inquiryId);
       await this.recordAudit(tx, { id: ownerId }, "INQUIRY_OWNER_DECLINED", { type: "Inquiry", id: inquiryId });
       return updated;
     });
@@ -169,9 +195,9 @@ export class AvailabilityService {
     input: { propertyId: string; startDate: string | Date; endDate: string | Date; reason?: string },
   ) {
     const { propertyId, startDate, endDate } = this.validateUnavailableInput(input);
-    await this.assertPropertyOwner(propertyId, ownerId);
     return this.withTransaction(async (tx: any) => {
       await this.lockProperty(tx, propertyId);
+      await this.assertPropertyOwner(propertyId, ownerId, tx);
       const store = tx.unavailableDate;
       if (!store?.create) return { propertyId, startDate, endDate, reason: input.reason?.trim() || null };
       const overlap = await store.findFirst?.({ where: { propertyId, startDate: { lt: endDate }, endDate: { gt: startDate } } });
@@ -189,9 +215,12 @@ export class AvailabilityService {
   ) {
     return this.withTransaction(async (tx: any) => {
       const store = tx.unavailableDate;
+      const hint = await store?.findUnique?.({ where: { id }, select: { propertyId: true } });
+      if (!hint) throw new NotFoundException("Unavailable date not found");
+      const existingPropertyId = hint.propertyId;
+      await this.lockProperty(tx, existingPropertyId);
       const existing = await store?.findUnique?.({ where: { id }, include: { property: true } });
       if (!existing || existing.property?.ownerId !== ownerId) throw new NotFoundException("Unavailable date not found");
-      await this.lockProperty(tx, existing.propertyId);
       const values = this.validateUnavailableInput({ propertyId: existing.propertyId, startDate: input.startDate ?? existing.startDate, endDate: input.endDate ?? existing.endDate });
       const overlap = await store.findFirst?.({ where: { id: { not: id }, propertyId: existing.propertyId, startDate: { lt: values.endDate }, endDate: { gt: values.startDate } } });
       if (overlap) throw new ConflictException("Those dates are already unavailable");
@@ -204,9 +233,11 @@ export class AvailabilityService {
   async deleteUnavailableDate(ownerId: string, id: string) {
     return this.withTransaction(async (tx: any) => {
       const store = tx.unavailableDate;
+      const hint = await store?.findUnique?.({ where: { id }, select: { propertyId: true } });
+      if (!hint) throw new NotFoundException("Unavailable date not found");
+      await this.lockProperty(tx, hint.propertyId);
       const existing = await store?.findUnique?.({ where: { id }, include: { property: true } });
       if (!existing || existing.property?.ownerId !== ownerId) throw new NotFoundException("Unavailable date not found");
-      await this.lockProperty(tx, existing.propertyId);
       const deleted = await store.delete({ where: { id } });
       await this.recordAudit(tx, { id: ownerId }, "UNAVAILABLE_DATE_DELETED", { type: "UnavailableDate", id });
       return deleted;
@@ -265,9 +296,10 @@ export class AvailabilityService {
     }
   }
 
-  private async assertPropertyOwner(propertyId: string, ownerId: string) {
-    const property = await (this.prisma as any).property?.findFirst?.({ where: { id: propertyId, ownerId }, select: { id: true } });
-    if (!property) throw new ForbiddenException("Only the property owner can manage availability");
+  private async assertPropertyOwner(propertyId: string, ownerId: string, db: any = this.prisma) {
+    const property = await db?.property?.findFirst?.({ where: { id: propertyId, ownerId }, select: { id: true } })
+      ?? await db?.property?.findUnique?.({ where: { id: propertyId }, select: { id: true, ownerId: true } });
+    if (!property || property.ownerId !== undefined && property.ownerId !== ownerId) throw new ForbiddenException("Only the property owner can manage availability");
   }
 
   private validateUnavailableInput(input: { propertyId: string; startDate: string | Date; endDate: string | Date }) {
@@ -309,6 +341,12 @@ export class AvailabilityService {
   private async lockProperty(tx: any, propertyId: string) {
     if (typeof tx.$queryRaw === "function") {
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Property" WHERE "id" = ${propertyId} FOR UPDATE`);
+    }
+  }
+
+  private async lockInquiry(tx: any, inquiryId: string) {
+    if (typeof tx.$queryRaw === "function") {
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Inquiry" WHERE "id" = ${inquiryId} FOR UPDATE`);
     }
   }
 }

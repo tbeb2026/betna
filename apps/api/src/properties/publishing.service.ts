@@ -6,6 +6,7 @@ import {
   NotFoundException,
   Optional,
 } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { TranslationService } from "./translation.service";
@@ -62,31 +63,43 @@ export class PublishingService {
   ) {}
 
   async publish(propertyId: string, actor?: Actor): Promise<Listing> {
-    const property = await this.findProperty(propertyId);
-    if (property.status !== "VERIFIED" && property.status !== "PUBLISHED") {
-      throw new ConflictException(
-        "Only a verified listing can be published",
-      );
-    }
-    if (!isCurrentPublicVerification({ ...property, status: "PUBLISHED" })) {
-      throw new ConflictException("Verification has expired");
-    }
-
-    const snapshot = await this.publicSnapshot(property);
     const published = await this.withTransaction(async (tx: any) => {
+      await this.lockProperty(tx, propertyId);
+      const property = await this.findProperty(propertyId, tx);
+      if (property.status !== "VERIFIED" && property.status !== "PUBLISHED") {
+        throw new ConflictException(
+          "Only a verified listing can be published",
+        );
+      }
+      if (!isCurrentPublicVerification({ ...property, status: "PUBLISHED" })) {
+        throw new ConflictException("Verification has expired");
+      }
+
+      const snapshot = await this.publicSnapshot(property);
       await this.createApprovedVersion(propertyId, snapshot, actor, tx);
-      const next = await tx.property.update({
-        where: { id: propertyId },
-        data: { status: "PUBLISHED" },
-        include: this.propertyInclude(),
-      });
+      const transition = typeof tx.property.updateMany === "function"
+        ? await tx.property.updateMany({
+            where: { id: propertyId, status: property.status },
+            data: { status: "PUBLISHED" },
+          })
+        : null;
+      if (transition && transition.count !== 1) {
+        throw new ConflictException("Property lifecycle changed during publication");
+      }
+      const next = transition
+        ? await this.findProperty(propertyId, tx)
+        : await tx.property.update({
+            where: { id: propertyId },
+            data: { status: "PUBLISHED" },
+            include: this.propertyInclude(),
+          });
       await this.recordAudit(tx, actor, "PROPERTY_PUBLISHED", propertyId, {
         status: "PUBLISHED",
       });
-      return next;
+      return { next, snapshot };
     });
-    this.approvedSnapshots.set(propertyId, snapshot);
-    return published;
+    this.approvedSnapshots.set(propertyId, published.snapshot);
+    return published.next;
   }
 
   /** Put a changed listing back through review without withdrawing its old copy. */
@@ -108,34 +121,47 @@ export class PublishingService {
         : typeof actorOrPatch === "string"
           ? actorOrPatch
           : undefined;
-    const property = await this.findProperty(propertyId);
-    if (property.status !== "PUBLISHED") {
-      throw new ConflictException("Only a published listing can be edited");
-    }
-    const material = this.isMaterialEdit(patch);
-    const data: Record<string, unknown> = {
-      status: material ? "PENDING_REVIEW" : property.status,
-    };
-    this.addScalarPatchFields(data, patch);
-    this.addExactLocationPatchFields(data, patch);
-    this.addOfferingPatch(data, patch);
-    this.addMediaPatch(data, patch);
-    this.addMaterialFactsPatch(data, property, patch);
     let snapshotForCache: Listing | undefined;
     const result = await this.withTransaction(async (tx: any) => {
+      await this.lockProperty(tx, propertyId);
+      const property = await this.findProperty(propertyId, tx);
+      if (property.status !== "PUBLISHED") {
+        throw new ConflictException("Only a published listing can be edited");
+      }
+      const material = this.isMaterialEdit(patch);
+      const data: Record<string, unknown> = {
+        status: material ? "PENDING_REVIEW" : property.status,
+      };
+      this.addScalarPatchFields(data, patch);
+      this.addExactLocationPatchFields(data, patch);
+      this.addOfferingPatch(data, patch);
+      this.addMediaPatch(data, patch);
+      this.addMaterialFactsPatch(data, property, patch);
       if (material) {
-        let snapshot = this.approvedSnapshots.get(propertyId) ?? (await this.findApprovedSnapshot(propertyId, tx));
+        let snapshot = await this.findApprovedSnapshot(propertyId, tx);
+        if (!snapshot && !tx.propertyVersion?.findFirst) snapshot = this.approvedSnapshots.get(propertyId);
         if (!snapshot) {
           snapshot = await this.publicSnapshot(property);
           await this.createApprovedVersion(propertyId, snapshot, actor, tx);
         }
         snapshotForCache = snapshot;
       }
-      const updated = await tx.property.update({
-        where: { id: propertyId },
-        data,
-        include: this.propertyInclude(),
-      });
+      const transition = typeof tx.property.updateMany === "function"
+        ? await tx.property.updateMany({
+            where: { id: propertyId, status: "PUBLISHED" },
+            data,
+          })
+        : null;
+      if (transition && transition.count !== 1) {
+        throw new ConflictException("Property lifecycle changed during edit");
+      }
+      const updated = transition
+        ? await this.findProperty(propertyId, tx)
+        : await tx.property.update({
+            where: { id: propertyId },
+            data,
+            include: this.propertyInclude(),
+          });
       await this.recordAudit(tx, actor, material ? "PROPERTY_MATERIAL_EDIT_REVIEW_CREATED" : "PROPERTY_EDITED", propertyId, {
         status: updated.status,
         material,
@@ -283,8 +309,8 @@ export class PublishingService {
     });
   }
 
-  private async findProperty(propertyId: string): Promise<Listing> {
-    const property = await this.prisma.property.findUnique({
+  private async findProperty(propertyId: string, db: any = this.prisma): Promise<Listing> {
+    const property = await db.property.findUnique({
       where: { id: propertyId },
       include: this.propertyInclude(),
     });
@@ -334,6 +360,12 @@ export class PublishingService {
       return (this.prisma as any).$transaction(work);
     }
     return work(this.prisma as any);
+  }
+
+  private async lockProperty(tx: any, propertyId: string) {
+    if (typeof tx.$queryRaw === "function") {
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Property" WHERE "id" = ${propertyId} FOR UPDATE`);
+    }
   }
 
   private async recordAudit(tx: any, actor: Actor | undefined, action: string, entityId: string, metadata: Record<string, unknown>) {

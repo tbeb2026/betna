@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { InquiriesService } from "./inquiries.service";
+import { AuditService } from "../audit/audit.service";
 
 const property = {
   id: "property-1",
@@ -202,6 +203,42 @@ describe("InquiriesService", () => {
     expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ type: "INQUIRY_OWNER_CONFIRMED" }));
     await expect(service.ownerRespond(created.inquiry.id, "owner-1", { decision: "DECLINED" })).rejects.toBeInstanceOf(ConflictException);
     await expect(service.ownerRespond(inquiries[0].id, "owner-1", { decision: "MAYBE" } as any)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("does not persist an owner response when its transaction audit fails", async () => {
+    const { prisma, inquiries } = makePrisma();
+    const inquiry = {
+      id: "inquiry-atomic",
+      reference: "BTNA-ATOMIC",
+      propertyId: "property-1",
+      status: "NEW",
+      guestEmail: "atomic@example.com",
+      guestPhone: "+254711111199",
+      property,
+      offering: { mode: "LONG_TERM" },
+    };
+    inquiries.push(inquiry);
+    const auditCreate = vi.fn().mockRejectedValue(new Error("audit unavailable"));
+    prisma.$transaction = vi.fn(async (work: any) => {
+      const txInquiry = { ...inquiry };
+      const tx: any = {
+        ...prisma,
+        inquiry: {
+          ...prisma.inquiry,
+          findUnique: vi.fn(async () => txInquiry),
+          update: vi.fn(async ({ data }: any) => { Object.assign(txInquiry, data); return txInquiry; }),
+        },
+        auditEvent: { create: auditCreate },
+      };
+      return work(tx);
+    });
+    const audit = new AuditService({ auditEvent: { create: vi.fn() } } as any);
+    const service = new InquiriesService(prisma, { enqueue: vi.fn() } as any, audit);
+
+    await expect(service.ownerRespond("inquiry-atomic", "owner-1", { decision: "DECLINED" }))
+      .rejects.toThrow("audit unavailable");
+    expect(inquiry.status).toBe("NEW");
+    expect(auditCreate).toHaveBeenCalled();
   });
 
   it("lets the owner confirm an inquiry after an admin approves its location", async () => {

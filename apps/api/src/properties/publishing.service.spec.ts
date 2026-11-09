@@ -6,6 +6,7 @@ import { PropertiesModule } from "./properties.module";
 import { PublishingService } from "./publishing.service";
 import { TranslationService } from "./translation.service";
 import { ListingLifecycleJob } from "./listing-lifecycle.job";
+import { AuditService } from "../audit/audit.service";
 
 const publishedProperty = {
   id: "property-1",
@@ -357,6 +358,70 @@ describe("TranslationService", () => {
     const service = new PublishingService(prisma);
 
     await expect(service.publish("property-1")).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("re-reads the lifecycle state after locking so a stale publish cannot bypass review", async () => {
+    const { prisma, rows, versions } = makePrisma();
+    rows.get("property-1")!.status = "VERIFIED";
+    prisma.$transaction = vi.fn(async (work: any) => {
+      rows.get("property-1")!.status = "PENDING_REVIEW";
+      return work(prisma);
+    });
+    const service = new PublishingService(prisma);
+
+    await expect(service.publish("property-1")).rejects.toBeInstanceOf(ConflictException);
+    expect(versions).toHaveLength(0);
+    expect(rows.get("property-1")?.status).toBe("PENDING_REVIEW");
+  });
+
+  it("re-reads the lifecycle state after locking so a stale material edit cannot overwrite review", async () => {
+    const { prisma, rows } = makePrisma();
+    rows.get("property-1")!.status = "PUBLISHED";
+    prisma.$transaction = vi.fn(async (work: any) => {
+      rows.get("property-1")!.status = "PENDING_REVIEW";
+      return work(prisma);
+    });
+    const service = new PublishingService(prisma);
+
+    await expect(service.createMaterialEditReview("property-1", { category: "changed" }))
+      .rejects.toBeInstanceOf(ConflictException);
+    expect(rows.get("property-1")?.status).toBe("PENDING_REVIEW");
+  });
+
+  it("does not commit a publication version when its transaction audit fails", async () => {
+    const { prisma, rows, versions } = makePrisma();
+    const auditCreate = vi.fn().mockRejectedValue(new Error("audit unavailable"));
+    prisma.$transaction = vi.fn(async (work: any) => {
+      const txRow = { ...rows.get("property-1") };
+      const txVersions = versions.map((version) => ({ ...version }));
+      const tx: any = {
+        ...prisma,
+        property: {
+          ...prisma.property,
+          findUnique: vi.fn(async () => txRow),
+          update: vi.fn(async ({ data }: any) => { Object.assign(txRow, data); return txRow; }),
+        },
+        propertyVersion: {
+          ...prisma.propertyVersion,
+          findFirst: vi.fn(async ({ where, orderBy }: any) => {
+            const matches = txVersions.filter((version) => version.propertyId === where.propertyId && (where.isApproved === undefined || version.isApproved === where.isApproved));
+            if (orderBy?.version === "desc") matches.sort((left, right) => right.version - left.version);
+            return matches[0] ?? null;
+          }),
+          updateMany: vi.fn(async ({ where, data }: any) => { txVersions.filter((version) => version.propertyId === where.propertyId && version.isApproved === where.isApproved).forEach((version) => Object.assign(version, data)); }),
+          create: vi.fn(async ({ data }: any) => { const version = { ...data }; txVersions.push(version); return version; }),
+        },
+        auditEvent: { create: auditCreate },
+      };
+      return work(tx);
+    });
+    const audit = new AuditService({ auditEvent: { create: vi.fn() } } as any);
+    const service = new PublishingService(prisma, undefined, audit);
+
+    await expect(service.publish("property-1")).rejects.toThrow("audit unavailable");
+    expect(rows.get("property-1")?.status).toBe("VERIFIED");
+    expect(versions).toHaveLength(0);
+    expect(auditCreate).toHaveBeenCalled();
   });
 });
 

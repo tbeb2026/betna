@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ConflictException } from "@nestjs/common";
 import { CommissionsService } from "./commissions.service";
 import { ConversionsService } from "./conversions.service";
+import { AuditService } from "../audit/audit.service";
 
 function makePrisma() {
   const conversions: any[] = [];
@@ -32,20 +33,39 @@ function makePrisma() {
   return { prisma, conversions, commissions };
 }
 
+function failAuditTransaction(prisma: any, conversions: any[], commissions: any[], auditCreate: any) {
+  prisma.$transaction = vi.fn(async (work: any) => {
+    const txConversions = conversions.map((row) => ({ ...row }));
+    const txCommissions = commissions.map((row) => ({ ...row }));
+    const tx: any = {
+      ...prisma,
+      conversion: {
+        ...prisma.conversion,
+        findUnique: vi.fn(async ({ where }: any) => txConversions.find((row) => row.id === where.id || row.inquiryId === where.inquiryId) ?? null),
+        create: vi.fn(async ({ data }: any) => { const row = { id: `tx-conversion-${txConversions.length + 1}`, ...data }; txConversions.push(row); return row; }),
+        update: vi.fn(async ({ where, data }: any) => { const row = txConversions.find((candidate) => candidate.id === where.id); Object.assign(row, data); return row; }),
+      },
+      commission: {
+        ...prisma.commission,
+        findUnique: vi.fn(async ({ where }: any) => txCommissions.find((row) => row.id === where.id || row.conversionId === where.conversionId) ?? null),
+        create: vi.fn(async ({ data }: any) => { const row = { id: `tx-commission-${txCommissions.length + 1}`, ...data }; txCommissions.push(row); return row; }),
+        update: vi.fn(async ({ where, data }: any) => { const row = txCommissions.find((candidate) => candidate.id === where.id); Object.assign(row, data); return row; }),
+      },
+      auditEvent: { create: auditCreate },
+    };
+    // No commit copy exists on this failing transaction: authoritative arrays
+    // only change when the transaction callback returns successfully.
+    return work(tx);
+  });
+}
+
 describe("ConversionsService and CommissionsService", () => {
   it("rolls back a reported conversion when its audit write fails", async () => {
     const { prisma, conversions } = makePrisma();
-    const before = structuredClone(conversions);
-    const audit = { record: vi.fn().mockRejectedValue(new Error("audit unavailable")) };
-    prisma.$transaction = vi.fn(async (work: any) => {
-      try {
-        return await work(prisma);
-      } catch (error) {
-        conversions.splice(0, conversions.length, ...before);
-        throw error;
-      }
-    });
-    const service = new ConversionsService(prisma, audit as any);
+    const auditCreate = vi.fn().mockRejectedValue(new Error("audit unavailable"));
+    failAuditTransaction(prisma, conversions, [], auditCreate);
+    const audit = new AuditService({ auditEvent: { create: vi.fn() } } as any);
+    const service = new ConversionsService(prisma, audit);
 
     await expect(service.report({
       inquiryId: "inquiry-1",
@@ -55,10 +75,7 @@ describe("ConversionsService and CommissionsService", () => {
       paymentEvidence: "receipt-ref-1",
     })).rejects.toThrow("audit unavailable");
     expect(conversions).toEqual([]);
-    expect(audit.record).toHaveBeenCalledWith(
-      prisma,
-      expect.objectContaining({ action: "CONVERSION_REPORTED" }),
-    );
+    expect(auditCreate).toHaveBeenCalled();
   });
 
   it("rolls back a commission transition when its audit write fails", async () => {
@@ -74,24 +91,14 @@ describe("ConversionsService and CommissionsService", () => {
     await conversionsService.verifyEvidence(reported.id, "staff-1", {
       paymentEvidence: "staff-checked-receipt-1",
     });
-    const before = structuredClone(commissions);
-    const audit = { record: vi.fn().mockRejectedValue(new Error("audit unavailable")) };
-    prisma.$transaction = vi.fn(async (work: any) => {
-      try {
-        return await work(prisma);
-      } catch (error) {
-        commissions.splice(0, commissions.length, ...before);
-        throw error;
-      }
-    });
-    const service = new CommissionsService(prisma, audit as any, { commissionPercentage: 12.5 });
+    const auditCreate = vi.fn().mockRejectedValue(new Error("audit unavailable"));
+    failAuditTransaction(prisma, conversions, commissions, auditCreate);
+    const audit = new AuditService({ auditEvent: { create: vi.fn() } } as any);
+    const service = new CommissionsService(prisma, audit, { commissionPercentage: 12.5 });
 
     await expect(service.markDue(reported.id, "staff-1")).rejects.toThrow("audit unavailable");
-    expect(commissions).toEqual(before);
-    expect(audit.record).toHaveBeenCalledWith(
-      prisma,
-      expect.objectContaining({ action: "COMMISSION_MARKED_DUE" }),
-    );
+    expect(commissions).toHaveLength(0);
+    expect(auditCreate).toHaveBeenCalled();
     expect(conversions).toHaveLength(1);
   });
 

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ConflictException } from "@nestjs/common";
 import { AvailabilityService } from "./availability.service";
+import { AuditService } from "../audit/audit.service";
 
 function makePrisma() {
   const inquiries: any[] = [
@@ -105,28 +106,33 @@ describe("AvailabilityService", () => {
 
   it("rolls back inquiry and block state when an audit write fails", async () => {
     const { prisma, inquiries, blocks } = makePrisma();
-    const audit = { record: vi.fn().mockRejectedValue(new Error("audit unavailable")) };
-    const beforeInquiries = structuredClone(inquiries);
-    const beforeBlocks = structuredClone(blocks);
+    const auditCreate = vi.fn().mockRejectedValue(new Error("audit unavailable"));
+    let transactionClient: any;
     prisma.$transaction = vi.fn(async (work: any) => {
-      try {
-        return await work(prisma);
-      } catch (error) {
-        inquiries.splice(0, inquiries.length, ...beforeInquiries);
-        blocks.splice(0, blocks.length, ...beforeBlocks);
-        throw error;
-      }
+      // This fake has the same commit boundary as Prisma: work runs against a
+      // private transaction client and is copied into committed state only if
+      // every tx operation succeeds. A failed audit leaves the committed arrays
+      // untouched without test-side restoration.
+      const txState = makePrisma();
+      txState.inquiries.splice(0, txState.inquiries.length, ...structuredClone(inquiries));
+      txState.blocks.splice(0, txState.blocks.length, ...structuredClone(blocks));
+      transactionClient = txState.prisma;
+      transactionClient.auditEvent = { create: auditCreate };
+      const result = await work(transactionClient);
+      inquiries.splice(0, inquiries.length, ...txState.inquiries);
+      blocks.splice(0, blocks.length, ...txState.blocks);
+      return result;
     });
-    const service = new AvailabilityService(prisma, audit as any);
+    const audit = new AuditService({ auditEvent: { create: vi.fn() } } as any);
+    const service = new AvailabilityService(prisma, audit);
 
     await expect(service.confirmInquiryAndBlockDates("inquiry-winner", "owner-1"))
       .rejects.toThrow("audit unavailable");
-    expect(inquiries).toEqual(beforeInquiries);
-    expect(blocks).toEqual(beforeBlocks);
-    expect(audit.record).toHaveBeenCalledWith(
-      prisma,
-      expect.objectContaining({ action: "INQUIRY_DATES_BLOCKED" }),
-    );
+    expect(inquiries.find((row) => row.id === "inquiry-winner")?.status).toBe("NEW");
+    expect(inquiries.find((row) => row.id === "inquiry-overlap")?.status).toBe("CONTACTED");
+    expect(blocks).toHaveLength(0);
+    expect(auditCreate).toHaveBeenCalled();
+    expect(transactionClient).not.toBe(prisma);
   });
 
   it("atomically blocks confirmed dates and declines overlapping pending inquiries", async () => {
@@ -165,5 +171,44 @@ describe("AvailabilityService", () => {
       type: "INQUIRY_AUTO_DECLINED_OVERLAP",
       inquiryId: "inquiry-legacy-overlap",
     }));
+  });
+
+  it("locks the property and inquiry before declining and uses a guarded status update", async () => {
+    const { prisma, inquiries } = makePrisma();
+    const service = new AvailabilityService(prisma);
+
+    await service.ownerDeclineInquiry("inquiry-winner", "owner-1");
+
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(prisma.inquiry.updateMany).toHaveBeenCalledWith({
+      where: { id: "inquiry-winner", status: { in: ["NEW", "CONTACTED", "LOCATION_APPROVED"] } },
+      data: { status: "OWNER_DECLINED" },
+    });
+    expect(inquiries.find((row) => row.id === "inquiry-winner")?.status).toBe("OWNER_DECLINED");
+  });
+
+  it("authorizes unavailable-date writes after the property lock", async () => {
+    const property = { id: "property-1", ownerId: "owner-1" };
+    const unavailable: any[] = [];
+    const prisma: any = {
+      property: {
+        findFirst: vi.fn(async ({ where }: any) => property.id === where.id && property.ownerId === where.ownerId ? property : null),
+        findUnique: vi.fn(async ({ where }: any) => property.id === where.id ? property : null),
+      },
+      unavailableDate: {
+        create: vi.fn(async ({ data }: any) => { const row = { id: "unavailable-1", ...data }; unavailable.push(row); return row; }),
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+      $transaction: vi.fn(async (work: any) => work(prisma)),
+      $queryRaw: vi.fn(async () => { property.ownerId = "owner-2"; return []; }),
+    };
+    const service = new AvailabilityService(prisma);
+
+    await expect(service.createUnavailableDate("owner-1", {
+      propertyId: "property-1",
+      startDate: "2026-12-20",
+      endDate: "2026-12-22",
+    })).rejects.toThrow(/property owner/i);
+    expect(unavailable).toHaveLength(0);
   });
 });

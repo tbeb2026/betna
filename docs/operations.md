@@ -26,6 +26,13 @@ To roll back an application regression, route traffic to the last known-good ima
 - Weekly: test restore into an isolated environment, review dependency/image findings, and check audit-log retention.
 - Monthly: rotate credentials as scheduled, review access and role assignments, and exercise the incident contact tree.
 
+## Database integration gate
+
+Run `pnpm test:integration` (or `pnpm --filter @betna/api test:db`) against an
+isolated PostgreSQL/PostGIS database after migrations. This gate validates the
+durable schema and immutable audit trigger; unit tests use transactional fakes
+when a database is unavailable.
+
 ## SLO starting points
 
 Target 99.5% monthly availability for public search and inquiry submission, with API readiness as the primary availability signal. Page on-call for a sustained 5xx rate above 2%, readiness unavailable for 2 minutes, or a queue older than 15 minutes. Product owners decide whether a degraded inquiry path is acceptable during an incident.

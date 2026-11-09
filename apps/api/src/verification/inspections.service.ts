@@ -6,6 +6,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { AssignmentsService } from "./assignments.service";
 import { ChecklistAnswers, ChecklistService } from "./checklist.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -244,62 +245,98 @@ export class InspectionsService {
         "Review decision must be APPROVED or REJECTED",
       );
     }
-    const inspection = await this.findInspection(inspectionId);
-    const definition = await this.checklist.getPersisted(
-      String(inspection.property?.category ?? "residential"),
-      inspection.checklistVersion,
-    );
-    const answers = (inspection.checklist ?? {}) as Record<string, unknown>;
-    const missingChecklistItems = definition.required.filter(
-      (key) => !this.checklist.answerPasses(answers[key]),
-    );
-    if (
-      decision === "APPROVED" &&
-      (inspection.status !== "READY_FOR_REVIEW" ||
-        !inspection.requiredEvidenceSynced ||
-        missingChecklistItems.length > 0)
-    ) {
-      const checklistMessage = missingChecklistItems.length
-        ? `: ${missingChecklistItems.join(", ")}`
-        : "";
-      throw new ConflictException(
-        `Only synced, validated reports are ready for approval${checklistMessage}`,
-      );
-    }
-    if (inspection.status !== "READY_FOR_REVIEW") {
-      throw new ConflictException(
-        "Only reports ready for review can be approved or rejected",
-      );
-    }
     return this.withTransaction(async (tx: any) => {
-      const updated = await tx.inspection.update({
-        where: { id: inspectionId },
-        data: { status: decision, notes: notes?.trim() || inspection.notes },
-        include: { evidence: true, property: true },
-      });
-      if (decision === "APPROVED" && tx.property?.update) {
-        const inspectedAt = inspection.inspectedAt ?? new Date();
-        await tx.property.update({
-          where: { id: inspection.propertyId },
-          data: {
-            status: "VERIFIED",
-            lastInspectedAt: inspectedAt,
-            verificationValidUntil: new Date(
-              inspectedAt.getTime() + 365 * 24 * 60 * 60 * 1000,
-            ),
-          },
+      const hint = await this.findInspection(inspectionId, tx);
+      await this.lockInspection(tx, inspectionId);
+      await this.lockProperty(tx, hint.propertyId);
+      const inspection = await this.findInspection(inspectionId, tx);
+      const definition = await this.checklist.getPersisted(
+        String(inspection.property?.category ?? "residential"),
+        inspection.checklistVersion,
+      );
+      const answers = (inspection.checklist ?? {}) as Record<string, unknown>;
+      const missingChecklistItems = definition.required.filter(
+        (key) => !this.checklist.answerPasses(answers[key]),
+      );
+      if (
+        decision === "APPROVED" &&
+        (!inspection.requiredEvidenceSynced || missingChecklistItems.length > 0)
+      ) {
+        const checklistMessage = missingChecklistItems.length
+          ? `: ${missingChecklistItems.join(", ")}`
+          : "";
+        throw new ConflictException(
+          `Only synced, validated reports are ready for approval${checklistMessage}`,
+        );
+      }
+      if (inspection.status !== "READY_FOR_REVIEW") {
+        throw new ConflictException(
+          "Only reports ready for review can be approved or rejected",
+        );
+      }
+
+      const transition = typeof tx.inspection.updateMany === "function"
+        ? await tx.inspection.updateMany({
+            where: { id: inspectionId, status: "READY_FOR_REVIEW" },
+            data: { status: decision, notes: notes?.trim() || inspection.notes },
+          })
+        : null;
+      if (transition && transition.count !== 1) {
+        throw new ConflictException("Inspection has already been reviewed");
+      }
+      if (!transition) {
+        await tx.inspection.update({
+          where: { id: inspectionId },
+          data: { status: decision, notes: notes?.trim() || inspection.notes },
         });
+      }
+
+      if (decision === "APPROVED" && tx.property) {
+        const inspectedAt = inspection.inspectedAt ?? new Date();
+        const propertyTransition = typeof tx.property.updateMany === "function"
+          ? await tx.property.updateMany({
+              where: {
+                id: inspection.propertyId,
+                // New submissions are PENDING_REVIEW; ownership re-verification
+                // explicitly uses PENDING_INSPECTION. Both are valid review
+                // lifecycles, while an already terminal/fraud state is not.
+                status: { in: ["PENDING_REVIEW", "PENDING_INSPECTION"] },
+              },
+              data: {
+                status: "VERIFIED",
+                lastInspectedAt: inspectedAt,
+                verificationValidUntil: new Date(
+                  inspectedAt.getTime() + 365 * 24 * 60 * 60 * 1000,
+                ),
+              },
+            })
+          : null;
+        if (propertyTransition && propertyTransition.count !== 1) {
+          throw new ConflictException("Property is no longer awaiting this inspection");
+        }
+        if (!propertyTransition && tx.property.update) {
+          await tx.property.update({
+            where: { id: inspection.propertyId },
+            data: {
+              status: "VERIFIED",
+              lastInspectedAt: inspectedAt,
+              verificationValidUntil: new Date(
+                inspectedAt.getTime() + 365 * 24 * 60 * 60 * 1000,
+              ),
+            },
+          });
+        }
       }
       await this.recordAudit(tx, actor, `INSPECTION_${decision}`, inspectionId, {
         propertyId: inspection.propertyId,
         checklistVersion: inspection.checklistVersion,
       });
-      return updated;
+      return this.findInspection(inspectionId, tx);
     });
   }
 
-  private async findInspection(id: string) {
-    const inspection = await this.prisma.inspection.findUnique({
+  private async findInspection(id: string, db: any = this.prisma) {
+    const inspection = await db.inspection.findUnique({
       where: { id },
       include: { evidence: true, property: true },
     });
@@ -409,6 +446,18 @@ export class InspectionsService {
       return (this.prisma as any).$transaction(work);
     }
     return work(this.prisma as any);
+  }
+
+  private async lockInspection(tx: any, inspectionId: string) {
+    if (typeof tx.$queryRaw === "function") {
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Inspection" WHERE "id" = ${inspectionId} FOR UPDATE`);
+    }
+  }
+
+  private async lockProperty(tx: any, propertyId: string) {
+    if (typeof tx.$queryRaw === "function") {
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Property" WHERE "id" = ${propertyId} FOR UPDATE`);
+    }
   }
 
   private async recordAudit(
