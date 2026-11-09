@@ -135,6 +135,43 @@ describe("PublishingService", () => {
     );
   });
 
+  it("projects pending review location from the approved snapshot, including null coordinates", async () => {
+    const { prisma, rows, versions } = makePrisma();
+    const service = new PublishingService(prisma);
+
+    await service.publish("property-1");
+    await service.createMaterialEditReview("property-1", { category: "residential-premium" });
+
+    const snapshot = versions[0].snapshot;
+    snapshot.location = {
+      country: "UG",
+      city: "Kampala",
+      neighborhood: "Kololo",
+      label: "Kololo, Kampala",
+      latitude: null,
+      longitude: null,
+    };
+    Object.assign(rows.get("property-1"), {
+      country: { code: "KE" },
+      city: { name: "Nairobi" },
+      publicLocationLabel: "Raw pending location",
+      publicLatitude: -1.2,
+      publicLongitude: 36.8,
+    });
+
+    await expect(service.getPublicProjection("property-1")).resolves.toMatchObject({
+      status: "PUBLISHED",
+      location: {
+        country: "UG",
+        city: "Kampala",
+        neighborhood: "Kololo",
+        label: "Kololo, Kampala",
+        latitude: null,
+        longitude: null,
+      },
+    });
+  });
+
   it("uses a persisted approved version after a fresh service instance", async () => {
     const { prisma } = makePrisma();
     const first = new PublishingService(prisma);

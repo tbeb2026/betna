@@ -111,7 +111,9 @@ describe("public property discovery", () => {
     expect(results[0]).not.toHaveProperty("exactAddress");
     expect(results[0]).not.toHaveProperty("exactLatitude");
     expect(results[0]?.media).toEqual([{ id: "public-photo", objectKey: "public/photo.jpg" }]);
-    expect(prisma.property.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ status: "PUBLISHED" }) }));
+    expect(prisma.property.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ status: { in: ["PUBLISHED", "PENDING_REVIEW"] } }),
+    }));
   });
 
   it("never returns paused or fraud listings", async () => {

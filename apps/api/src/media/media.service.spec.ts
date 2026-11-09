@@ -207,6 +207,48 @@ describe("MediaService", () => {
     );
   });
 
+  it("rejects a listing original outside its property prefix before signing", async () => {
+    const storage = makeStorage();
+    const prisma = makePrisma({
+      id: "media-1",
+      propertyId: "property-1",
+      purpose: "LISTING",
+      status: "CLEAN",
+      objectKey: "public/listings/property-2/media-1/original.jpg",
+      contentType: "image/jpeg",
+      sizeBytes: BigInt(1200),
+      isPublic: true,
+    });
+    const service = new MediaService(prisma, storage as any);
+
+    await expect(service.getPublicVariants("media-1")).rejects.toBeInstanceOf(ForbiddenException);
+    expect(storage.createSignedReadUrl).not.toHaveBeenCalled();
+  });
+
+  it("rejects cross-property or unsafe responsive variants before signing", async () => {
+    for (const key of [
+      "public/listings/property-2/media-1.w320.webp",
+      "public/listings/property-1/../property-2/media-1.w320.webp",
+    ]) {
+      const storage = makeStorage();
+      (storage as any).responsiveVariants = vi.fn(() => [{ width: 320, key }]);
+      const prisma = makePrisma({
+        id: "media-1",
+        propertyId: "property-1",
+        purpose: "LISTING",
+        status: "CLEAN",
+        objectKey: "public/listings/property-1/media-1/original.jpg",
+        contentType: "image/jpeg",
+        sizeBytes: BigInt(1200),
+        isPublic: true,
+      });
+      const service = new MediaService(prisma, storage as any);
+
+      await expect(service.getPublicVariants("media-1")).rejects.toBeInstanceOf(ForbiddenException);
+      expect(storage.createSignedReadUrl).not.toHaveBeenCalled();
+    }
+  });
+
   it("does not let an unrelated owner complete another owner's upload", async () => {
     const prisma = makePrisma();
     prisma.property.findFirst.mockResolvedValueOnce(null);

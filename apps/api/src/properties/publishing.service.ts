@@ -419,6 +419,19 @@ export class PublishingService {
     const resolvedLocale = normalizedAvailableLocales.includes(requestedLocale)
       ? requestedLocale
       : "en";
+    // Approved pending-review projections carry their immutable location under
+    // snapshot.location. Never fall back to mutable row fields when that
+    // object exists; otherwise an edit under review can change public data.
+    const location = property.location && typeof property.location === "object"
+      ? property.location
+      : {
+          country: property.country?.code ?? property.countryCode,
+          city: property.city?.name ?? property.cityName,
+          neighborhood: property.neighborhood?.name ?? property.neighborhoodName,
+          label: property.publicLocationLabel,
+          latitude: property.publicLatitude,
+          longitude: property.publicLongitude,
+        };
     return {
       id: property.id,
       slug: property.slug,
@@ -439,12 +452,12 @@ export class PublishingService {
         validUntil: verificationValidUntil,
       },
       location: {
-        country: property.country?.code ?? property.countryCode,
-        city: property.city?.name ?? property.cityName,
-        neighborhood: property.neighborhood?.name ?? property.neighborhoodName,
-        label: property.publicLocationLabel,
-        latitude: Number(property.publicLatitude),
-        longitude: Number(property.publicLongitude),
+        country: location.country ?? null,
+        city: location.city ?? null,
+        neighborhood: location.neighborhood ?? null,
+        label: location.label ?? null,
+        latitude: this.nullSafeNumber(location.latitude),
+        longitude: this.nullSafeNumber(location.longitude),
       },
       offerings: (property.offerings ?? []).map((offering: Listing) => ({
         mode: offering.mode,
@@ -493,6 +506,12 @@ export class PublishingService {
   private async mediaUrl(objectKey: string): Promise<string> {
     if (this.storage) return this.storage.createSignedReadUrl(objectKey);
     return this.publicMediaUrl(objectKey);
+  }
+
+  private nullSafeNumber(value: unknown): number | null {
+    if (value === null || value === undefined || value === "") return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
   }
 
   private isMaterialEdit(patch: Record<string, unknown>): boolean {

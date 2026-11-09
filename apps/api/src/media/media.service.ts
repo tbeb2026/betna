@@ -199,19 +199,31 @@ export class MediaService {
       media.purpose !== "LISTING" ||
       media.status !== "CLEAN" ||
       media.isPublic !== true ||
-      !media.objectKey.startsWith("public/listings/") ||
+      !this.isSafeListingObjectKey(media.objectKey, media.propertyId) ||
       !propertyLookup ||
       !isCurrentPublicVerification(property)
     ) {
       throw new ForbiddenException("Media is not publicly available");
     }
-    const variants: StorageVariant[] =
-      typeof (this.storage as any).responsiveVariants === "function"
-        ? (this.storage as any).responsiveVariants(media.objectKey)
-        : [320, 640, 1280].map((width) => ({
-            width,
-            key: `${media.objectKey}.w${width}`,
-          }));
+    let variants: StorageVariant[];
+    try {
+      variants =
+        typeof (this.storage as any).responsiveVariants === "function"
+          ? (this.storage as any).responsiveVariants(media.objectKey)
+          : [320, 640, 1280].map((width) => ({
+              width,
+              key: `${media.objectKey}.w${width}`,
+            }));
+    } catch {
+      throw new ForbiddenException("Media variants are not publicly available");
+    }
+    if (
+      !Array.isArray(variants) ||
+      variants.length === 0 ||
+      variants.some((variant) => !this.isSafeListingObjectKey(variant?.key, media.propertyId))
+    ) {
+      throw new ForbiddenException("Media variants are not publicly available");
+    }
     return Promise.all(
       variants.map(async (variant) => ({
         width: variant.width,
@@ -261,6 +273,20 @@ export class MediaService {
     });
     if (!media) throw new NotFoundException("Media not found");
     return media;
+  }
+
+  private isSafeListingObjectKey(objectKey: unknown, propertyId: unknown): objectKey is string {
+    if (typeof objectKey !== "string" || typeof propertyId !== "string" || !propertyId) {
+      return false;
+    }
+    const prefix = `public/listings/${propertyId}/`;
+    return (
+      objectKey.startsWith(prefix) &&
+      !objectKey.startsWith("/") &&
+      !objectKey.includes("..") &&
+      !objectKey.includes("\\") &&
+      objectKey.length > prefix.length
+    );
   }
 
   private normalizeActor(actor: MediaActor | string): MediaActor {
