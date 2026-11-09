@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BadRequestException,
   ConflictException,
@@ -75,6 +75,21 @@ function makePrisma() {
 }
 
 describe("InquiriesService", () => {
+  const initialPublicApiUrl = process.env.PUBLIC_API_URL;
+  const initialNodeEnv = process.env.NODE_ENV;
+
+  beforeEach(() => {
+    process.env.PUBLIC_API_URL = "http://localhost:4000";
+    process.env.NODE_ENV = "development";
+  });
+
+  afterEach(() => {
+    if (initialPublicApiUrl === undefined) delete process.env.PUBLIC_API_URL;
+    else process.env.PUBLIC_API_URL = initialPublicApiUrl;
+    if (initialNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = initialNodeEnv;
+  });
+
   it("rejects guest inquiries and contact clicks when verification has no expiry", async () => {
     const { prisma } = makePrisma();
     prisma.property.findUnique.mockResolvedValue({

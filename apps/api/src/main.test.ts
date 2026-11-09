@@ -108,18 +108,52 @@ describe("production runtime validation", () => {
   });
 
   it("requires a configured HTTPS public API origin", () => {
+    expect(getPublicApiOrigin({ NODE_ENV: "development" })).toBe(
+      "http://localhost:4000",
+    );
     expect(() => getPublicApiOrigin({ NODE_ENV: "production" })).toThrow(
       /PUBLIC_API_URL/,
     );
+    expect(() => getPublicApiOrigin({ NODE_ENV: "staging" })).toThrow(
+      /PUBLIC_API_URL/,
+    );
+    expect(() => getPublicApiOrigin({ NODE_ENV: "test" })).toThrow(
+      /PUBLIC_API_URL/,
+    );
+    expect(() => getPublicApiOrigin({})).toThrow(/PUBLIC_API_URL/);
     expect(() =>
       getPublicApiOrigin({
         NODE_ENV: "production",
         PUBLIC_API_URL: "http://localhost:4000",
       }),
     ).toThrow(/HTTPS/);
-    expect(
+    expect(() =>
+      getPublicApiOrigin({
+        NODE_ENV: "staging",
+        PUBLIC_API_URL: "https://localhost:4000",
+      }),
+    ).toThrow(/localhost|loopback/);
+    expect(() =>
       getPublicApiOrigin({
         NODE_ENV: "production",
+        PUBLIC_API_URL: "https://localhost:4000",
+      }),
+    ).toThrow(/localhost|loopback/);
+    expect(() =>
+      getPublicApiOrigin({
+        NODE_ENV: "production",
+        PUBLIC_API_URL: "https://127.0.0.1:4000",
+      }),
+    ).toThrow(/localhost|loopback/);
+    expect(() =>
+      getPublicApiOrigin({
+        NODE_ENV: "production",
+        PUBLIC_API_URL: "https://[::1]:4000",
+      }),
+    ).toThrow(/localhost|loopback/);
+    expect(
+      getPublicApiOrigin({
+        NODE_ENV: "staging",
         PUBLIC_API_URL: "https://api.betna.example/",
       }),
     ).toBe("https://api.betna.example");

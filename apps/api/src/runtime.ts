@@ -1,3 +1,5 @@
+import { isIP } from "node:net";
+
 export type ApiRuntimeEnvironment = {
   [key: string]: string | undefined;
   API_PORT?: string;
@@ -97,9 +99,9 @@ export function getPublicApiOrigin(
   environment: ApiRuntimeEnvironment = process.env,
 ): string {
   const configured = environment.PUBLIC_API_URL?.trim();
-  const value = configured ||
-    (environment.NODE_ENV === "production" ? undefined : "http://localhost:4000");
-  if (!value) throw new Error("PUBLIC_API_URL is required in production");
+  const isDevelopment = environment.NODE_ENV === "development";
+  const value = configured || (isDevelopment ? "http://localhost:4000" : undefined);
+  if (!value) throw new Error("PUBLIC_API_URL is required outside development");
 
   let parsed: URL;
   try {
@@ -118,13 +120,28 @@ export function getPublicApiOrigin(
   ) {
     throw new Error("PUBLIC_API_URL must be an HTTP(S) origin without a path");
   }
-  if (
-    environment.NODE_ENV === "production" &&
-    parsed.protocol !== "https:"
-  ) {
-    throw new Error("Production PUBLIC_API_URL must use HTTPS");
+  if (!isDevelopment && parsed.protocol !== "https:") {
+    throw new Error("PUBLIC_API_URL must use HTTPS outside development");
+  }
+  if (!isDevelopment && isLoopbackHostname(parsed.hostname)) {
+    throw new Error(
+      "PUBLIC_API_URL must not use localhost or a loopback address outside development",
+    );
   }
   return parsed.origin;
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+  if (normalized === "localhost" || normalized.endsWith(".localhost")) {
+    return true;
+  }
+
+  const ip = normalized.startsWith("[") && normalized.endsWith("]")
+    ? normalized.slice(1, -1)
+    : normalized;
+  if (isIP(ip) === 4) return ip.startsWith("127.");
+  return isIP(ip) === 6 && ip === "::1";
 }
 
 /** Resolve the API listener from the documented API_PORT, defaulting to 4000. */
