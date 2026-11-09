@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+} from "@nestjs/common";
 import { InquiriesService } from "./inquiries.service";
 import { AuditService } from "../audit/audit.service";
 
@@ -36,8 +40,13 @@ function makePrisma() {
     },
     inquiry: {
       findFirst: vi.fn().mockResolvedValue(null),
-      findUnique: vi.fn(async ({ where }: any) =>
-        inquiries.find((item) => item.id === where.id) ?? null,
+      findUnique: vi.fn(
+        async ({ where }: any) =>
+          inquiries.find((item) =>
+            where.id
+              ? item.id === where.id
+              : item.locationReleaseId === where.locationReleaseId,
+          ) ?? null,
       ),
       findMany: vi.fn(async () => inquiries),
       create: vi.fn(async ({ data }: any) => {
@@ -67,34 +76,53 @@ function makePrisma() {
 describe("InquiriesService", () => {
   it("rejects guest inquiries and contact clicks when verification has no expiry", async () => {
     const { prisma } = makePrisma();
-    prisma.property.findUnique.mockResolvedValue({ ...property, verificationValidUntil: null });
+    prisma.property.findUnique.mockResolvedValue({
+      ...property,
+      verificationValidUntil: null,
+    });
     const service = new InquiriesService(prisma, { enqueue: vi.fn() } as any);
 
-    await expect(service.createGuestInquiry({
-      propertyId: "property-1",
-      mode: "SHORT_STAY",
-      name: "No Expiry Guest",
-      email: "no-expiry@example.com",
-      phone: "+254711111111",
-      message: "Can I visit?",
-      ...shortStayDates,
-    })).rejects.toThrow("Published property");
-    await expect(service.logContactClick({ propertyId: "property-1", target: "BETNA", channel: "WHATSAPP" })).rejects.toThrow("Published property");
+    await expect(
+      service.createGuestInquiry({
+        propertyId: "property-1",
+        mode: "SHORT_STAY",
+        name: "No Expiry Guest",
+        email: "no-expiry@example.com",
+        phone: "+254711111111",
+        message: "Can I visit?",
+        ...shortStayDates,
+      }),
+    ).rejects.toThrow("Published property");
+    await expect(
+      service.logContactClick({
+        propertyId: "property-1",
+        target: "BETNA",
+        channel: "WHATSAPP",
+      }),
+    ).rejects.toThrow("Published property");
 
     prisma.property.findUnique.mockResolvedValue({
       ...property,
       verificationValidUntil: new Date("2020-01-01T00:00:00.000Z"),
     });
-    await expect(service.createGuestInquiry({
-      propertyId: "property-1",
-      mode: "SHORT_STAY",
-      name: "Expired Guest",
-      email: "expired@example.com",
-      phone: "+254711111112",
-      message: "Can I visit?",
-      ...shortStayDates,
-    })).rejects.toThrow("Published property");
-    await expect(service.logContactClick({ propertyId: "property-1", target: "BETNA", channel: "WHATSAPP" })).rejects.toThrow("Published property");
+    await expect(
+      service.createGuestInquiry({
+        propertyId: "property-1",
+        mode: "SHORT_STAY",
+        name: "Expired Guest",
+        email: "expired@example.com",
+        phone: "+254711111112",
+        message: "Can I visit?",
+        ...shortStayDates,
+      }),
+    ).rejects.toThrow("Published property");
+    await expect(
+      service.logContactClick({
+        propertyId: "property-1",
+        target: "BETNA",
+        channel: "WHATSAPP",
+      }),
+    ).rejects.toThrow("Published property");
   });
   it("accepts a guest inquiry without an account and notifies owner and Betna", async () => {
     const { prisma } = makePrisma();
@@ -158,9 +186,72 @@ describe("InquiriesService", () => {
     });
     expect(released).toMatchObject({
       inquiry: { status: "LOCATION_APPROVED" },
-      location: { exactAddress: "12 Private Lane", latitude: -1.2922 },
     });
+    expect(released).not.toHaveProperty("location");
+    expect(released).not.toHaveProperty("releaseToken");
+    expect(released.inquiry.property).not.toHaveProperty("exactAddress");
+    expect(released.inquiry.property).not.toHaveProperty("exactLatitude");
+    expect(released.inquiry.property).not.toHaveProperty("exactLongitude");
     expect(inquiries[0].locationApprovedAt).toEqual(expect.any(Date));
+  });
+
+  it("notifies only the visitor with a redeemable, localized location link", async () => {
+    const { prisma, inquiries } = makePrisma();
+    const enqueue = vi.fn().mockResolvedValue(undefined);
+    const previousPublicApiUrl = process.env.PUBLIC_API_URL;
+    process.env.PUBLIC_API_URL = "https://api.betna.test";
+    try {
+      const service = new InquiriesService(prisma, { enqueue } as any);
+      const created = await service.createGuestInquiry({
+        propertyId: "property-1",
+        mode: "SHORT_STAY",
+        name: "Tigrinya Guest",
+        email: "visitor-link@example.com",
+        phone: "+254711111112",
+        message: "I would like more details.",
+        locale: "ti",
+        ...shortStayDates,
+      });
+
+      await service.adminReleaseLocation(created.inquiry.id, {
+        id: "admin-1",
+        roles: ["ADMIN"],
+      });
+
+      const releaseEvent = enqueue.mock.calls
+        .map(([event]) => event)
+        .find((event) => event.type === "INQUIRY_LOCATION_APPROVED");
+      expect(releaseEvent).toMatchObject({
+        recipients: [
+          {
+            email: "visitor-link@example.com",
+            phone: "+254711111112",
+            locale: "ti",
+          },
+        ],
+        messageKey: "inquiry.locationApproved",
+        messageValues: {
+          redemptionUrl: expect.stringMatching(
+            /^https:\/\/api\.betna\.test\/public\/inquiries\/released-location\?token=/,
+          ),
+        },
+      });
+      expect(releaseEvent.payload).not.toHaveProperty("redemptionUrl");
+      expect(releaseEvent.payload).not.toHaveProperty("releaseToken");
+
+      const redemptionUrl = new URL(releaseEvent.messageValues.redemptionUrl);
+      const token = redemptionUrl.searchParams.get("token");
+      expect(token).toMatch(/^[0-9a-f-]{36}$/i);
+      await expect(
+        service.getReleasedLocationByToken(token!),
+      ).resolves.toMatchObject({
+        location: { exactAddress: "12 Private Lane" },
+      });
+      expect(inquiries[0].status).toBe("LOCATION_APPROVED");
+    } finally {
+      if (previousPublicApiUrl === undefined) delete process.env.PUBLIC_API_URL;
+      else process.env.PUBLIC_API_URL = previousPublicApiUrl;
+    }
   });
 
   it("logs a prefilled contact click without exposing conversation contents", async () => {
@@ -173,7 +264,11 @@ describe("InquiriesService", () => {
       channel: "WHATSAPP",
     });
 
-    expect(result).toMatchObject({ propertyId: "property-1", target: "BETNA", channel: "WHATSAPP" });
+    expect(result).toMatchObject({
+      propertyId: "property-1",
+      target: "BETNA",
+      channel: "WHATSAPP",
+    });
     expect(prisma.contactClick.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         propertyId: "property-1",
@@ -197,12 +292,26 @@ describe("InquiriesService", () => {
       ...shortStayDates,
     });
 
-    await expect(service.ownerRespond(created.inquiry.id, "owner-1", { decision: "CONFIRMED" })).resolves.toMatchObject({
+    await expect(
+      service.ownerRespond(created.inquiry.id, "owner-1", {
+        decision: "CONFIRMED",
+      }),
+    ).resolves.toMatchObject({
       status: "OWNER_CONFIRMED",
     });
-    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ type: "INQUIRY_OWNER_CONFIRMED" }));
-    await expect(service.ownerRespond(created.inquiry.id, "owner-1", { decision: "DECLINED" })).rejects.toBeInstanceOf(ConflictException);
-    await expect(service.ownerRespond(inquiries[0].id, "owner-1", { decision: "MAYBE" } as any)).rejects.toBeInstanceOf(BadRequestException);
+    expect(enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "INQUIRY_OWNER_CONFIRMED" }),
+    );
+    await expect(
+      service.ownerRespond(created.inquiry.id, "owner-1", {
+        decision: "DECLINED",
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    await expect(
+      service.ownerRespond(inquiries[0].id, "owner-1", {
+        decision: "MAYBE",
+      } as any),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it("does not persist an owner response when its transaction audit fails", async () => {
@@ -218,7 +327,9 @@ describe("InquiriesService", () => {
       offering: { mode: "LONG_TERM" },
     };
     inquiries.push(inquiry);
-    const auditCreate = vi.fn().mockRejectedValue(new Error("audit unavailable"));
+    const auditCreate = vi
+      .fn()
+      .mockRejectedValue(new Error("audit unavailable"));
     prisma.$transaction = vi.fn(async (work: any) => {
       const txInquiry = { ...inquiry };
       const tx: any = {
@@ -226,17 +337,27 @@ describe("InquiriesService", () => {
         inquiry: {
           ...prisma.inquiry,
           findUnique: vi.fn(async () => txInquiry),
-          update: vi.fn(async ({ data }: any) => { Object.assign(txInquiry, data); return txInquiry; }),
+          update: vi.fn(async ({ data }: any) => {
+            Object.assign(txInquiry, data);
+            return txInquiry;
+          }),
         },
         auditEvent: { create: auditCreate },
       };
       return work(tx);
     });
     const audit = new AuditService({ auditEvent: { create: vi.fn() } } as any);
-    const service = new InquiriesService(prisma, { enqueue: vi.fn() } as any, audit);
+    const service = new InquiriesService(
+      prisma,
+      { enqueue: vi.fn() } as any,
+      audit,
+    );
 
-    await expect(service.ownerRespond("inquiry-atomic", "owner-1", { decision: "DECLINED" }))
-      .rejects.toThrow("audit unavailable");
+    await expect(
+      service.ownerRespond("inquiry-atomic", "owner-1", {
+        decision: "DECLINED",
+      }),
+    ).rejects.toThrow("audit unavailable");
     expect(inquiry.status).toBe("NEW");
     expect(auditCreate).toHaveBeenCalled();
   });
@@ -251,7 +372,13 @@ describe("InquiriesService", () => {
         return { inquiry, blocked: true, declinedInquiryIds: [] };
       }),
     };
-    const service = new InquiriesService(prisma, { enqueue } as any, undefined, undefined, availability as any);
+    const service = new InquiriesService(
+      prisma,
+      { enqueue } as any,
+      undefined,
+      undefined,
+      availability as any,
+    );
     const created = await service.createGuestInquiry({
       propertyId: "property-1",
       mode: "SHORT_STAY",
@@ -264,21 +391,39 @@ describe("InquiriesService", () => {
     });
     inquiries[0].status = "LOCATION_APPROVED";
 
-    await expect(service.ownerRespond(created.inquiry.id, "owner-1", { decision: "CONFIRMED" }))
-      .resolves.toMatchObject({ status: "OWNER_CONFIRMED" });
-    expect(availability.confirmInquiryAndBlockDates).toHaveBeenCalledWith(created.inquiry.id, "owner-1");
+    await expect(
+      service.ownerRespond(created.inquiry.id, "owner-1", {
+        decision: "CONFIRMED",
+      }),
+    ).resolves.toMatchObject({ status: "OWNER_CONFIRMED" });
+    expect(availability.confirmInquiryAndBlockDates).toHaveBeenCalledWith(
+      created.inquiry.id,
+      "owner-1",
+    );
   });
 
   it("routes every short-stay owner confirmation through availability", async () => {
     const { prisma, inquiries } = makePrisma();
     const availability = {
-      confirmInquiryAndBlockDates: vi.fn().mockRejectedValue(new ConflictException("Dates are required")),
+      confirmInquiryAndBlockDates: vi
+        .fn()
+        .mockRejectedValue(new ConflictException("Dates are required")),
     };
-    prisma.inquiry.findUnique.mockImplementation(async ({ where, include }: any) => {
-      const inquiry = inquiries.find((row) => row.id === where.id);
-      return include?.offering ? { ...inquiry, offering: { mode: "SHORT_STAY" } } : inquiry;
-    });
-    const service = new InquiriesService(prisma, { enqueue: vi.fn() } as any, undefined, undefined, availability as any);
+    prisma.inquiry.findUnique.mockImplementation(
+      async ({ where, include }: any) => {
+        const inquiry = inquiries.find((row) => row.id === where.id);
+        return include?.offering
+          ? { ...inquiry, offering: { mode: "SHORT_STAY" } }
+          : inquiry;
+      },
+    );
+    const service = new InquiriesService(
+      prisma,
+      { enqueue: vi.fn() } as any,
+      undefined,
+      undefined,
+      availability as any,
+    );
     const created = await service.createGuestInquiry({
       propertyId: "property-1",
       mode: "SHORT_STAY",
@@ -293,32 +438,80 @@ describe("InquiriesService", () => {
     inquiries[0].startDate = undefined;
     inquiries[0].endDate = undefined;
 
-    await expect(service.ownerRespond(created.inquiry.id, "owner-1", { decision: "CONFIRMED" }))
-      .rejects.toThrow("Dates are required");
-    expect(availability.confirmInquiryAndBlockDates).toHaveBeenCalledWith(created.inquiry.id, "owner-1");
+    await expect(
+      service.ownerRespond(created.inquiry.id, "owner-1", {
+        decision: "CONFIRMED",
+      }),
+    ).rejects.toThrow("Dates are required");
+    expect(availability.confirmInquiryAndBlockDates).toHaveBeenCalledWith(
+      created.inquiry.id,
+      "owner-1",
+    );
   });
 
   it("requires both dates and a non-empty interval for short-stay inquiries", async () => {
     const { prisma } = makePrisma();
     const service = new InquiriesService(prisma, { enqueue: vi.fn() } as any);
-    await expect(service.createGuestInquiry({
-      propertyId: "property-1", mode: "SHORT_STAY", name: "Date Guest", email: "date-none@example.com", phone: "+254711111134", message: "Dates",
-    })).rejects.toThrow(/both.*date|startDate/i);
-    await expect(service.createGuestInquiry({
-      propertyId: "property-1", mode: "SHORT_STAY", name: "Date Guest", email: "date-one@example.com", phone: "+254711111131", message: "Dates", startDate: "2026-12-10",
-    })).rejects.toThrow(/both.*date|endDate/i);
-    await expect(service.createGuestInquiry({
-      propertyId: "property-1", mode: "SHORT_STAY", name: "Date Guest", email: "date-two@example.com", phone: "+254711111132", message: "Dates", startDate: "2026-12-12", endDate: "2026-12-10",
-    })).rejects.toThrow(/endDate/i);
+    await expect(
+      service.createGuestInquiry({
+        propertyId: "property-1",
+        mode: "SHORT_STAY",
+        name: "Date Guest",
+        email: "date-none@example.com",
+        phone: "+254711111134",
+        message: "Dates",
+      }),
+    ).rejects.toThrow(/both.*date|startDate/i);
+    await expect(
+      service.createGuestInquiry({
+        propertyId: "property-1",
+        mode: "SHORT_STAY",
+        name: "Date Guest",
+        email: "date-one@example.com",
+        phone: "+254711111131",
+        message: "Dates",
+        startDate: "2026-12-10",
+      }),
+    ).rejects.toThrow(/both.*date|endDate/i);
+    await expect(
+      service.createGuestInquiry({
+        propertyId: "property-1",
+        mode: "SHORT_STAY",
+        name: "Date Guest",
+        email: "date-two@example.com",
+        phone: "+254711111132",
+        message: "Dates",
+        startDate: "2026-12-12",
+        endDate: "2026-12-10",
+      }),
+    ).rejects.toThrow(/endDate/i);
   });
 
   it("requires a published property and an eligible owner for contact-click logging", async () => {
     const { prisma } = makePrisma();
     const service = new InquiriesService(prisma, { enqueue: vi.fn() } as any);
-    prisma.property.findUnique.mockResolvedValueOnce({ ...property, status: "PAUSED" });
-    await expect(service.logContactClick({ propertyId: "property-1", target: "BETNA", channel: "WHATSAPP" })).rejects.toThrow("Published property");
-    prisma.property.findUnique.mockResolvedValueOnce({ ...property, owner: null });
-    await expect(service.logContactClick({ propertyId: "property-1", target: "OWNER", channel: "WHATSAPP" })).rejects.toThrow("owner contact");
+    prisma.property.findUnique.mockResolvedValueOnce({
+      ...property,
+      status: "PAUSED",
+    });
+    await expect(
+      service.logContactClick({
+        propertyId: "property-1",
+        target: "BETNA",
+        channel: "WHATSAPP",
+      }),
+    ).rejects.toThrow("Published property");
+    prisma.property.findUnique.mockResolvedValueOnce({
+      ...property,
+      owner: null,
+    });
+    await expect(
+      service.logContactClick({
+        propertyId: "property-1",
+        target: "OWNER",
+        channel: "WHATSAPP",
+      }),
+    ).rejects.toThrow("owner contact");
   });
 
   it("makes an approved location idempotent, expires it, and supports admin revocation", async () => {
@@ -335,18 +528,41 @@ describe("InquiriesService", () => {
       ...shortStayDates,
     });
     const actor = { id: "admin-1", roles: ["ADMIN"] };
-    const first = await service.adminReleaseLocation(created.inquiry.id, actor, "Verified inquiry");
-    const second = await service.adminReleaseLocation(created.inquiry.id, actor, "Duplicate request");
+    const first = await service.adminReleaseLocation(
+      created.inquiry.id,
+      actor,
+      "Verified inquiry",
+    );
+    const second = await service.adminReleaseLocation(
+      created.inquiry.id,
+      actor,
+      "Duplicate request",
+    );
     expect(first).toMatchObject({ inquiry: { status: "LOCATION_APPROVED" } });
-    expect(second).toMatchObject({ inquiry: { status: "LOCATION_APPROVED" }, idempotent: true });
-    expect(enqueue.mock.calls.filter(([event]) => event.type === "INQUIRY_LOCATION_APPROVED")).toHaveLength(2);
+    expect(second).toMatchObject({
+      inquiry: { status: "LOCATION_APPROVED" },
+      idempotent: true,
+    });
+    expect(
+      enqueue.mock.calls.filter(
+        ([event]) => event.type === "INQUIRY_LOCATION_APPROVED",
+      ),
+    ).toHaveLength(2);
 
     inquiries[0].locationReleaseExpiresAt = new Date(Date.now() - 1);
-    await expect(service.getReleasedLocation(created.inquiry.id, actor)).resolves.toBeNull();
+    await expect(
+      service.getReleasedLocation(created.inquiry.id, actor),
+    ).resolves.toBeNull();
     expect(inquiries[0].status).toBe("CONTACTED");
     await service.adminReleaseLocation(created.inquiry.id, actor);
-    await service.revokeLocation(created.inquiry.id, actor, "Guest withdrew request");
-    await expect(service.getReleasedLocation(created.inquiry.id, actor)).resolves.toBeNull();
+    await service.revokeLocation(
+      created.inquiry.id,
+      actor,
+      "Guest withdrew request",
+    );
+    await expect(
+      service.getReleasedLocation(created.inquiry.id, actor),
+    ).resolves.toBeNull();
     expect(inquiries[0].status).toBe("CONTACTED");
   });
 
@@ -370,7 +586,11 @@ describe("InquiriesService", () => {
       service.adminReleaseLocation(created.inquiry.id, actor),
     ]);
 
-    expect(enqueue.mock.calls.filter(([event]) => event.type === "INQUIRY_LOCATION_APPROVED")).toHaveLength(2);
+    expect(
+      enqueue.mock.calls.filter(
+        ([event]) => event.type === "INQUIRY_LOCATION_APPROVED",
+      ),
+    ).toHaveLength(2);
   });
 
   it("does not disclose a legacy approved release with no expiry", async () => {
@@ -388,7 +608,12 @@ describe("InquiriesService", () => {
     inquiries[0].status = "LOCATION_APPROVED";
     inquiries[0].locationReleaseExpiresAt = null;
 
-    await expect(service.getReleasedLocation(created.inquiry.id, { id: "admin-1", roles: ["ADMIN"] })).resolves.toBeNull();
+    await expect(
+      service.getReleasedLocation(created.inquiry.id, {
+        id: "admin-1",
+        roles: ["ADMIN"],
+      }),
+    ).resolves.toBeNull();
     expect(inquiries[0].status).toBe("CONTACTED");
   });
 
@@ -421,17 +646,31 @@ describe("InquiriesService", () => {
   it("returns BadRequestException for malformed runtime input instead of throwing TypeError", async () => {
     const { prisma } = makePrisma();
     const service = new InquiriesService(prisma, { enqueue: vi.fn() } as any);
-    await expect(service.createGuestInquiry({
-      propertyId: "property-1",
-      mode: "SHORT_STAY",
-      name: "Malformed Guest",
-      email: "malformed@example.com",
-      phone: "+254711111118",
-      message: "hello",
-      honeypot: 42 as any,
-    })).rejects.toBeInstanceOf(BadRequestException);
-    await expect(service.logContactClick({ propertyId: 42 as any, target: "BETNA", channel: "WHATSAPP" })).rejects.toBeInstanceOf(BadRequestException);
-    await expect(service.adminReleaseLocation("missing", { id: "admin-1", roles: ["ADMIN"] }, 42 as any)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.createGuestInquiry({
+        propertyId: "property-1",
+        mode: "SHORT_STAY",
+        name: "Malformed Guest",
+        email: "malformed@example.com",
+        phone: "+254711111118",
+        message: "hello",
+        honeypot: 42 as any,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.logContactClick({
+        propertyId: 42 as any,
+        target: "BETNA",
+        channel: "WHATSAPP",
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.adminReleaseLocation(
+        "missing",
+        { id: "admin-1", roles: ["ADMIN"] },
+        42 as any,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it("consumes the persisted rate limit atomically under concurrent submissions", async () => {
@@ -441,8 +680,15 @@ describe("InquiriesService", () => {
       deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
       findFirst: vi.fn(async ({ where }: any) => {
         const key = where?.key;
-        const count = key ? attempts.get(key) ?? 0 : 0;
-        return count ? { key, attempts: count, windowStartedAt: new Date(), lastAttemptAt: new Date() } : null;
+        const count = key ? (attempts.get(key) ?? 0) : 0;
+        return count
+          ? {
+              key,
+              attempts: count,
+              windowStartedAt: new Date(),
+              lastAttemptAt: new Date(),
+            }
+          : null;
       }),
       upsert: vi.fn(async ({ where, create, update }: any) => {
         const count = attempts.get(where.key) ?? 0;
@@ -461,9 +707,19 @@ describe("InquiriesService", () => {
       message: "hello",
       ...shortStayDates,
     };
-    const results = await Promise.allSettled(Array.from({ length: 7 }, () => service.createGuestInquiry(input)));
-    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(5);
-    expect(results.filter((result) => result.status === "rejected" && result.reason instanceof ConflictException)).toHaveLength(2);
+    const results = await Promise.allSettled(
+      Array.from({ length: 7 }, () => service.createGuestInquiry(input)),
+    );
+    expect(
+      results.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(5);
+    expect(
+      results.filter(
+        (result) =>
+          result.status === "rejected" &&
+          result.reason instanceof ConflictException,
+      ),
+    ).toHaveLength(2);
   });
 
   it("uses a database atomic upsert for rate-limit creation and window reset", async () => {
@@ -488,13 +744,18 @@ describe("InquiriesService", () => {
     });
 
     expect(prisma.$queryRaw).toHaveBeenCalled();
-    expect(prisma.$queryRaw.mock.calls[0][0].strings?.join(" ")).toContain("ON CONFLICT");
-    expect(prisma.$queryRaw.mock.calls[0][0].strings?.join(" ")).toContain("RETURNING");
+    expect(prisma.$queryRaw.mock.calls[0][0].strings?.join(" ")).toContain(
+      "ON CONFLICT",
+    );
+    expect(prisma.$queryRaw.mock.calls[0][0].strings?.join(" ")).toContain(
+      "RETURNING",
+    );
   });
 
   it("recovers a failed release notification on a later idempotent release call", async () => {
     const { prisma } = makePrisma();
-    const enqueue = vi.fn()
+    const enqueue = vi
+      .fn()
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error("provider unavailable"))
       .mockResolvedValueOnce(undefined);
@@ -510,13 +771,17 @@ describe("InquiriesService", () => {
     });
     const actor = { id: "admin-1", roles: ["ADMIN"] };
 
-    await expect(service.adminReleaseLocation(created.inquiry.id, actor)).rejects.toThrow("provider unavailable");
+    await expect(
+      service.adminReleaseLocation(created.inquiry.id, actor),
+    ).rejects.toThrow("provider unavailable");
     await service.adminReleaseLocation(created.inquiry.id, actor);
 
     const releaseEvents = enqueue.mock.calls
       .map(([event]) => event)
       .filter((event) => event.type === "INQUIRY_LOCATION_APPROVED");
     expect(releaseEvents).toHaveLength(2);
-    expect(releaseEvents[0].idempotencyKey).toBe(releaseEvents[1].idempotencyKey);
+    expect(releaseEvents[0].idempotencyKey).toBe(
+      releaseEvents[1].idempotencyKey,
+    );
   });
 });

@@ -25,8 +25,8 @@
     "phoneLabel": "ቁጽሪ ስልኪ ወይ WhatsApp",
     "otpCodeLabel": "ኮድ ምርግጋጽ",
     "requestOtp": "ኮድ ስደድ",
-    "verifyOtp": "ኮድ ኣረጋግጽ"
-    ,"onboardingTitle": "ናይ ባለቤት ሒሳብ ፍጠር",
+    "verifyOtp": "ኮድ ኣረጋግጽ",
+    "onboardingTitle": "ናይ ባለቤት ሒሳብ ፍጠር",
     "onboardingDescription": "ቁጽሪ WhatsAppን ኢመይልን ኣረጋግጽ፣ ምስክር ባለቤትነት ተቐበል፣ ቦታኻ ንኣካላዊ ምርመራ ኣቕርብ።",
     "firstNameLabel": "ስም",
     "lastNameLabel": "ናይ ኣቦ ስም",
@@ -107,8 +107,8 @@
       "submissionHelp": "ብዛዕባ ቦታኻ ንገረና። ትኽክለኛ ኣድራሻኻ ብምስጢር ንምርመራ ይጥቀም።",
       "editDraft": "ረቂቕካ ኣርም",
       "requestEdit": "ምምሕያሽ ዝርዝር ሕተት",
-      "materialEditHelp": "ኣገደስቲ ለውጥታት ኣብ ግምገማ እንከለዉ እቲ ዝሓለፈ ዝተፈቐደ ዝርዝር ህዝባዊ ይኸውን።"
-      ,"categories": {
+      "materialEditHelp": "ኣገደስቲ ለውጥታት ኣብ ግምገማ እንከለዉ እቲ ዝሓለፈ ዝተፈቐደ ዝርዝር ህዝባዊ ይኸውን።",
+      "categories": {
         "residential": "መንበሪ",
         "land": "መሬት",
         "commercial": "ንግዳዊ"
@@ -140,22 +140,22 @@
       "REJECTED": "ተነጺጉ",
       "LOCATION_APPROVED": "ቦታ ጸዲቑ",
       "OWNER_CONFIRMED": "ባለቤት ኣረጋጊጹ",
-      "OWNER_DECLINED": "ባለቤት ነጺጉ"
-      ,"UNPUBLISHED": "ዘይተዘርግሐ"
-      ,"READY_FOR_REVIEW": "ንግምገማ ድሉው"
-      ,"PENDING_UPLOAD": "ምልኣኽ ይጽበ"
-      ,"APPROVED": "ጸዲቑ"
-      ,"CONTACTED": "ተራኺብና"
-      ,"NEW": "ሓድሽ"
-      ,"CLOSED": "ተዓጽዩ"
-      ,"REPORTED": "ተሓቢሩ"
-      ,"CANCELLED": "ተሰሪዙ"
-      ,"COMMISSION_DUE": "ኮሚሽን ይኽፈል"
-      ,"CONFIRMED": "ተረጋጊጹ"
-      ,"PAID": "ተኸፊሉ"
-      ,"WAIVED": "ተሓዲጉ"
-      ,"DISPUTED": "ክርክር ኣለዎ"
-      ,"EVIDENCE_PENDING": "መርትዖ ይጽበ"
+      "OWNER_DECLINED": "ባለቤት ነጺጉ",
+      "UNPUBLISHED": "ዘይተዘርግሐ",
+      "READY_FOR_REVIEW": "ንግምገማ ድሉው",
+      "PENDING_UPLOAD": "ምልኣኽ ይጽበ",
+      "APPROVED": "ጸዲቑ",
+      "CONTACTED": "ተራኺብና",
+      "NEW": "ሓድሽ",
+      "CLOSED": "ተዓጽዩ",
+      "REPORTED": "ተሓቢሩ",
+      "CANCELLED": "ተሰሪዙ",
+      "COMMISSION_DUE": "ኮሚሽን ይኽፈል",
+      "CONFIRMED": "ተረጋጊጹ",
+      "PAID": "ተኸፊሉ",
+      "WAIVED": "ተሓዲጉ",
+      "DISPUTED": "ክርክር ኣለዎ",
+      "EVIDENCE_PENDING": "መርትዖ ይጽበ"
     },
     "categories": {
       "residential": "መንበሪ",
@@ -195,6 +195,13 @@
       "verifiedUntil": "ክሳብ {date} ተረጋጊጹ",
       "needsVerification": "ምርግጋጽ የድሊ",
       "emptyPublishing": "ንውሳነ ህትመት ዝጽበዩ ዝርዝራት የለዉን።",
+      "adminPublishingActions": {
+        "publish": "ዝርዝር ኣውጽእ",
+        "publishing": "ይዝርጋሕ ኣሎ…",
+        "published": "ዝርዝር ተዘርጊሑ።",
+        "failed": "ዝርዝር ክዝርጋሕ ኣይከኣለን።",
+        "unauthorized": "ነዚ ዝርዝር ንምዝርጋሕ ፍቓድ የብልካን።"
+      },
       "translationsEyebrow": "ምስማማዕ ትርጉም",
       "translationsTitle": "ዝተተርጎመ ትሕዝቶ ኣጽድቕ",
       "translationsDescription": "እንግሊዝኛ ክዝርጋሕ ይኽእል እዩ ትግርኛ እናተጸበየ፤ ዝተፈቐደ ትግርኛ ክሳብ ዝህሉ ግልጺ ናይ እንግሊዝኛ ምትካእ ይርአ።",
@@ -339,8 +346,24 @@
       "uploading": "ይልኣኽ ኣሎ…",
       "upload": "ስእልታት ስደድ"
     },
-    "reviewActions": {"saving": "ግምገማ ይዕቀብ ኣሎ…", "approved": "ምርመራ ጸዲቑ", "rejected": "ምርመራ ተነጺጉ", "failed": "ግምገማ ኣይተዓወተን፤ እንደገና ፈትን", "approve": "ኣጽድቕ", "reject": "ንጸግ"},
-    "commissionActions": {"failed": "ስራሕ ኮሚሽን ኣይተዓወተን", "updated": "ተመሓይሹ።", "couldNotUpdate": "ኮሚሽን ክመሓየሽ ኣይከኣለን።", "verifyEvidence": "መርትዖ ኣረጋግጽ", "markDue": "ኮሚሽን ክኽፈል ምልክት ግበር", "markPaid": "ተኸፊሉ ምልክት ግበር", "waive": "ፍቓድ ሃብ", "dispute": "ተከራኸር"}
+    "reviewActions": {
+      "saving": "ግምገማ ይዕቀብ ኣሎ…",
+      "approved": "ምርመራ ጸዲቑ",
+      "rejected": "ምርመራ ተነጺጉ",
+      "failed": "ግምገማ ኣይተዓወተን፤ እንደገና ፈትን",
+      "approve": "ኣጽድቕ",
+      "reject": "ንጸግ"
+    },
+    "commissionActions": {
+      "failed": "ስራሕ ኮሚሽን ኣይተዓወተን",
+      "updated": "ተመሓይሹ።",
+      "couldNotUpdate": "ኮሚሽን ክመሓየሽ ኣይከኣለን።",
+      "verifyEvidence": "መርትዖ ኣረጋግጽ",
+      "markDue": "ኮሚሽን ክኽፈል ምልክት ግበር",
+      "markPaid": "ተኸፊሉ ምልክት ግበር",
+      "waive": "ፍቓድ ሃብ",
+      "dispute": "ተከራኸር"
+    }
   },
   "publicInquiry": {
     "eyebrow": "ዝተመሓደረ ሕቶ",
@@ -373,20 +396,39 @@
     "contactOptions": "ኣማራጺታት ርክብ",
     "contactBetnaWhatsApp": "ብ WhatsApp ምስ Betna ተራኸብ",
     "contactOwnerWhatsApp": "ብ WhatsApp ምስ ባለቤት ተራኸብ",
-    "emailBetna": "ኢመይል Betna"
-    ,"verifiedByBetna": "ብ BETNA ተረጋጊጹ"
-    ,"categories": {"residential": "መንበሪ", "land": "መሬት", "commercial": "ንግዳዊ", "apartment": "ኣፓርታማ", "house": "ገዛ", "room": "ክፍሊ", "furnished_stay": "ዝተዳለወ መንበሪ", "guesthouse": "ናይ ኣጋይሽ ገዛ", "vacation_home": "ናይ ዕረፍቲ ገዛ", "office": "ቤት ጽሕፈት", "shop": "ድኳን", "warehouse": "መኽዘን", "commercial_space": "ንግዳዊ ቦታ", "other": "ካልእ"}
-    ,"badges": {"VERIFIED_BY_BETNA": "ብ Betna ዝተረጋገጸ", "PUBLISHED": "ተዘርጊሑ", "UNPUBLISHED": "ዘይተዘርግሐ"}
-    ,"rentalMode": "ዓይነት ኪራይ"
-    ,"shortStay": "ሓጺር ግዜ"
-    ,"longTerm": "ነዊሕ ግዜ"
-    ,"minimumNights": "ዝተሓተ {count} ለይቲ"
-    ,"leaseDuration": "ውዕል {count} ወርሒ"
-    ,"priceOnRequest": "ዋጋ ብሕቶ"
-    ,"verifiedPlace": "ብ Betna ዝተረጋገጸ ቦታ"
-    ,"viewProperty": "ንብረት ርአ"
-    ,"contactMessage": "ሰላም Betna፣ ብዛዕባ {propertyTitle} ክሓትት እየ።"
-    ,"emailSubject": "ሕቶ Betna: {propertyTitle}"
+    "emailBetna": "ኢመይል Betna",
+    "verifiedByBetna": "ብ BETNA ተረጋጊጹ",
+    "categories": {
+      "residential": "መንበሪ",
+      "land": "መሬት",
+      "commercial": "ንግዳዊ",
+      "apartment": "ኣፓርታማ",
+      "house": "ገዛ",
+      "room": "ክፍሊ",
+      "furnished_stay": "ዝተዳለወ መንበሪ",
+      "guesthouse": "ናይ ኣጋይሽ ገዛ",
+      "vacation_home": "ናይ ዕረፍቲ ገዛ",
+      "office": "ቤት ጽሕፈት",
+      "shop": "ድኳን",
+      "warehouse": "መኽዘን",
+      "commercial_space": "ንግዳዊ ቦታ",
+      "other": "ካልእ"
+    },
+    "badges": {
+      "VERIFIED_BY_BETNA": "ብ Betna ዝተረጋገጸ",
+      "PUBLISHED": "ተዘርጊሑ",
+      "UNPUBLISHED": "ዘይተዘርግሐ"
+    },
+    "rentalMode": "ዓይነት ኪራይ",
+    "shortStay": "ሓጺር ግዜ",
+    "longTerm": "ነዊሕ ግዜ",
+    "minimumNights": "ዝተሓተ {count} ለይቲ",
+    "leaseDuration": "ውዕል {count} ወርሒ",
+    "priceOnRequest": "ዋጋ ብሕቶ",
+    "verifiedPlace": "ብ Betna ዝተረጋገጸ ቦታ",
+    "viewProperty": "ንብረት ርአ",
+    "contactMessage": "ሰላም Betna፣ ብዛዕባ {propertyTitle} ክሓትት እየ።",
+    "emailSubject": "ሕቶ Betna: {propertyTitle}"
   },
   "search": {
     "filters": {

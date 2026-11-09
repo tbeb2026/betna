@@ -18,7 +18,7 @@ export const notificationCatalogs = {
       },
       locationApproved: {
         subject: "Betna protected location approved {reference}",
-        body: "Betna approved the protected location for inquiry {reference}.",
+        body: "Betna approved the protected location for inquiry {reference}. Open this secure link to view it before it expires at {expiresAt}: {redemptionUrl}",
       },
       guestSuccess: {
         subject: "Betna inquiry received {reference}",
@@ -42,16 +42,31 @@ export const notificationCatalogs = {
       },
     },
     system: {
-      generic: { subject: "Betna notification", body: "Betna update{referenceSuffix}." },
+      generic: {
+        subject: "Betna notification",
+        body: "Betna update{referenceSuffix}.",
+      },
     },
     contact: {
       owner: { body: "Hello, I am asking about {propertyTitle} on Betna." },
     },
     verification: {
-      assigned: { subject: "Betna inspection assigned", body: "A Betna inspection has been assigned to you." },
-      submitted: { subject: "Betna inspection submitted", body: "A Betna inspection report is ready for staff review." },
-      approved: { subject: "Betna inspection approved", body: "Your Betna inspection report was approved." },
-      rejected: { subject: "Betna inspection needs attention", body: "Your Betna inspection report needs attention and may be resubmitted." },
+      assigned: {
+        subject: "Betna inspection assigned",
+        body: "A Betna inspection has been assigned to you.",
+      },
+      submitted: {
+        subject: "Betna inspection submitted",
+        body: "A Betna inspection report is ready for staff review.",
+      },
+      approved: {
+        subject: "Betna inspection approved",
+        body: "Your Betna inspection report was approved.",
+      },
+      rejected: {
+        subject: "Betna inspection needs attention",
+        body: "Your Betna inspection report needs attention and may be resubmitted.",
+      },
     },
   },
   ti: {
@@ -70,7 +85,7 @@ export const notificationCatalogs = {
       },
       locationApproved: {
         subject: "ዕቑብ ቦታ ሕቶ Betna ጸዲቑ {reference}",
-        body: "Betna ንሕቶ {reference} ዕቑብ ቦታ ኣጽዲቓቶ።",
+        body: "Betna ንሕቶ {reference} ዕቑብ ቦታ ኣጽዲቓቶ። ቅድሚ እዋኑ ምውዳእ ነዚ ውሑስ መላግቦ ብምኽፋት ርአዮ፣ {expiresAt}: {redemptionUrl}",
       },
       guestSuccess: {
         subject: "ሕቶ Betna ተቐቢልና {reference}",
@@ -101,9 +116,15 @@ export const notificationCatalogs = {
     },
     verification: {
       assigned: { subject: "ምርመራ Betna ተመዲቡ", body: "ምርመራ Betna ንኣኻ ተመዲቡ።" },
-      submitted: { subject: "ምርመራ Betna ቀሪቡ", body: "ጸብጻብ ምርመራ Betna ንግምገማ ሰራሕተኛታት ድሉው እዩ።" },
+      submitted: {
+        subject: "ምርመራ Betna ቀሪቡ",
+        body: "ጸብጻብ ምርመራ Betna ንግምገማ ሰራሕተኛታት ድሉው እዩ።",
+      },
       approved: { subject: "ምርመራ Betna ጸዲቑ", body: "ጸብጻብ ምርመራ Betnaኻ ጸዲቑ።" },
-      rejected: { subject: "ምርመራ Betna ተወሳኺ ስራሕ የድሊ", body: "ጸብጻብ ምርመራ Betnaኻ ተወሳኺ ስራሕ የድሊ።" },
+      rejected: {
+        subject: "ምርመራ Betna ተወሳኺ ስራሕ የድሊ",
+        body: "ጸብጻብ ምርመራ Betnaኻ ተወሳኺ ስራሕ የድሊ።",
+      },
     },
   },
 } as const;
@@ -126,18 +147,37 @@ export type NotificationTemplateKey =
 
 type NotificationValues = Record<string, string | number | undefined>;
 
-export function normalizeNotificationLocale(value?: string | null): NotificationLocale {
-  return String(value ?? "").toLowerCase().replace("_", "-").split("-")[0] === "ti" ? "ti" : "en";
+export function normalizeNotificationLocale(
+  value?: string | null,
+): NotificationLocale {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace("_", "-")
+    .split("-")[0] === "ti"
+    ? "ti"
+    : "en";
 }
 
-function template(locale: NotificationLocale, key: NotificationTemplateKey, part: "subject" | "body") {
-  const [group, name] = key.split(".") as [keyof typeof notificationCatalogs.en, string];
-  const localizedGroup = notificationCatalogs[locale][group] as Record<string, Record<string, string>>;
+function template(
+  locale: NotificationLocale,
+  key: NotificationTemplateKey,
+  part: "subject" | "body",
+) {
+  const [group, name] = key.split(".") as [
+    keyof typeof notificationCatalogs.en,
+    string,
+  ];
+  const localizedGroup = notificationCatalogs[locale][group] as Record<
+    string,
+    Record<string, string>
+  >;
   return localizedGroup?.[name]?.[part] ?? "Betna notification";
 }
 
 function interpolate(value: string, values: NotificationValues) {
-  return value.replace(/\{([A-Za-z0-9_]+)\}/g, (_, key: string) => String(values[key] ?? `{${key}}`));
+  return value.replace(/\{([A-Za-z0-9_]+)\}/g, (_, key: string) =>
+    String(values[key] ?? `{${key}}`),
+  );
 }
 
 export function notificationMessage(
@@ -149,11 +189,16 @@ export function notificationMessage(
   const subject = template(normalized, key, "subject");
   const body = template(normalized, key, "body");
   return {
-    ...(subject === "Betna notification" && !hasSubject(key) ? {} : { subject: interpolate(subject, values) }),
+    ...(subject === "Betna notification" && !hasSubject(key)
+      ? {}
+      : { subject: interpolate(subject, values) }),
     body: interpolate(body, values),
   };
 }
 
 function hasSubject(key: NotificationTemplateKey) {
-  return Boolean((notificationCatalogs.en as any)[key.split(".")[0]]?.[key.split(".")[1]]?.subject);
+  return Boolean(
+    (notificationCatalogs.en as any)[key.split(".")[0]]?.[key.split(".")[1]]
+      ?.subject,
+  );
 }

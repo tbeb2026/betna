@@ -12,11 +12,20 @@ import { Prisma } from "@prisma/client";
 import type { GuestInquiryInput } from "@betna/contracts";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../prisma/prisma.service";
-import { NotificationEvent, NotificationService } from "../notifications/notifications.service";
-import { InquiryActor, LocationReleaseService } from "./location-release.service";
+import {
+  NotificationEvent,
+  NotificationService,
+} from "../notifications/notifications.service";
+import {
+  InquiryActor,
+  LocationReleaseService,
+} from "./location-release.service";
 import { AvailabilityService } from "../availability/availability.service";
 import { isCurrentPublicVerification } from "../properties/public-verification";
-import { normalizeNotificationLocale, notificationMessage } from "../i18n/messages";
+import {
+  normalizeNotificationLocale,
+  notificationMessage,
+} from "../i18n/messages";
 
 export type GuestInquiryRequest = GuestInquiryInput & {
   honeypot?: string;
@@ -32,7 +41,11 @@ const recentGuestSubmissions = new Map<string, number[]>();
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_SUBMISSIONS = 5;
 const MAX_RATE_KEYS = 10_000;
-const PENDING_OWNER_RESPONSE_STATUSES = ["NEW", "CONTACTED", "LOCATION_APPROVED"];
+const PENDING_OWNER_RESPONSE_STATUSES = [
+  "NEW",
+  "CONTACTED",
+  "LOCATION_APPROVED",
+];
 
 @Injectable()
 export class InquiriesService {
@@ -42,11 +55,16 @@ export class InquiriesService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationService,
     @Optional() audit?: AuditService,
-    @Optional() @Inject(LocationReleaseService) locationRelease?: LocationReleaseService,
-    @Optional() @Inject(AvailabilityService) private readonly availability?: AvailabilityService,
+    @Optional()
+    @Inject(LocationReleaseService)
+    locationRelease?: LocationReleaseService,
+    @Optional()
+    @Inject(AvailabilityService)
+    private readonly availability?: AvailabilityService,
   ) {
     this.audit = audit;
-    this.locationRelease = locationRelease ?? new LocationReleaseService(prisma, audit);
+    this.locationRelease =
+      locationRelease ?? new LocationReleaseService(prisma, audit);
   }
 
   private readonly audit?: AuditService;
@@ -57,10 +75,7 @@ export class InquiriesService {
       where: { id: input.propertyId },
       include: { owner: true, offerings: true },
     });
-    if (
-      !property ||
-      !isCurrentPublicVerification(property)
-    ) {
+    if (!property || !isCurrentPublicVerification(property)) {
       throw new NotFoundException("Published property not found");
     }
     const offering = this.resolveOffering(property.offerings, input);
@@ -68,13 +83,18 @@ export class InquiriesService {
       await this.assertRateLimit(input, tx);
       const inquiry = await tx.inquiry.create({
         data: {
-          reference: this.reference(), propertyId: input.propertyId,
-          offeringId: input.offeringId ?? offering?.id, status: "NEW",
-          guestName: input.name.trim(), guestEmail: input.email.trim().toLowerCase(),
-          guestPhone: input.phone.trim(), message: input.message.trim(),
+          reference: this.reference(),
+          propertyId: input.propertyId,
+          offeringId: input.offeringId ?? offering?.id,
+          status: "NEW",
+          guestName: input.name.trim(),
+          guestEmail: input.email.trim().toLowerCase(),
+          guestPhone: input.phone.trim(),
+          message: input.message.trim(),
           guestLocale: normalizeNotificationLocale(input.locale),
           startDate: this.optionalDate(input.startDate, "startDate"),
-          endDate: this.optionalDate(input.endDate, "endDate"), guests: input.guests,
+          endDate: this.optionalDate(input.endDate, "endDate"),
+          guests: input.guests,
         },
       });
       await this.recordAudit(tx, null, "INQUIRY_CREATED", {
@@ -85,12 +105,27 @@ export class InquiriesService {
       return inquiry;
     });
 
-    const owner = property.owner ?? (property.ownerId ? await this.findUser(property.ownerId) : null);
+    const owner =
+      property.owner ??
+      (property.ownerId ? await this.findUser(property.ownerId) : null);
     const staff = await this.findStaffRecipients();
     const recipients = [
-      ...(owner ? [{ userId: owner.id, email: owner.email, phone: owner.phone, locale: owner.preferredLocale ?? owner.locale }] : []),
+      ...(owner
+        ? [
+            {
+              userId: owner.id,
+              email: owner.email,
+              phone: owner.phone,
+              locale: owner.preferredLocale ?? owner.locale,
+            },
+          ]
+        : []),
       ...staff,
-      { email: inquiry.guestEmail, phone: inquiry.guestPhone, locale: inquiry.guestLocale },
+      {
+        email: inquiry.guestEmail,
+        phone: inquiry.guestPhone,
+        locale: inquiry.guestLocale,
+      },
     ];
     const event: NotificationEvent = {
       type: "INQUIRY_CREATED",
@@ -106,88 +141,152 @@ export class InquiriesService {
     return {
       inquiry: this.publicInquiry(inquiry),
       location: this.publicLocation(property),
-      reviewExpectation: notificationMessage(input.locale, "inquiry.guestSuccess", { reference: inquiry.reference }).body,
+      reviewExpectation: notificationMessage(
+        input.locale,
+        "inquiry.guestSuccess",
+        { reference: inquiry.reference },
+      ).body,
       reviewExpectationKey: "inquiry.guestSuccess",
       locale: normalizeNotificationLocale(input.locale),
     };
   }
 
-  async ownerRespond(inquiryId: string, ownerId: string, response: OwnerResponse | "CONFIRMED" | "DECLINED") {
-    const decision = typeof response === "string" ? response : response?.decision;
+  async ownerRespond(
+    inquiryId: string,
+    ownerId: string,
+    response: OwnerResponse | "CONFIRMED" | "DECLINED",
+  ) {
+    const decision =
+      typeof response === "string" ? response : response?.decision;
     if (decision !== "CONFIRMED" && decision !== "DECLINED") {
-      throw new BadRequestException("Owner decision must be CONFIRMED or DECLINED");
+      throw new BadRequestException(
+        "Owner decision must be CONFIRMED or DECLINED",
+      );
     }
     const inquiry = await this.findInquiry(inquiryId);
-    if (inquiry.property?.ownerId !== ownerId && inquiry.property?.owner?.id !== ownerId) {
+    if (
+      inquiry.property?.ownerId !== ownerId &&
+      inquiry.property?.owner?.id !== ownerId
+    ) {
       throw new ForbiddenException("Only the property owner can respond");
     }
     if (!["NEW", "CONTACTED", "LOCATION_APPROVED"].includes(inquiry.status)) {
       throw new ConflictException("Inquiry has already been decided");
     }
-    if (decision === "CONFIRMED" && this.availability && (inquiry.offering?.mode === "SHORT_STAY" || inquiry.startDate || inquiry.endDate)) {
-      const message = typeof response === "object" ? response.message?.trim() : undefined;
+    if (
+      decision === "CONFIRMED" &&
+      this.availability &&
+      (inquiry.offering?.mode === "SHORT_STAY" ||
+        inquiry.startDate ||
+        inquiry.endDate)
+    ) {
+      const message =
+        typeof response === "object" ? response.message?.trim() : undefined;
       const blocked = message
-        ? await this.availability.confirmInquiryAndBlockDates(inquiryId, ownerId, message)
-        : await this.availability.confirmInquiryAndBlockDates(inquiryId, ownerId);
+        ? await this.availability.confirmInquiryAndBlockDates(
+            inquiryId,
+            ownerId,
+            message,
+          )
+        : await this.availability.confirmInquiryAndBlockDates(
+            inquiryId,
+            ownerId,
+          );
       await this.notifications.enqueue({
         type: "INQUIRY_OWNER_CONFIRMED",
         idempotencyKey: `inquiry-owner:${inquiryId}:CONFIRMED`,
         inquiryId,
         reference: inquiry.reference,
-        recipients: [{ email: inquiry.guestEmail, phone: inquiry.guestPhone, locale: inquiry.guestLocale }],
+        recipients: [
+          {
+            email: inquiry.guestEmail,
+            phone: inquiry.guestPhone,
+            locale: inquiry.guestLocale,
+          },
+        ],
         messageKey: "inquiry.ownerConfirmed",
         payload: { status: "OWNER_CONFIRMED" },
       });
       return this.publicInquiry(blocked.inquiry);
     }
-    const status = decision === "CONFIRMED" ? "OWNER_CONFIRMED" : "OWNER_DECLINED";
+    const status =
+      decision === "CONFIRMED" ? "OWNER_CONFIRMED" : "OWNER_DECLINED";
     const updated = await this.withTransaction(async (tx: any) => {
       if (typeof tx.$queryRaw === "function") {
-        await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Inquiry" WHERE "id" = ${inquiryId} FOR UPDATE`);
+        await tx.$queryRaw(
+          Prisma.sql`SELECT "id" FROM "Inquiry" WHERE "id" = ${inquiryId} FOR UPDATE`,
+        );
       }
       const current = await tx.inquiry.findUnique({
         where: { id: inquiryId },
         include: { property: { include: { owner: true } }, offering: true },
       });
       if (!current) throw new NotFoundException("Inquiry not found");
-      if (current.property?.ownerId !== ownerId && current.property?.owner?.id !== ownerId) {
+      if (
+        current.property?.ownerId !== ownerId &&
+        current.property?.owner?.id !== ownerId
+      ) {
         throw new ForbiddenException("Only the property owner can respond");
       }
       if (!PENDING_OWNER_RESPONSE_STATUSES.includes(current.status)) {
         throw new ConflictException("Inquiry has already been decided");
       }
-      return tx.inquiry.update({
-        where: { id: inquiryId },
-        data: {
-          status,
-          ownerResponseMessage:
-            typeof response === "object" && response.message?.trim()
-              ? response.message.trim()
-              : undefined,
-        },
-        include: { property: true },
-      }).then(async (next: any) => {
-        await this.recordAudit(tx, { id: ownerId }, `INQUIRY_OWNER_${decision}`, {
-          type: "Inquiry",
-          id: inquiryId,
+      return tx.inquiry
+        .update({
+          where: { id: inquiryId },
+          data: {
+            status,
+            ownerResponseMessage:
+              typeof response === "object" && response.message?.trim()
+                ? response.message.trim()
+                : undefined,
+          },
+          include: { property: true },
+        })
+        .then(async (next: any) => {
+          await this.recordAudit(
+            tx,
+            { id: ownerId },
+            `INQUIRY_OWNER_${decision}`,
+            {
+              type: "Inquiry",
+              id: inquiryId,
+            },
+          );
+          return next;
         });
-        return next;
-      });
     });
     await this.notifications.enqueue({
       type: `INQUIRY_OWNER_${decision}`,
       idempotencyKey: `inquiry-owner:${inquiryId}:${decision}`,
       inquiryId,
       reference: inquiry.reference,
-      recipients: [{ email: inquiry.guestEmail, phone: inquiry.guestPhone, locale: inquiry.guestLocale }],
-      messageKey: decision === "CONFIRMED" ? "inquiry.ownerConfirmed" : "inquiry.ownerDeclined",
+      recipients: [
+        {
+          email: inquiry.guestEmail,
+          phone: inquiry.guestPhone,
+          locale: inquiry.guestLocale,
+        },
+      ],
+      messageKey:
+        decision === "CONFIRMED"
+          ? "inquiry.ownerConfirmed"
+          : "inquiry.ownerDeclined",
       payload: { status },
     });
     return this.publicInquiry(updated);
   }
 
-  async adminReleaseLocation(inquiryId: string, actor: InquiryActor, reason?: string) {
-    const released = await this.locationRelease.release(inquiryId, actor, reason);
+  async adminReleaseLocation(
+    inquiryId: string,
+    actor: InquiryActor,
+    reason?: string,
+  ) {
+    const released = await this.locationRelease.release(
+      inquiryId,
+      actor,
+      reason,
+    );
     // Re-enqueue even for an idempotent release. If a provider or process died
     // after the DB commit, the persisted notification row can then be claimed
     // and completed without creating a duplicate message.
@@ -196,14 +295,52 @@ export class InquiriesService {
       idempotencyKey: `inquiry-location-approved:${inquiryId}:${released.releaseId}`,
       inquiryId,
       reference: released.inquiry.reference,
-      recipients: [{ email: released.inquiry.guestEmail, phone: released.inquiry.guestPhone, locale: released.inquiry.guestLocale }],
+      recipients: [
+        {
+          email: released.inquiry.guestEmail,
+          phone: released.inquiry.guestPhone,
+          locale: released.inquiry.guestLocale,
+        },
+      ],
       messageKey: "inquiry.locationApproved",
+      messageValues: {
+        redemptionUrl: this.locationRedemptionUrl(released.releaseToken),
+        expiresAt: new Date(
+          released.inquiry.locationReleaseExpiresAt,
+        ).toISOString(),
+      },
       payload: { status: released.inquiry.status },
     });
-    return released;
+    // The release action is not an exact-location read. Keep the sensitive
+    // location and bearer token out of the admin/API response; the visitor
+    // receives the token only through their own notification channels.
+    const {
+      location: _location,
+      releaseToken: _releaseToken,
+      ...safeRelease
+    } = released;
+    if (safeRelease.inquiry?.property) {
+      const property = Object.fromEntries(
+        Object.entries(safeRelease.inquiry.property).filter(
+          ([key]) =>
+            ![
+              "exactAddress",
+              "exactLatitude",
+              "exactLongitude",
+              "exactLocationGeometry",
+            ].includes(key),
+        ),
+      );
+      safeRelease.inquiry = { ...safeRelease.inquiry, property };
+    }
+    return safeRelease;
   }
 
-  async revokeLocation(inquiryId: string, actor: InquiryActor, reason?: string) {
+  async revokeLocation(
+    inquiryId: string,
+    actor: InquiryActor,
+    reason?: string,
+  ) {
     return this.locationRelease.revoke(inquiryId, actor, reason);
   }
 
@@ -223,6 +360,17 @@ export class InquiriesService {
     });
   }
 
+  private locationRedemptionUrl(token: string | null | undefined) {
+    if (!token)
+      throw new ConflictException("Location release token is unavailable");
+    const base = (
+      process.env.PUBLIC_API_URL?.trim() ||
+      process.env.NEXT_PUBLIC_API_URL?.trim() ||
+      "http://localhost:4000"
+    ).replace(/\/$/, "");
+    return `${base}/public/inquiries/released-location?token=${encodeURIComponent(token)}`;
+  }
+
   async listForAdmin() {
     return (this.prisma as any).inquiry.findMany({
       include: { property: true, offering: true },
@@ -230,16 +378,33 @@ export class InquiriesService {
     });
   }
 
-  async logContactClick(input: { propertyId: string; target: "BETNA" | "OWNER"; channel: "WHATSAPP" | "EMAIL" }) {
-    if (!input || typeof input !== "object" || typeof input.propertyId !== "string" || !input.propertyId.trim() || input.propertyId.length > 100 || typeof input.target !== "string" || typeof input.channel !== "string" || !["BETNA", "OWNER"].includes(input.target) || !["WHATSAPP", "EMAIL"].includes(input.channel) || (input.target === "OWNER" && input.channel !== "WHATSAPP")) {
+  async logContactClick(input: {
+    propertyId: string;
+    target: "BETNA" | "OWNER";
+    channel: "WHATSAPP" | "EMAIL";
+  }) {
+    if (
+      !input ||
+      typeof input !== "object" ||
+      typeof input.propertyId !== "string" ||
+      !input.propertyId.trim() ||
+      input.propertyId.length > 100 ||
+      typeof input.target !== "string" ||
+      typeof input.channel !== "string" ||
+      !["BETNA", "OWNER"].includes(input.target) ||
+      !["WHATSAPP", "EMAIL"].includes(input.channel) ||
+      (input.target === "OWNER" && input.channel !== "WHATSAPP")
+    ) {
       throw new BadRequestException("Invalid contact click");
     }
     const property = await (this.prisma as any).property.findUnique?.({
       where: { id: input.propertyId },
       include: { owner: true },
     });
-    if (!property || !isCurrentPublicVerification(property)) throw new NotFoundException("Published property not found");
-    if (input.target === "OWNER" && !property.owner?.phone) throw new BadRequestException("Published owner contact is unavailable");
+    if (!property || !isCurrentPublicVerification(property))
+      throw new NotFoundException("Published property not found");
+    if (input.target === "OWNER" && !property.owner?.phone)
+      throw new BadRequestException("Published owner contact is unavailable");
     const data = {
       propertyId: input.propertyId,
       target: input.target,
@@ -275,7 +440,9 @@ export class InquiriesService {
     if (phone.length < 7 || phone.length > 15) {
       throw new NotFoundException("Published owner contact is unavailable");
     }
-    const message = notificationMessage(locale, "contact.owner", { propertyTitle: property.title }).body;
+    const message = notificationMessage(locale, "contact.owner", {
+      propertyTitle: property.title,
+    }).body;
     return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
   }
 
@@ -298,40 +465,98 @@ export class InquiriesService {
       select: { id: true, email: true, phone: true, preferredLocale: true },
     });
     if (Array.isArray(rows) && rows.length) return rows;
-    return [{ email: process.env.BETNA_INQUIRY_EMAIL ?? "inquiries@betna.example", phone: process.env.BETNA_INQUIRY_PHONE }];
+    return [
+      {
+        email: process.env.BETNA_INQUIRY_EMAIL ?? "inquiries@betna.example",
+        phone: process.env.BETNA_INQUIRY_PHONE,
+      },
+    ];
   }
 
   private validateGuestInput(input: GuestInquiryRequest) {
-    if (!input || typeof input !== "object") throw new BadRequestException("Inquiry payload is required");
-    if (input.honeypot !== undefined && typeof input.honeypot !== "string") throw new BadRequestException("Inquiry payload is invalid");
-    if (typeof input.honeypot === "string" && input.honeypot.trim()) throw new BadRequestException("Inquiry could not be submitted");
-    if (typeof input.propertyId !== "string" || typeof input.name !== "string" || typeof input.message !== "string" || !input.propertyId.trim() || !input.name.trim() || !input.message.trim()) throw new BadRequestException("Name, message and property are required");
-    if (input.name.trim().length > 160 || input.message.trim().length > 4000) throw new BadRequestException("Name or message is too long");
-    if (typeof input.email !== "string" || !/^\S+@\S+\.\S+$/.test(input.email.trim())) throw new BadRequestException("A valid email is required");
-    if (typeof input.phone !== "string" || !/^\+?[0-9 ()-]{7,25}$/.test(input.phone.trim())) throw new BadRequestException("A valid phone number is required");
-    if (input.mode !== "SHORT_STAY" && input.mode !== "LONG_TERM") throw new BadRequestException("A valid rental mode is required");
-    if (input.offeringId !== undefined && typeof input.offeringId !== "string") throw new BadRequestException("A valid offering is required");
-    if (typeof input.offeringId === "string" && !input.offeringId.trim()) throw new BadRequestException("A valid offering is required");
-    if (input.fingerprint !== undefined && typeof input.fingerprint !== "string") throw new BadRequestException("Inquiry payload is invalid");
-    if (input.locale !== undefined && (typeof input.locale !== "string" || input.locale.length > 10)) throw new BadRequestException("Inquiry locale is invalid");
-    if (input.startDate !== undefined && typeof input.startDate !== "string") throw new BadRequestException("startDate must be a valid date");
-    if (input.endDate !== undefined && typeof input.endDate !== "string") throw new BadRequestException("endDate must be a valid date");
-    if (input.guests != null && (!Number.isInteger(input.guests) || input.guests < 1 || input.guests > 100)) throw new BadRequestException("Guests must be between 1 and 100");
+    if (!input || typeof input !== "object")
+      throw new BadRequestException("Inquiry payload is required");
+    if (input.honeypot !== undefined && typeof input.honeypot !== "string")
+      throw new BadRequestException("Inquiry payload is invalid");
+    if (typeof input.honeypot === "string" && input.honeypot.trim())
+      throw new BadRequestException("Inquiry could not be submitted");
+    if (
+      typeof input.propertyId !== "string" ||
+      typeof input.name !== "string" ||
+      typeof input.message !== "string" ||
+      !input.propertyId.trim() ||
+      !input.name.trim() ||
+      !input.message.trim()
+    )
+      throw new BadRequestException("Name, message and property are required");
+    if (input.name.trim().length > 160 || input.message.trim().length > 4000)
+      throw new BadRequestException("Name or message is too long");
+    if (
+      typeof input.email !== "string" ||
+      !/^\S+@\S+\.\S+$/.test(input.email.trim())
+    )
+      throw new BadRequestException("A valid email is required");
+    if (
+      typeof input.phone !== "string" ||
+      !/^\+?[0-9 ()-]{7,25}$/.test(input.phone.trim())
+    )
+      throw new BadRequestException("A valid phone number is required");
+    if (input.mode !== "SHORT_STAY" && input.mode !== "LONG_TERM")
+      throw new BadRequestException("A valid rental mode is required");
+    if (input.offeringId !== undefined && typeof input.offeringId !== "string")
+      throw new BadRequestException("A valid offering is required");
+    if (typeof input.offeringId === "string" && !input.offeringId.trim())
+      throw new BadRequestException("A valid offering is required");
+    if (
+      input.fingerprint !== undefined &&
+      typeof input.fingerprint !== "string"
+    )
+      throw new BadRequestException("Inquiry payload is invalid");
+    if (
+      input.locale !== undefined &&
+      (typeof input.locale !== "string" || input.locale.length > 10)
+    )
+      throw new BadRequestException("Inquiry locale is invalid");
+    if (input.startDate !== undefined && typeof input.startDate !== "string")
+      throw new BadRequestException("startDate must be a valid date");
+    if (input.endDate !== undefined && typeof input.endDate !== "string")
+      throw new BadRequestException("endDate must be a valid date");
+    if (
+      input.guests != null &&
+      (!Number.isInteger(input.guests) ||
+        input.guests < 1 ||
+        input.guests > 100)
+    )
+      throw new BadRequestException("Guests must be between 1 and 100");
     const start = this.optionalDate(input.startDate, "startDate");
     const end = this.optionalDate(input.endDate, "endDate");
-    if (input.mode === "SHORT_STAY" && (!start || !end)) throw new BadRequestException("Short-stay inquiries require both startDate and endDate");
-    if (Boolean(start) !== Boolean(end)) throw new BadRequestException("Short-stay inquiries require both startDate and endDate");
-    if (start && end && end.getTime() <= start.getTime()) throw new BadRequestException("endDate must be after startDate");
+    if (input.mode === "SHORT_STAY" && (!start || !end))
+      throw new BadRequestException(
+        "Short-stay inquiries require both startDate and endDate",
+      );
+    if (Boolean(start) !== Boolean(end))
+      throw new BadRequestException(
+        "Short-stay inquiries require both startDate and endDate",
+      );
+    if (start && end && end.getTime() <= start.getTime())
+      throw new BadRequestException("endDate must be after startDate");
   }
 
-  private async assertRateLimit(input: GuestInquiryRequest, db: any = this.prisma) {
+  private async assertRateLimit(
+    input: GuestInquiryRequest,
+    db: any = this.prisma,
+  ) {
     const normalizedEmail = input.email.trim().toLowerCase();
     const normalizedPhone = this.normalizePhone(input.phone);
     const fingerprint = this.normalizeFingerprint(input.fingerprint);
     const now = Date.now();
     if (typeof db.$queryRaw === "function") {
       const cutoff = new Date(now - WINDOW_MS);
-      const keys = [`email:${normalizedEmail}`, `phone:${normalizedPhone}`, ...(fingerprint ? [`fingerprint:${fingerprint}`] : [])];
+      const keys = [
+        `email:${normalizedEmail}`,
+        `phone:${normalizedPhone}`,
+        ...(fingerprint ? [`fingerprint:${fingerprint}`] : []),
+      ];
       for (const key of keys) {
         const rows = await db.$queryRaw(Prisma.sql`
           INSERT INTO "InquiryAbuseAttempt"
@@ -346,14 +571,19 @@ export class InquiriesService {
             "fingerprint" = EXCLUDED."fingerprint"
           RETURNING "attempts"
         `);
-        if (Number(rows?.[0]?.attempts) > MAX_SUBMISSIONS) throw new ConflictException("Too many inquiries; please try again later");
+        if (Number(rows?.[0]?.attempts) > MAX_SUBMISSIONS)
+          throw new ConflictException(
+            "Too many inquiries; please try again later",
+          );
       }
       return;
     }
     const abuseStore = db.inquiryAbuseAttempt;
     if (abuseStore?.findFirst && abuseStore?.upsert) {
       const cutoff = new Date(now - WINDOW_MS);
-      await abuseStore.deleteMany?.({ where: { lastAttemptAt: { lt: cutoff } } });
+      await abuseStore.deleteMany?.({
+        where: { lastAttemptAt: { lt: cutoff } },
+      });
       const keys = [
         `email:${normalizedEmail}`,
         `phone:${normalizedPhone}`,
@@ -361,80 +591,136 @@ export class InquiriesService {
       ];
       const nowDate = new Date(now);
       for (const key of keys) {
-        const existing = await abuseStore.findUnique?.({ where: { key } }) ?? await abuseStore.findFirst?.({ where: { key } });
-        const windowOpen = existing && now - new Date(existing.windowStartedAt).getTime() < WINDOW_MS;
+        const existing =
+          (await abuseStore.findUnique?.({ where: { key } })) ??
+          (await abuseStore.findFirst?.({ where: { key } }));
+        const windowOpen =
+          existing &&
+          now - new Date(existing.windowStartedAt).getTime() < WINDOW_MS;
         const row = await abuseStore.upsert({
           where: { key },
-          create: { key, normalizedEmail, normalizedPhone, fingerprint, attempts: 1, windowStartedAt: nowDate, lastAttemptAt: nowDate },
+          create: {
+            key,
+            normalizedEmail,
+            normalizedPhone,
+            fingerprint,
+            attempts: 1,
+            windowStartedAt: nowDate,
+            lastAttemptAt: nowDate,
+          },
           update: windowOpen
             ? { attempts: { increment: 1 }, lastAttemptAt: nowDate }
-            : { attempts: 1, windowStartedAt: nowDate, lastAttemptAt: nowDate, normalizedEmail, normalizedPhone, fingerprint },
+            : {
+                attempts: 1,
+                windowStartedAt: nowDate,
+                lastAttemptAt: nowDate,
+                normalizedEmail,
+                normalizedPhone,
+                fingerprint,
+              },
         });
         // Prisma's upsert is atomic on the unique key. Checking the returned
         // counter means concurrent callers cannot all pass a read-before-write
         // limit check.
-        if (row?.attempts > MAX_SUBMISSIONS) throw new ConflictException("Too many inquiries; please try again later");
+        if (row?.attempts > MAX_SUBMISSIONS)
+          throw new ConflictException(
+            "Too many inquiries; please try again later",
+          );
       }
       return;
     }
     this.pruneRateKeys(now);
-    const keys = [this.rateKey(normalizedEmail, normalizedPhone, undefined), ...(fingerprint ? [this.rateKey("", "", fingerprint)] : [])];
-    const attempts = keys.flatMap((key) => recentGuestSubmissions.get(key) ?? []).filter((at) => now - at < WINDOW_MS);
-    if (attempts.length >= MAX_SUBMISSIONS) throw new ConflictException("Too many inquiries; please try again later");
-    for (const key of keys) recentGuestSubmissions.set(key, [...(recentGuestSubmissions.get(key) ?? []), now]);
+    const keys = [
+      this.rateKey(normalizedEmail, normalizedPhone, undefined),
+      ...(fingerprint ? [this.rateKey("", "", fingerprint)] : []),
+    ];
+    const attempts = keys
+      .flatMap((key) => recentGuestSubmissions.get(key) ?? [])
+      .filter((at) => now - at < WINDOW_MS);
+    if (attempts.length >= MAX_SUBMISSIONS)
+      throw new ConflictException("Too many inquiries; please try again later");
+    for (const key of keys)
+      recentGuestSubmissions.set(key, [
+        ...(recentGuestSubmissions.get(key) ?? []),
+        now,
+      ]);
   }
 
   private async withTransaction<T>(work: (tx: any) => Promise<T>): Promise<T> {
-    if (typeof (this.prisma as any).$transaction === "function") return (this.prisma as any).$transaction(work);
+    if (typeof (this.prisma as any).$transaction === "function")
+      return (this.prisma as any).$transaction(work);
     return work(this.prisma as any);
   }
 
-  private async recordAudit(tx: any, actor: { id: string } | null, action: string, entity: any) {
-    if (this.audit?.record) return this.audit.record(tx, { actor, action, entity });
+  private async recordAudit(
+    tx: any,
+    actor: { id: string } | null,
+    action: string,
+    entity: any,
+  ) {
+    if (this.audit?.record)
+      return this.audit.record(tx, { actor, action, entity });
     if (typeof tx.auditEvent?.create === "function") {
-      return tx.auditEvent.create({ data: {
-        actorId: actor?.id ?? null,
-        action,
-        entityType: entity.type ?? entity.entityType,
-        entityId: entity.id ?? entity.entityId,
-        metadata: entity.metadata ?? {},
-      } });
+      return tx.auditEvent.create({
+        data: {
+          actorId: actor?.id ?? null,
+          action,
+          entityType: entity.type ?? entity.entityType,
+          entityId: entity.id ?? entity.entityId,
+          metadata: entity.metadata ?? {},
+        },
+      });
     }
   }
 
-  private normalizePhone(phone: string) { return `+${phone.replace(/\D/g, "")}`; }
+  private normalizePhone(phone: string) {
+    return `+${phone.replace(/\D/g, "")}`;
+  }
   private normalizeFingerprint(value?: string) {
     if (!value) return undefined;
-    const normalized = value.trim().toLowerCase().replace(/[^a-z0-9._:-]/g, "").slice(0, 128);
+    const normalized = value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9._:-]/g, "")
+      .slice(0, 128);
     return normalized || undefined;
   }
   private rateKey(email: string, phone: string, fingerprint?: string) {
-    return createHash("sha256").update(`${email}|${phone}|${fingerprint ?? ""}`).digest("hex");
+    return createHash("sha256")
+      .update(`${email}|${phone}|${fingerprint ?? ""}`)
+      .digest("hex");
   }
   private pruneRateKeys(now: number) {
     for (const [key, values] of recentGuestSubmissions) {
       const fresh = values.filter((at) => now - at < WINDOW_MS);
-      if (fresh.length) recentGuestSubmissions.set(key, fresh); else recentGuestSubmissions.delete(key);
+      if (fresh.length) recentGuestSubmissions.set(key, fresh);
+      else recentGuestSubmissions.delete(key);
     }
     while (recentGuestSubmissions.size >= MAX_RATE_KEYS) {
       const first = recentGuestSubmissions.keys().next().value;
-      if (first) recentGuestSubmissions.delete(first); else break;
+      if (first) recentGuestSubmissions.delete(first);
+      else break;
     }
   }
 
-  private resolveOffering(offerings: any[] | undefined, input: GuestInquiryRequest) {
+  private resolveOffering(
+    offerings: any[] | undefined,
+    input: GuestInquiryRequest,
+  ) {
     if (!Array.isArray(offerings) || !offerings.length) return undefined;
     const offering = input.offeringId
       ? offerings.find((candidate) => candidate.id === input.offeringId)
       : offerings.find((candidate) => candidate.mode === input.mode);
-    if (!offering || (offering.mode && offering.mode !== input.mode)) throw new BadRequestException("Selected rental mode is unavailable");
+    if (!offering || (offering.mode && offering.mode !== input.mode))
+      throw new BadRequestException("Selected rental mode is unavailable");
     return offering;
   }
 
   private optionalDate(value: string | undefined, field: string) {
     if (!value) return undefined;
     const date = new Date(value);
-    if (Number.isNaN(date.valueOf())) throw new BadRequestException(`${field} must be a valid date`);
+    if (Number.isNaN(date.valueOf()))
+      throw new BadRequestException(`${field} must be a valid date`);
     return date;
   }
 

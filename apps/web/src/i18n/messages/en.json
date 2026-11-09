@@ -25,8 +25,8 @@
     "phoneLabel": "Phone or WhatsApp number",
     "otpCodeLabel": "Verification code",
     "requestOtp": "Send code",
-    "verifyOtp": "Verify code"
-    ,"onboardingTitle": "Create an owner account",
+    "verifyOtp": "Verify code",
+    "onboardingTitle": "Create an owner account",
     "onboardingDescription": "Verify your WhatsApp number and email, accept the owner attestation, and submit your place for physical inspection.",
     "firstNameLabel": "First name",
     "lastNameLabel": "Last name",
@@ -107,8 +107,8 @@
       "submissionHelp": "Tell us about your place. Your exact address is private and used for verification.",
       "editDraft": "Edit your draft",
       "requestEdit": "Request a listing edit",
-      "materialEditHelp": "Material changes remain under review while the last approved listing stays public."
-      ,"categories": {
+      "materialEditHelp": "Material changes remain under review while the last approved listing stays public.",
+      "categories": {
         "residential": "Residential",
         "land": "Land",
         "commercial": "Commercial"
@@ -140,22 +140,22 @@
       "REJECTED": "Rejected",
       "LOCATION_APPROVED": "Location approved",
       "OWNER_CONFIRMED": "Owner confirmed",
-      "OWNER_DECLINED": "Owner declined"
-      ,"UNPUBLISHED": "Unpublished"
-      ,"READY_FOR_REVIEW": "Ready for review"
-      ,"PENDING_UPLOAD": "Pending upload"
-      ,"APPROVED": "Approved"
-      ,"CONTACTED": "Contacted"
-      ,"NEW": "New"
-      ,"CLOSED": "Closed"
-      ,"REPORTED": "Reported"
-      ,"CANCELLED": "Cancelled"
-      ,"COMMISSION_DUE": "Commission due"
-      ,"CONFIRMED": "Confirmed"
-      ,"PAID": "Paid"
-      ,"WAIVED": "Waived"
-      ,"DISPUTED": "Disputed"
-      ,"EVIDENCE_PENDING": "Evidence pending"
+      "OWNER_DECLINED": "Owner declined",
+      "UNPUBLISHED": "Unpublished",
+      "READY_FOR_REVIEW": "Ready for review",
+      "PENDING_UPLOAD": "Pending upload",
+      "APPROVED": "Approved",
+      "CONTACTED": "Contacted",
+      "NEW": "New",
+      "CLOSED": "Closed",
+      "REPORTED": "Reported",
+      "CANCELLED": "Cancelled",
+      "COMMISSION_DUE": "Commission due",
+      "CONFIRMED": "Confirmed",
+      "PAID": "Paid",
+      "WAIVED": "Waived",
+      "DISPUTED": "Disputed",
+      "EVIDENCE_PENDING": "Evidence pending"
     },
     "categories": {
       "residential": "Residential",
@@ -195,6 +195,13 @@
       "verifiedUntil": "Verified until {date}",
       "needsVerification": "Needs verification",
       "emptyPublishing": "No listings are waiting for a publication decision.",
+      "adminPublishingActions": {
+        "publish": "Publish listing",
+        "publishing": "Publishing…",
+        "published": "Listing published.",
+        "failed": "Could not publish listing.",
+        "unauthorized": "You are not authorized to publish this listing."
+      },
       "translationsEyebrow": "Translation queue",
       "translationsTitle": "Approve localized listing content",
       "translationsDescription": "English can publish while Tigrinya is pending; visitors see a transparent English fallback until an approved Tigrinya translation exists.",
@@ -339,8 +346,24 @@
       "uploading": "Uploading…",
       "upload": "Upload photos"
     },
-    "reviewActions": {"saving": "Saving review…", "approved": "Inspection approved", "rejected": "Inspection rejected", "failed": "Review failed; retry", "approve": "Approve", "reject": "Reject"},
-    "commissionActions": {"failed": "Commission action failed", "updated": "Updated.", "couldNotUpdate": "Could not update commission.", "verifyEvidence": "Verify evidence", "markDue": "Mark commission due", "markPaid": "Mark paid", "waive": "Waive", "dispute": "Dispute"}
+    "reviewActions": {
+      "saving": "Saving review…",
+      "approved": "Inspection approved",
+      "rejected": "Inspection rejected",
+      "failed": "Review failed; retry",
+      "approve": "Approve",
+      "reject": "Reject"
+    },
+    "commissionActions": {
+      "failed": "Commission action failed",
+      "updated": "Updated.",
+      "couldNotUpdate": "Could not update commission.",
+      "verifyEvidence": "Verify evidence",
+      "markDue": "Mark commission due",
+      "markPaid": "Mark paid",
+      "waive": "Waive",
+      "dispute": "Dispute"
+    }
   },
   "publicInquiry": {
     "eyebrow": "Managed inquiry",
@@ -373,20 +396,39 @@
     "contactOptions": "Contact options",
     "contactBetnaWhatsApp": "Contact Betna on WhatsApp",
     "contactOwnerWhatsApp": "Contact owner on WhatsApp",
-    "emailBetna": "Email Betna"
-    ,"verifiedByBetna": "VERIFIED BY BETNA"
-    ,"categories": {"residential": "Residential", "land": "Land", "commercial": "Commercial", "apartment": "Apartment", "house": "House", "room": "Room", "furnished_stay": "Furnished stay", "guesthouse": "Guesthouse", "vacation_home": "Vacation home", "office": "Office", "shop": "Shop", "warehouse": "Warehouse", "commercial_space": "Commercial space", "other": "Other"}
-    ,"badges": {"VERIFIED_BY_BETNA": "Verified by Betna", "PUBLISHED": "Published", "UNPUBLISHED": "Unpublished"}
-    ,"rentalMode": "Rental mode"
-    ,"shortStay": "Short-stay"
-    ,"longTerm": "Long-term"
-    ,"minimumNights": "Minimum {count} nights"
-    ,"leaseDuration": "{count}-month lease"
-    ,"priceOnRequest": "Price on request"
-    ,"verifiedPlace": "Betna verified place"
-    ,"viewProperty": "View property"
-    ,"contactMessage": "Hello Betna, I am asking about {propertyTitle}."
-    ,"emailSubject": "Betna inquiry: {propertyTitle}"
+    "emailBetna": "Email Betna",
+    "verifiedByBetna": "VERIFIED BY BETNA",
+    "categories": {
+      "residential": "Residential",
+      "land": "Land",
+      "commercial": "Commercial",
+      "apartment": "Apartment",
+      "house": "House",
+      "room": "Room",
+      "furnished_stay": "Furnished stay",
+      "guesthouse": "Guesthouse",
+      "vacation_home": "Vacation home",
+      "office": "Office",
+      "shop": "Shop",
+      "warehouse": "Warehouse",
+      "commercial_space": "Commercial space",
+      "other": "Other"
+    },
+    "badges": {
+      "VERIFIED_BY_BETNA": "Verified by Betna",
+      "PUBLISHED": "Published",
+      "UNPUBLISHED": "Unpublished"
+    },
+    "rentalMode": "Rental mode",
+    "shortStay": "Short-stay",
+    "longTerm": "Long-term",
+    "minimumNights": "Minimum {count} nights",
+    "leaseDuration": "{count}-month lease",
+    "priceOnRequest": "Price on request",
+    "verifiedPlace": "Betna verified place",
+    "viewProperty": "View property",
+    "contactMessage": "Hello Betna, I am asking about {propertyTitle}.",
+    "emailSubject": "Betna inquiry: {propertyTitle}"
   },
   "search": {
     "filters": {
