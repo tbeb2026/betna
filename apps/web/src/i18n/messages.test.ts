@@ -9,6 +9,29 @@ function paths(value: unknown, prefix = ""): string[] {
 }
 
 describe("locale catalog parity", () => {
+  it("localizes every admin conversion and commission status without falling back", () => {
+    const statuses = [
+      "REPORTED",
+      "EVIDENCE_PENDING",
+      "VERIFIED",
+      "CANCELLED",
+      "CONFIRMED",
+      "COMMISSION_DUE",
+      "PAID",
+      "WAIVED",
+      "DISPUTED",
+    ];
+
+    for (const status of statuses) {
+      const english = (en.portal.statuses as Record<string, string>)[status];
+      const tigrinya = (ti.portal.statuses as Record<string, string>)[status];
+      expect(english, `English ${status}`).toBeTruthy();
+      expect(tigrinya, `Tigrinya ${status}`).toBeTruthy();
+      expect(english, `English ${status}`).not.toBe(en.portal.statuses.UNPUBLISHED);
+      expect(tigrinya, `Tigrinya ${status}`).not.toBe(ti.portal.statuses.UNPUBLISHED);
+    }
+  });
+
   it("contains every user-visible English key in Tigrinya", () => {
     expect(paths(ti)).toEqual(expect.arrayContaining(paths(en)));
   });

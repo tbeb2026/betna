@@ -148,8 +148,12 @@
       ,"CONTACTED": "Contacted"
       ,"NEW": "New"
       ,"CLOSED": "Closed"
+      ,"REPORTED": "Reported"
+      ,"CANCELLED": "Cancelled"
       ,"COMMISSION_DUE": "Commission due"
+      ,"CONFIRMED": "Confirmed"
       ,"PAID": "Paid"
+      ,"WAIVED": "Waived"
       ,"DISPUTED": "Disputed"
       ,"EVIDENCE_PENDING": "Evidence pending"
     },

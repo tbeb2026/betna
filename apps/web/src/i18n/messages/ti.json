@@ -148,8 +148,12 @@
       ,"CONTACTED": "ተራኺብና"
       ,"NEW": "ሓድሽ"
       ,"CLOSED": "ተዓጽዩ"
+      ,"REPORTED": "ተሓቢሩ"
+      ,"CANCELLED": "ተሰሪዙ"
       ,"COMMISSION_DUE": "ኮሚሽን ይኽፈል"
+      ,"CONFIRMED": "ተረጋጊጹ"
       ,"PAID": "ተኸፊሉ"
+      ,"WAIVED": "ተሓዲጉ"
       ,"DISPUTED": "ክርክር ኣለዎ"
       ,"EVIDENCE_PENDING": "መርትዖ ይጽበ"
     },
