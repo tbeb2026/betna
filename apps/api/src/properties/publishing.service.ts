@@ -13,6 +13,7 @@ import { TranslationService } from "./translation.service";
 import { AuditService } from "../audit/audit.service";
 import { isCurrentPublicVerification } from "./public-verification";
 import { StorageAdapter } from "../media/storage.adapter";
+import { InspectionsService } from "../verification/inspections.service";
 
 export { isCurrentPublicVerification } from "./public-verification";
 
@@ -63,6 +64,7 @@ export class PublishingService {
     @Optional() private readonly translations?: TranslationService,
     @Optional() private readonly audit?: AuditService,
     @Optional() private readonly storage?: StorageAdapter,
+    @Optional() private readonly inspections?: InspectionsService,
   ) {}
 
   async publish(propertyId: string, actor?: Actor): Promise<Listing> {
@@ -258,9 +260,33 @@ export class PublishingService {
         throw new BadRequestException("New owner must be an active individual owner");
       }
     }
-    return this.withTransaction(async (tx: any) => {
+    const updated = await this.withTransaction(async (tx: any) => {
       await this.lockProperty(tx, propertyId);
       const property = await this.findProperty(propertyId, tx);
+      const retiredInspections = typeof tx.inspection?.updateMany === "function"
+        ? await tx.inspection.updateMany({
+            where: {
+              propertyId,
+              status: { in: ["DRAFT", "PENDING_UPLOAD", "READY_FOR_REVIEW"] },
+            },
+            data: {
+              status: "EXPIRED",
+              verifierId: null,
+              ownerSubmissionKey: null,
+            },
+          })
+        : null;
+      if (retiredInspections?.count) {
+        await this.recordAudit(tx, actor, "INSPECTIONS_RETIRED_OWNERSHIP_CHANGE", propertyId, {
+          count: retiredInspections.count,
+        });
+      }
+      if (tx.propertyVersion?.updateMany) {
+        await tx.propertyVersion.updateMany({
+          where: { propertyId, isApproved: true },
+          data: { isApproved: false },
+        });
+      }
       const updated = await tx.property.update({
         where: { id: propertyId },
         data: {
@@ -271,9 +297,14 @@ export class PublishingService {
         },
         include: this.propertyInclude(),
       });
+      if (this.inspections?.createDraftForOwnershipReverification) {
+        await this.inspections.createDraftForOwnershipReverification(propertyId, tx);
+      }
       await this.recordAudit(tx, actor, "PROPERTY_OWNERSHIP_TRANSFERRED", propertyId, { previousOwnerId: property.ownerId, newOwnerId });
       return updated;
     });
+    this.approvedSnapshots.delete(propertyId);
+    return updated;
   }
 
   private async expireOne(propertyId: string, now: Date): Promise<string | null> {

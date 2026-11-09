@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -42,6 +43,9 @@ export class AssignmentsService {
         }),
       ]);
       if (!inspection) throw new NotFoundException("Inspection not found");
+      if (["APPROVED", "REJECTED", "EXPIRED"].includes(inspection.status)) {
+        throw new ConflictException("Terminal inspections cannot be assigned");
+      }
       if (!verifier) throw new NotFoundException("Verifier not found");
       if (!this.roles(verifier).includes("VERIFIER")) {
         throw new ForbiddenException("Only verifiers can receive inspections");

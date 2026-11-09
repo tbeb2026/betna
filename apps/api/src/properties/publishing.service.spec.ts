@@ -362,6 +362,50 @@ describe("PublishingService", () => {
     ).resolves.toMatchObject({ ownerId: "owner-2", status: "PENDING_INSPECTION" });
   });
 
+  it("creates a reachable draft inspection and retires public snapshots on ownership transfer", async () => {
+    const { prisma, versions } = makePrisma();
+    const inspections = {
+      createDraftForOwnershipReverification: vi.fn().mockResolvedValue({
+        id: "inspection-new",
+        propertyId: "property-1",
+        status: "DRAFT",
+      }),
+    };
+    const service = new PublishingService(
+      prisma,
+      undefined,
+      undefined,
+      undefined,
+      inspections as any,
+    );
+    await service.publish("property-1");
+    prisma.user = {
+      findUnique: vi.fn(async ({ where }: any) =>
+        where.id === "owner-2"
+          ? { id: "owner-2", status: "ACTIVE", roles: [{ role: { name: "OWNER" } }] }
+          : null,
+      ),
+    };
+
+    const transferred = await service.reverifyOwnershipChange(
+      "property-1",
+      "owner-2",
+      { id: "staff-1", roles: ["ADMIN"] },
+    );
+
+    expect(transferred).toMatchObject({ ownerId: "owner-2", status: "PENDING_INSPECTION" });
+    expect(inspections.createDraftForOwnershipReverification).toHaveBeenCalledWith(
+      "property-1",
+      prisma,
+    );
+    expect(prisma.propertyVersion.updateMany).toHaveBeenCalledWith({
+      where: { propertyId: "property-1", isApproved: true },
+      data: { isApproved: false },
+    });
+    expect(versions[0].isApproved).toBe(false);
+    await expect(service.getPublicProjection("property-1")).resolves.toBeNull();
+  });
+
   it("pauses a published listing when its one-year verification expires", async () => {
     const { prisma } = makePrisma();
     const service = new PublishingService(prisma);

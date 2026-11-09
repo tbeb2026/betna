@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ForbiddenException,
   BadRequestException,
+  ConflictException,
   InternalServerErrorException,
 } from "@nestjs/common";
 import { InspectionsService } from "./inspections.service";
@@ -287,6 +288,27 @@ describe("InspectionsService", () => {
     });
     expect(assigned.verifierId).toBe("verifier-1");
   });
+
+  it.each(["APPROVED", "REJECTED", "EXPIRED"] as const)(
+    "does not reassign a terminal inspection in %s state",
+    async (status) => {
+      const { prisma, rows } = makePrisma();
+      const row = rows.get("inspection-1")!;
+      Object.assign(row, { status, verifierId: "verifier-1" });
+      const before = structuredClone(row);
+      const service = makeService(prisma);
+
+      await expect(
+        service.assign("inspection-1", "verifier-2", {
+          id: "admin-1",
+          roles: ["ADMIN"],
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+
+      expect(row).toEqual(before);
+      expect(prisma.inspection.update).not.toHaveBeenCalled();
+    },
+  );
 
   it("requires the baseline and category checklist before submission can be reviewed", async () => {
     const { prisma } = makePrisma();

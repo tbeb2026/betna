@@ -4,6 +4,7 @@ import { ChecklistService } from "../verification/checklist.service";
 import { InspectionsService } from "../verification/inspections.service";
 import { TaxonomyService } from "./taxonomy.service";
 import { PropertiesService } from "./properties.service";
+import { PublishingService } from "./publishing.service";
 
 const owner = { id: "owner-1", roles: [{ role: { name: "OWNER" } }] };
 const admin = { id: "admin-1", roles: [{ role: { name: "ADMIN" } }] };
@@ -103,7 +104,9 @@ function makePrisma() {
       }),
       update: vi.fn(async ({ where, data }: any) => {
         const property = properties.find((entry) => entry.id === where.id);
-        Object.assign(property, data);
+        const next = { ...data };
+        if (data.offerings?.create) next.offerings = data.offerings.create;
+        Object.assign(property, next);
         return property;
       }),
     },
@@ -150,6 +153,17 @@ function makePrisma() {
         const inspection = inspections.find((entry) => entry.id === where.id);
         Object.assign(inspection, data);
         return inspection;
+      }),
+      updateMany: vi.fn(async ({ where, data }: any) => {
+        const matches = inspections.filter((entry) =>
+          Object.entries(where).every(([key, value]) =>
+            typeof value === "object" && value !== null && "in" in value
+              ? (value.in as any[]).includes(entry[key])
+              : entry[key] === value,
+          ),
+        );
+        matches.forEach((entry) => Object.assign(entry, data));
+        return { count: matches.length };
       }),
     },
     inspectionEvidence: {
@@ -277,6 +291,93 @@ describe("owner submission inspection workflow", () => {
       id: draft.id,
       status: "PENDING_REVIEW",
     });
+  });
+
+  it("returns rejected listings to the owner as a draft and creates a fresh review inspection on resubmission", async () => {
+    const { prisma, inspections, properties: rows } = makePrisma();
+    const inspectionService = new InspectionsService(
+      prisma,
+      new AssignmentsService(prisma),
+      new ChecklistService(prisma),
+    );
+    const properties = makePropertiesService(prisma, inspectionService);
+    const draft = await properties.createDraft(owner.id, input);
+    await properties.submit(draft.id, owner.id);
+    const rejectedInspection = inspections[0];
+    Object.assign(rejectedInspection, {
+      status: "READY_FOR_REVIEW",
+      requiredEvidenceSynced: true,
+      checklist: { identityAuthorization: true },
+    });
+
+    await inspectionService.adminReview(
+      rejectedInspection.id,
+      admin,
+      "REJECTED",
+      "Please correct the listing details",
+    );
+
+    expect(rows[0].status).toBe("DRAFT");
+    expect(rejectedInspection).toMatchObject({
+      status: "REJECTED",
+      ownerSubmissionKey: null,
+    });
+
+    const edited = await properties.updateDraft(draft.id, owner.id, {
+      title: "Corrected garden apartment",
+    } as any);
+    expect(edited.title).toBe("Corrected garden apartment");
+
+    await properties.submit(draft.id, owner.id);
+    expect(rows[0].status).toBe("PENDING_REVIEW");
+    expect(inspections).toHaveLength(2);
+    expect(inspections[1]).toMatchObject({
+      propertyId: draft.id,
+      status: "DRAFT",
+      ownerSubmissionKey: `owner-submit:${draft.id}`,
+    });
+    await expect(inspectionService.listForAdmin()).resolves.toEqual([inspections[1]]);
+  });
+
+  it("retires old inspections and creates a reachable draft when ownership changes", async () => {
+    const { prisma, inspections, properties: rows } = makePrisma();
+    const inspectionService = new InspectionsService(
+      prisma,
+      new AssignmentsService(prisma),
+      new ChecklistService(prisma),
+    );
+    const properties = makePropertiesService(prisma, inspectionService);
+    const publishing = new PublishingService(
+      prisma,
+      undefined,
+      undefined,
+      undefined,
+      inspectionService,
+    );
+    const draft = await properties.createDraft(owner.id, input);
+    await properties.submit(draft.id, owner.id);
+    prisma.user.findUnique.mockImplementation(async ({ where }: any) =>
+      where.id === "owner-2"
+        ? { id: "owner-2", status: "ACTIVE", roles: [{ role: { name: "OWNER" } }] }
+        : owner,
+    );
+
+    await publishing.reverifyOwnershipChange(
+      draft.id,
+      "owner-2",
+      admin,
+    );
+
+    expect(rows[0].status).toBe("PENDING_INSPECTION");
+    expect(inspections).toHaveLength(2);
+    expect(inspections[0]).toMatchObject({ status: "EXPIRED", verifierId: null });
+    expect(inspections[1]).toMatchObject({
+      propertyId: draft.id,
+      status: "DRAFT",
+      cityId,
+      territoryId: "territory-nairobi",
+    });
+    await expect(inspectionService.listForAdmin()).resolves.toEqual([inspections[1]]);
   });
 
   it("rejects an owner retry when a guessed key belongs to another property's inspection", async () => {

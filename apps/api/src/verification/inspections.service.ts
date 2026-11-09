@@ -62,6 +62,43 @@ export class InspectionsService {
     });
   }
 
+  /** Create the unassigned inspection used after an ownership change. */
+  async createDraftForOwnershipReverification(
+    propertyId: string,
+    db: any = this.prisma,
+  ) {
+    const property = await db.property.findUnique({
+      where: { id: propertyId },
+      include: { city: true },
+    });
+    if (!property) throw new NotFoundException("Property not found");
+
+    const existing = typeof db.inspection?.findFirst === "function"
+      ? await db.inspection.findFirst({
+          where: {
+            propertyId,
+            status: "DRAFT",
+            verifierId: null,
+            ownerSubmissionKey: null,
+          },
+          orderBy: { createdAt: "desc" },
+          include: { evidence: true, property: true },
+        })
+      : null;
+    if (existing) return existing;
+
+    return db.inspection.create({
+      data: {
+        propertyId,
+        territoryId: property.city?.territoryId ?? null,
+        cityId: property.cityId,
+        status: "DRAFT",
+        checklist: {},
+      },
+      include: { evidence: true, property: true },
+    });
+  }
+
   /**
    * Create the first inspection for a normal owner submission. The stable
    * request key makes retries and concurrent submissions converge on the same
@@ -355,10 +392,15 @@ export class InspectionsService {
         );
       }
 
+      const transitionData = {
+        status: decision,
+        notes: notes?.trim() || inspection.notes,
+        ...(decision === "REJECTED" ? { ownerSubmissionKey: null } : {}),
+      };
       const transition = typeof tx.inspection.updateMany === "function"
         ? await tx.inspection.updateMany({
             where: { id: inspectionId, status: "READY_FOR_REVIEW" },
-            data: { status: decision, notes: notes?.trim() || inspection.notes },
+            data: transitionData,
           })
         : null;
       if (transition && transition.count !== 1) {
@@ -367,7 +409,7 @@ export class InspectionsService {
       if (!transition) {
         await tx.inspection.update({
           where: { id: inspectionId },
-          data: { status: decision, notes: notes?.trim() || inspection.notes },
+          data: transitionData,
         });
       }
 
@@ -406,6 +448,30 @@ export class InspectionsService {
             },
           });
         }
+      } else if (decision === "REJECTED" && tx.property) {
+        const propertyTransition = typeof tx.property.updateMany === "function"
+          ? await tx.property.updateMany({
+              where: {
+                id: inspection.propertyId,
+                status: { in: ["PENDING_REVIEW", "PENDING_INSPECTION"] },
+              },
+              data: { status: "DRAFT" },
+            })
+          : null;
+        if (propertyTransition && propertyTransition.count !== 1) {
+          throw new ConflictException("Property is no longer awaiting this inspection");
+        }
+        if (!propertyTransition && tx.property.update) {
+          await tx.property.update({
+            where: { id: inspection.propertyId },
+            data: { status: "DRAFT" },
+          });
+        }
+        await this.recordAudit(tx, actor, "PROPERTY_REVIEW_REOPENED", inspection.propertyId, {
+          inspectionId,
+          previousStatus: inspection.property?.status ?? "PENDING_REVIEW",
+          status: "DRAFT",
+        });
       }
       await this.recordAudit(tx, actor, `INSPECTION_${decision}`, inspectionId, {
         propertyId: inspection.propertyId,
@@ -423,7 +489,12 @@ export class InspectionsService {
         messageKey: decision === "APPROVED" ? "verification.approved" : "verification.rejected",
         idempotencyKey: `inspection-review:${inspectionId}:${decision}:${reviewed.updatedAt?.toISOString() ?? "latest"}`,
         recipients,
-        payload: { inspectionId, propertyId: reviewed.propertyId, status: reviewed.status },
+        payload: {
+          inspectionId,
+          propertyId: reviewed.propertyId,
+          status: reviewed.status,
+          propertyStatus: reviewed.property?.status,
+        },
         channels: ["IN_APP", "EMAIL", "WHATSAPP"],
       });
     }
