@@ -1,0 +1,582 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  INVITED
+}
+
+enum RentalMode {
+  SHORT_STAY
+  LONG_TERM
+}
+
+enum ListingStatus {
+  DRAFT
+  PENDING_REVIEW
+  PENDING_INSPECTION
+  VERIFIED
+  PUBLISHED
+  PAUSED
+  EXPIRED
+  FRAUD_REVIEW
+  REJECTED
+  UNPUBLISHED
+}
+
+enum InquiryStatus {
+  NEW
+  CONTACTED
+  LOCATION_APPROVED
+  OWNER_CONFIRMED
+  OWNER_DECLINED
+  CLOSED
+}
+
+enum VerificationStatus {
+  DRAFT
+  PENDING_UPLOAD
+  READY_FOR_REVIEW
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum CommissionStatus {
+  CONFIRMED
+  COMMISSION_DUE
+  PAID
+  WAIVED
+  DISPUTED
+}
+
+enum MediaPurpose {
+  LISTING
+  INSPECTION_EVIDENCE
+}
+
+enum MediaStatus {
+  PENDING
+  CLEAN
+  REJECTED
+}
+
+enum ConversionStatus {
+  REPORTED
+  EVIDENCE_PENDING
+  VERIFIED
+  CANCELLED
+}
+
+model Country {
+  id          String      @id @default(uuid()) @db.Uuid
+  code        String      @unique @db.VarChar(2)
+  name        String      @db.VarChar(100)
+  currency    String      @db.VarChar(3)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  cities      City[]
+  territories Territory[]
+  users       User[]
+  properties  Property[]
+}
+
+model Role {
+  id        String     @id @default(uuid()) @db.Uuid
+  name      String     @unique @db.VarChar(50)
+  createdAt DateTime   @default(now())
+  users     UserRole[]
+}
+
+model User {
+  id                    String          @id @default(uuid()) @db.Uuid
+  email                 String?         @unique @db.VarChar(320)
+  phone                 String?         @unique @db.VarChar(40)
+  passwordHash          String?
+  firstName             String          @db.VarChar(100)
+  lastName              String          @db.VarChar(100)
+  status                UserStatus      @default(ACTIVE)
+  emailVerified         Boolean         @default(false)
+  phoneVerified         Boolean         @default(false)
+  authorizationAttested Boolean         @default(false)
+  preferredLocale      String            @default("en") @db.VarChar(10)
+  countryId             String?         @db.Uuid
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  country               Country?        @relation(fields: [countryId], references: [id])
+  roles                 UserRole[]
+  properties            Property[]      @relation("PropertyOwner")
+  inspections           Inspection[]    @relation("VerifierInspections")
+  auditEvents           AuditEvent[]    @relation("AuditActor")
+  conversions           Conversion[]
+  commissions           Commission[]    @relation("CommissionOwner")
+  sessions              AuthSession[]
+  territoryAssignments  UserTerritory[]
+}
+
+model UserRole {
+  userId String @db.Uuid
+  roleId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model UserTerritory {
+  userId      String    @db.Uuid
+  territoryId String    @db.Uuid
+  assignedAt  DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  territory   Territory @relation(fields: [territoryId], references: [id], onDelete: Cascade)
+
+  @@id([userId, territoryId])
+  @@index([territoryId])
+}
+
+model AuthSession {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @db.Uuid
+  tokenHash    String    @unique @db.VarChar(128)
+  roles        Json      @default("[]")
+  territoryIds Json      @default("[]")
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+}
+
+model OtpChallenge {
+  id          String    @id @default(uuid()) @db.Uuid
+  phone       String    @db.VarChar(40)
+  salt        String    @db.VarChar(128)
+  codeHash    String    @db.VarChar(128)
+  expiresAt   DateTime
+  requestedAt DateTime  @default(now())
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5)
+  consumedAt  DateTime?
+
+  @@index([phone, requestedAt])
+  @@index([phone, expiresAt])
+}
+
+model EmailVerificationChallenge {
+  id          String    @id @default(uuid()) @db.Uuid
+  email       String    @db.VarChar(320)
+  salt        String    @db.VarChar(128)
+  codeHash    String    @db.VarChar(128)
+  expiresAt   DateTime
+  requestedAt DateTime  @default(now())
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5)
+  consumedAt  DateTime?
+  confirmedAt DateTime?
+
+  @@index([email, requestedAt])
+  @@index([email, expiresAt])
+}
+
+model Territory {
+  id              String          @id @default(uuid()) @db.Uuid
+  countryId       String          @db.Uuid
+  name            String          @db.VarChar(120)
+  slug            String          @db.VarChar(120)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  country         Country         @relation(fields: [countryId], references: [id])
+  cities          City[]
+  inspections     Inspection[]
+  userAssignments UserTerritory[]
+
+  @@unique([countryId, slug])
+  @@index([countryId])
+}
+
+model City {
+  id            String         @id @default(uuid()) @db.Uuid
+  countryId     String         @db.Uuid
+  territoryId   String?        @db.Uuid
+  name          String         @db.VarChar(120)
+  slug          String         @db.VarChar(120)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  country       Country        @relation(fields: [countryId], references: [id])
+  territory     Territory?     @relation(fields: [territoryId], references: [id])
+  neighborhoods Neighborhood[]
+  properties    Property[]
+  inspections   Inspection[]
+
+  @@unique([countryId, slug])
+  @@index([countryId])
+}
+
+model Neighborhood {
+  id         String     @id @default(uuid()) @db.Uuid
+  cityId     String     @db.Uuid
+  name       String     @db.VarChar(120)
+  slug       String     @db.VarChar(120)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  city       City       @relation(fields: [cityId], references: [id])
+  properties Property[]
+
+  @@unique([cityId, slug])
+}
+
+model Property {
+  id                     String                               @id @default(uuid()) @db.Uuid
+  ownerId                String                               @db.Uuid
+  countryId              String                               @db.Uuid
+  cityId                 String                               @db.Uuid
+  neighborhoodId         String?                              @db.Uuid
+  title                  String                               @db.VarChar(200)
+  slug                   String                               @unique @db.VarChar(220)
+  description            String
+  category               String                               @db.VarChar(80)
+  subcategory            String?                              @db.VarChar(80)
+  amenities              Json                                 @default("[]")
+  status                 ListingStatus                        @default(DRAFT)
+  publicLocationLabel    String                               @db.VarChar(200)
+  publicLatitude         Decimal                              @db.Decimal(9, 6)
+  publicLongitude        Decimal                              @db.Decimal(9, 6)
+  exactAddress           String?
+  exactLatitude          Decimal?                             @db.Decimal(9, 6)
+  exactLongitude         Decimal?                             @db.Decimal(9, 6)
+  /// Private PostGIS point captured during physical verification; never part of public projections.
+  exactLocationGeometry  Unsupported("geometry(Point,4326)")?
+  authorizationAttested  Boolean                              @default(false)
+  verificationValidUntil DateTime?
+  lastInspectedAt        DateTime?
+  fraudReason            String?
+  materialFacts          Json                                 @default("{}")
+  createdAt              DateTime                             @default(now())
+  updatedAt              DateTime                             @updatedAt
+  owner                  User                                 @relation("PropertyOwner", fields: [ownerId], references: [id])
+  country                Country                              @relation(fields: [countryId], references: [id])
+  city                   City                                 @relation(fields: [cityId], references: [id])
+  neighborhood           Neighborhood?                        @relation(fields: [neighborhoodId], references: [id])
+  offerings              Offering[]
+  media                  Media[]
+  inspections            Inspection[]
+  inquiries              Inquiry[]
+  availabilityBlocks     AvailabilityBlock[]
+  unavailableDates       UnavailableDate[]
+  conversions            Conversion[]
+  versions               PropertyVersion[]
+  translations           PropertyTranslation[]
+
+  @@index([countryId, cityId, status])
+  @@index([status, verificationValidUntil, countryId, cityId, category])
+  @@index([status])
+}
+
+/// Immutable snapshots keep the last approved public listing visible while a
+/// material edit is being reviewed.
+model PropertyVersion {
+  id         String    @id @default(uuid()) @db.Uuid
+  propertyId String    @db.Uuid
+  version    Int
+  snapshot   Json
+  isApproved Boolean   @default(false)
+  approvedAt DateTime?
+  approvedBy String?   @db.Uuid
+  createdAt  DateTime  @default(now())
+  property   Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([propertyId, version])
+  @@index([propertyId, isApproved])
+}
+
+model PropertyTranslation {
+  id          String    @id @default(uuid()) @db.Uuid
+  propertyId  String    @db.Uuid
+  locale      String    @db.VarChar(10)
+  title       String    @db.VarChar(200)
+  description String
+  approved    Boolean   @default(false)
+  approvedBy  String?   @db.Uuid
+  approvedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  property    Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([propertyId, locale])
+  @@index([locale, approved])
+}
+
+model Offering {
+  id                  String     @id @default(uuid()) @db.Uuid
+  propertyId          String     @db.Uuid
+  mode                RentalMode
+  currency            String     @db.VarChar(3)
+  basePrice           Decimal    @db.Decimal(14, 2)
+  negotiable          Boolean    @default(false)
+  minimumNights       Int?
+  moveInDate          DateTime?
+  leaseDurationMonths Int?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  property            Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  inquiries           Inquiry[]
+
+  @@unique([propertyId, mode])
+  @@index([mode, currency])
+  @@index([mode, basePrice])
+}
+
+model Media {
+  id                 String               @id @default(uuid()) @db.Uuid
+  propertyId         String               @db.Uuid
+  purpose            MediaPurpose
+  status             MediaStatus          @default(PENDING)
+  objectKey          String               @db.VarChar(500)
+  contentType        String               @db.VarChar(120)
+  sizeBytes          BigInt
+  isPublic           Boolean              @default(false)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  property           Property             @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  inspectionEvidence InspectionEvidence[]
+
+  @@index([propertyId, purpose])
+}
+
+/// Versioned, administratively managed inspection checklist definitions.
+/// The definition is snapshotted on each inspection so later edits cannot
+/// change the meaning of an already submitted report.
+model ChecklistDefinition {
+  id          String   @id @default(uuid()) @db.Uuid
+  category    String   @db.VarChar(80)
+  version     Int
+  definition  Json
+  isPublished Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([category, version])
+  @@index([category, isPublished, version])
+}
+
+model Inspection {
+  id                     String               @id @default(uuid()) @db.Uuid
+  propertyId             String               @db.Uuid
+  verifierId             String?              @db.Uuid
+  territoryId            String?              @db.Uuid
+  cityId                 String?              @db.Uuid
+  status                 VerificationStatus   @default(DRAFT)
+  inspectedAt            DateTime?
+  notes                  String?
+  requiredEvidenceSynced Boolean              @default(false)
+  checklist              Json                 @default("{}")
+  checklistVersion       Int                  @default(1)
+  /// Immutable idempotency key for the owner's initial property submission.
+  ownerSubmissionKey     String?              @unique @db.VarChar(128)
+  /// Retry key for a verifier's inspection report, scoped to this inspection.
+  reportRequestKey       String?              @db.VarChar(128)
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  property               Property             @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  verifier               User?                @relation("VerifierInspections", fields: [verifierId], references: [id])
+  territory              Territory?           @relation(fields: [territoryId], references: [id])
+  city                   City?                @relation(fields: [cityId], references: [id])
+  evidence               InspectionEvidence[]
+
+  @@index([verifierId, status])
+  @@index([territoryId, cityId])
+}
+
+model InspectionEvidence {
+  inspectionId String     @db.Uuid
+  mediaId      String     @db.Uuid
+  syncedAt     DateTime?
+  validatedAt  DateTime?
+  inspection   Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  media        Media      @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@id([inspectionId, mediaId])
+  @@unique([mediaId])
+}
+
+model Inquiry {
+  id                       String             @id @default(uuid()) @db.Uuid
+  reference                String             @unique @db.VarChar(30)
+  propertyId               String             @db.Uuid
+  offeringId               String?            @db.Uuid
+  status                   InquiryStatus      @default(NEW)
+  guestName                String             @db.VarChar(160)
+  guestEmail               String             @db.VarChar(320)
+  guestPhone               String             @db.VarChar(40)
+  guestLocale              String             @default("en") @db.VarChar(10)
+  message                  String
+  ownerResponseMessage     String?
+  startDate                DateTime?
+  endDate                  DateTime?
+  guests                   Int?
+  locationApprovedAt       DateTime?
+  locationReleaseExpiresAt DateTime?
+  /// A new identifier is generated for every approval window, including renewals.
+  locationReleaseId        String?            @unique @db.Uuid
+  locationRevokedAt        DateTime?
+  locationReleasedBy       String?            @db.Uuid
+  createdAt                DateTime           @default(now())
+  updatedAt                DateTime           @updatedAt
+  property                 Property           @relation(fields: [propertyId], references: [id])
+  offering                 Offering?          @relation(fields: [offeringId], references: [id])
+  conversion               Conversion?
+  availabilityBlock        AvailabilityBlock?
+
+  @@index([propertyId, status])
+  @@index([status, locationReleaseExpiresAt])
+}
+
+model AvailabilityBlock {
+  id         String   @id @default(uuid()) @db.Uuid
+  propertyId String   @db.Uuid
+  inquiryId  String   @unique @db.Uuid
+  startDate  DateTime
+  endDate    DateTime
+  createdAt  DateTime @default(now())
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  inquiry    Inquiry  @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId, startDate, endDate])
+}
+
+/// Owner-declared unavailable dates are separate from confirmed inquiry
+/// blocks: they have no guest/inquiry identity and can be edited by the owner.
+model UnavailableDate {
+  id         String   @id @default(uuid()) @db.Uuid
+  propertyId String   @db.Uuid
+  startDate  DateTime
+  endDate    DateTime
+  reason     String?  @db.VarChar(240)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId, startDate, endDate])
+}
+
+/// Queued deliveries are persisted so notification attempts can be retried
+/// without changing the user-visible inquiry transition.
+model Notification {
+  id              String    @id @default(uuid()) @db.Uuid
+  idempotencyKey  String    @unique @db.VarChar(255)
+  event           String    @db.VarChar(100)
+  channel         String    @db.VarChar(30)
+  status          String    @default("QUEUED") @db.VarChar(30)
+  attempts        Int       @default(0)
+  processingToken String?   @db.VarChar(64)
+  processingAt    DateTime?
+  nextAttemptAt   DateTime?
+  recipientId     String?   @db.Uuid
+  recipientEmail  String?   @db.VarChar(320)
+  recipientPhone  String?   @db.VarChar(40)
+  recipientLocale String?   @db.VarChar(10)
+  inquiryId       String?   @db.Uuid
+  reference       String?   @db.VarChar(30)
+  subject         String?
+  body            String?
+  payload         Json      @default("{}")
+  error           String?
+  createdAt       DateTime  @default(now())
+  sentAt          DateTime?
+
+  @@index([inquiryId, createdAt])
+  @@index([status, createdAt])
+  @@index([status, nextAttemptAt])
+  @@index([recipientId, createdAt])
+}
+
+/// Durable, bounded guest-abuse counters. Rows are periodically pruned by
+/// the maintenance job using lastAttemptAt; no unbounded process-local state
+/// is required for multi-instance API deployments.
+model InquiryAbuseAttempt {
+  id              String   @id @default(uuid()) @db.Uuid
+  key             String   @unique @db.VarChar(255)
+  normalizedEmail String   @db.VarChar(320)
+  normalizedPhone String   @db.VarChar(40)
+  fingerprint     String?  @db.VarChar(128)
+  attempts        Int      @default(0)
+  windowStartedAt DateTime
+  lastAttemptAt   DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@index([lastAttemptAt])
+  @@index([normalizedEmail, lastAttemptAt])
+  @@index([normalizedPhone, lastAttemptAt])
+  @@index([fingerprint, lastAttemptAt])
+}
+
+model ContactClick {
+  id         String   @id @default(uuid()) @db.Uuid
+  propertyId String   @db.Uuid
+  target     String   @db.VarChar(20)
+  channel    String   @db.VarChar(20)
+  createdAt  DateTime @default(now())
+
+  @@index([propertyId, createdAt])
+  @@index([target, channel, createdAt])
+}
+
+model Conversion {
+  id                   String           @id @default(uuid()) @db.Uuid
+  inquiryId            String           @unique @db.Uuid
+  propertyId           String           @db.Uuid
+  ownerId              String           @db.Uuid
+  status               ConversionStatus @default(REPORTED)
+  firstPaymentAmount   Decimal?         @db.Decimal(14, 2)
+  firstPaymentCurrency String?          @db.VarChar(3)
+  reportedAt           DateTime         @default(now())
+  verifiedAt           DateTime?
+  paymentEvidence      String?
+  verifiedBy           String?          @db.Uuid
+  inquiry              Inquiry          @relation(fields: [inquiryId], references: [id])
+  property             Property         @relation(fields: [propertyId], references: [id])
+  owner                User             @relation(fields: [ownerId], references: [id])
+  commission           Commission?
+}
+
+model Commission {
+  id                 String           @id @default(uuid()) @db.Uuid
+  conversionId       String           @unique @db.Uuid
+  ownerId            String           @db.Uuid
+  status             CommissionStatus @default(CONFIRMED)
+  percentage         Decimal          @db.Decimal(5, 2)
+  firstPaymentAmount Decimal          @db.Decimal(14, 2)
+  amountDue          Decimal          @db.Decimal(14, 2)
+  currency           String           @db.VarChar(3)
+  evidence           String?
+  paidAt             DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  conversion         Conversion       @relation(fields: [conversionId], references: [id])
+  owner              User             @relation("CommissionOwner", fields: [ownerId], references: [id])
+
+  @@index([ownerId, status])
+}
+
+model AuditEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @db.Uuid
+  action     String   @db.VarChar(100)
+  entityType String   @db.VarChar(100)
+  entityId   String   @db.Uuid
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now())
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id])
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
+}

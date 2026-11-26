@@ -1,0 +1,115 @@
+name: Betna CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: betna-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: betna
+          POSTGRES_USER: betna
+          POSTGRES_PASSWORD: betna-ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U betna -d betna"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://betna:betna-ci-password@localhost:5432/betna
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm --filter @betna/api prisma migrate deploy
+      - name: Seed critical flow fixtures
+        run: |
+          set -euo pipefail
+          critical_flow_password="$(openssl rand -hex 32)"
+          echo "::add-mask::$critical_flow_password"
+          printf 'BETNA_CRITICAL_FLOW_PASSWORD=%s\n' "$critical_flow_password" >> "$GITHUB_ENV"
+          BETNA_CRITICAL_FLOW_PASSWORD="$critical_flow_password" pnpm --filter @betna/api prisma:seed:critical-flow
+      - run: pnpm --filter @betna/api build
+      - name: Start API for critical flow
+        run: |
+          NODE_ENV=test API_PORT=4000 API_CORS_ORIGINS=http://127.0.0.1:3100 \
+            REDIS_URL=redis://localhost:6379 SESSION_SECRET=ci-session-secret-long-enough \
+            JWT_SECRET=ci-jwt-secret-long-enough MEDIA_SIGNING_SECRET=ci-media-secret-long-enough \
+            pnpm --filter @betna/api start > /tmp/betna-api.log 2>&1 &
+          for attempt in {1..30}; do curl --fail http://127.0.0.1:4000/health/live && exit 0; sleep 1; done
+          cat /tmp/betna-api.log
+          exit 1
+      - name: Export critical-flow sessions
+        run: |
+          set -euo pipefail
+          auth_token() {
+            local email="$1"
+            curl --fail --silent http://127.0.0.1:4000/auth/password/sign-in \
+              -H 'content-type: application/json' --data-binary @- <<EOF
+          {"email":"$email","password":"$BETNA_CRITICAL_FLOW_PASSWORD"}
+          EOF
+          }
+          owner_token=$(auth_token critical-owner@betna.example | node -e 'let s=""; process.stdin.on("data", d => s += d).on("end", () => process.stdout.write(JSON.parse(s).session.token))')
+          admin_token=$(auth_token critical-admin@betna.example | node -e 'let s=""; process.stdin.on("data", d => s += d).on("end", () => process.stdout.write(JSON.parse(s).session.token))')
+          echo "BETNA_E2E_OWNER_TOKEN=$owner_token" >> "$GITHUB_ENV"
+          echo "BETNA_E2E_ADMIN_TOKEN=$admin_token" >> "$GITHUB_ENV"
+      - run: pnpm test
+      - run: pnpm --filter @betna/web exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+        env:
+          CI: true
+          BETNA_CRITICAL_FLOW_E2E: "1"
+          # The API was migrated and seeded above; guest inquiry is a required
+          # browser path and is intentionally not environment-skipped.
+          NEXT_PUBLIC_API_URL: http://127.0.0.1:4000
+          BETNA_E2E_PROPERTY_SLUG: verified-kilimani-home
+      - run: pnpm audit --audit-level=high
+      - run: git diff --check
+
+  containers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - run: docker build --file infra/Dockerfile.api --tag betna-api:ci .
+      - run: docker build --build-arg NEXT_PUBLIC_API_URL=https://api.ci.invalid --file infra/Dockerfile.web --tag betna-web:ci .
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: betna-api:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: betna-web:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+      - run: docker compose -f infra/docker-compose.yml config

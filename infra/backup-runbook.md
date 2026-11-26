@@ -1,0 +1,52 @@
+# Backup and restore runbook
+
+## Scope and targets
+
+Back up PostgreSQL (system of record), Redis (rebuildable queues/session state), and MinIO/S3 objects (media and evidence). Target RPO: 24 hours for database and object storage, 1 hour for Redis if session continuity is required. Target RTO: 4 hours for a regional recovery.
+
+## Daily backup
+
+1. Provision a dedicated 0700 backup volume, an `age` recipient, and an `mc` alias for a separate versioned object-store account. Set `DATABASE_URL`, `BACKUP_DIR`, `BACKUP_AGE_RECIPIENT`, `S3_SOURCE`, `S3_DEST`, and `MC_ENCRYPTION_KEY`. The checked-in command fails closed if any are missing:
+
+   ```sh
+   chmod 700 /secure/betna-backups
+   DATABASE_URL='postgresql://...' BACKUP_DIR=/secure/betna-backups \
+   BACKUP_AGE_RECIPIENT='age1...' S3_SOURCE='recovery/betna-private' \
+   S3_DEST='recovery-dr/betna-backups' MC_ENCRYPTION_KEY="$MC_ENCRYPTION_KEY" \
+   ./infra/backup.sh
+   ```
+
+   Keep credentials in the host secret manager rather than shell history. The script sets `umask 077`, checks directory permissions, encrypts database artifacts with `age`, writes a checksum manifest, and mirrors objects with `mc --enc-c` to the separate object store.
+
+2. The equivalent PostgreSQL commands, useful for a manually supervised recovery, are:
+
+   ```sh
+   pg_dump --format=custom --no-owner --file="$BACKUP_DIR/betna-$(date -u +%Y%m%dT%H%M%SZ).dump" "$DATABASE_URL"
+   pg_dumpall --globals-only --dbname="$DATABASE_URL" --file="$BACKUP_DIR/globals-$(date -u +%Y%m%dT%H%M%SZ).sql"
+   ```
+
+3. Sync MinIO buckets with client/server-side encryption and object versioning enabled. Record the source bucket, destination, object count, and checksum manifest.
+4. Snapshot Redis only when session/queue continuity is required; otherwise document that Redis will be rebuilt and jobs replayed from durable records.
+5. Encrypt backups before transfer, upload to a separate account/region, restrict access to the recovery role, and record the backup timestamp and retention expiry.
+
+## Restore rehearsal
+
+1. Announce a recovery exercise and create an isolated PostgreSQL/MinIO/Redis environment. Never restore over production first.
+2. Decrypt the age-wrapped artifacts into a private temporary directory, then restore globals and the custom PostgreSQL dump:
+
+   ```sh
+   restore_dir="$(mktemp -d)"
+   trap 'rm -rf "$restore_dir"' EXIT
+   age --decrypt --identity="$BACKUP_AGE_IDENTITY" --output="$restore_dir/globals.sql" globals-YYYYMMDDTHHMMSSZ.sql.age
+   age --decrypt --identity="$BACKUP_AGE_IDENTITY" --output="$restore_dir/betna.dump" betna-YYYYMMDDTHHMMSSZ.dump.age
+   psql "$RECOVERY_DATABASE_URL" < "$restore_dir/globals.sql"
+   pg_restore --clean --if-exists --no-owner --dbname="$RECOVERY_DATABASE_URL" "$restore_dir/betna.dump"
+   ```
+
+3. Restore object versions and verify the checksum manifest. Recreate Redis, then run pending migrations with `prisma migrate deploy`.
+4. Set recovery secrets, start the API and web images, and verify both health probes plus the critical flow. Check row counts, latest audit events, media reads, and queue consumers.
+5. Record restore duration, recovered backup IDs, checksum mismatches, and follow-up actions. Destroy the isolated credentials and temporary environment after sign-off.
+
+## Emergency production recovery
+
+Declare the incident, freeze writes if corruption is ongoing, preserve logs/audit records, and obtain the incident commander’s approval before destructive restore. Choose the newest verified backup before the incident, communicate expected data loss, restore to a new database/buckets, validate the application, then switch connections. Keep the original resources read-only until evidence is preserved and the incident commander closes the recovery.

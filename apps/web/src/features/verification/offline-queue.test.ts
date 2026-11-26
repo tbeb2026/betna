@@ -1,0 +1,123 @@
+import { describe, expect, it } from "vitest";
+import { OfflineInspectionQueue, type OfflineInspectionDraft } from "./offline-queue";
+
+class MemoryStorage implements Storage {
+  private values = new Map<string, string>();
+
+  get length() {
+    return this.values.size;
+  }
+
+  clear() {
+    this.values.clear();
+  }
+
+  getItem(key: string) {
+    return this.values.get(key) ?? null;
+  }
+
+  key(index: number) {
+    return [...this.values.keys()][index] ?? null;
+  }
+
+  removeItem(key: string) {
+    this.values.delete(key);
+  }
+
+  setItem(key: string, value: string) {
+    this.values.set(key, value);
+  }
+}
+
+const draft = (inspectionId: string): OfflineInspectionDraft => ({
+  inspectionId,
+  checklist: { exactLocation: true },
+  evidence: [{ mediaId: `${inspectionId}-media` }],
+  updatedAt: new Date().toISOString(),
+});
+
+describe("OfflineInspectionQueue", () => {
+  it("deduplicates drafts by inspection and does not flush unsent drafts", async () => {
+    const storage = new MemoryStorage();
+    const queue = new OfflineInspectionQueue(storage);
+    const saved = draft("inspection-1");
+    const submitted = { ...saved, notes: "submitted", submitted: true };
+    await queue.enqueue(saved);
+    await queue.enqueue(submitted);
+    const uploads: string[] = [];
+
+    await expect(
+      queue.flush(async (entry) => {
+        uploads.push(entry.inspectionId);
+      }),
+    ).resolves.toBe(1);
+
+    expect(uploads).toEqual(["inspection-1"]);
+    await expect(queue.list()).resolves.toEqual([]);
+  });
+
+  it("does not downgrade a submitted operation when a later draft save arrives", async () => {
+    const storage = new MemoryStorage();
+    const queue = new OfflineInspectionQueue(storage);
+    const submitted = { ...draft("inspection-1"), notes: "submitted", submitted: true };
+    await queue.enqueue(submitted);
+    await queue.enqueue({ ...draft("inspection-1"), notes: "later draft" });
+    const uploaded: string[] = [];
+
+    await queue.flush(async (entry) => {
+      uploaded.push(`${entry.inspectionId}:${entry.notes}`);
+    });
+
+    expect(uploaded).toEqual(["inspection-1:submitted"]);
+    await expect(queue.list()).resolves.toEqual([]);
+  });
+
+  it("removes only successfully uploaded drafts when a later retry fails", async () => {
+    const storage = new MemoryStorage();
+    const queue = new OfflineInspectionQueue(storage);
+    const first = { ...draft("inspection-1"), submitted: true };
+    const second = { ...draft("inspection-2"), submitted: true };
+    await queue.enqueue(first);
+    await queue.enqueue(second);
+
+    await expect(
+      queue.flush(async (entry) => {
+        if (entry.inspectionId === "inspection-2") throw new Error("offline");
+      }),
+    ).rejects.toThrow("offline");
+
+    await expect(queue.list()).resolves.toEqual([second]);
+  });
+
+  it("persists completed media progress when a later media upload fails", async () => {
+    const storage = new MemoryStorage();
+    const queue = new OfflineInspectionQueue(storage);
+    const submitted: OfflineInspectionDraft = {
+      ...draft("inspection-1"),
+      evidence: [
+        { file: "blob-1", fileName: "one.jpg", contentType: "image/jpeg" },
+        { file: "blob-2", fileName: "two.jpg", contentType: "image/jpeg" },
+      ],
+      submitted: true,
+    };
+    await queue.enqueue(submitted);
+
+    await expect(
+      queue.flush(async (entry, update) => {
+        const evidence = [...entry.evidence];
+        evidence[0] = { ...evidence[0], mediaId: "media-1" };
+        await update({ ...entry, evidence });
+        throw new Error("offline after first upload");
+      }),
+    ).rejects.toThrow("offline after first upload");
+    await expect(queue.list()).resolves.toEqual([
+      expect.objectContaining({
+        submitted: true,
+        evidence: [
+          expect.objectContaining({ mediaId: "media-1" }),
+          expect.not.objectContaining({ mediaId: expect.any(String) }),
+        ],
+      }),
+    ]);
+  });
+});
