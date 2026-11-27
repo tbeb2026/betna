@@ -66,6 +66,7 @@ export class NotificationService {
   private readonly inFlight = new Map<string, Promise<any>>();
 
   constructor(
+    @Inject(PrismaService)
     private readonly prisma: PrismaService | { notification?: NotificationStore } = {} as PrismaService,
     @Inject(NOTIFICATION_CHANNEL_ADAPTERS) adapters: ChannelAdapter[] = defaultChannelAdapters(),
   ) {
