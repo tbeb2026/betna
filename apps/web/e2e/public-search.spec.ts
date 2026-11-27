@@ -5,12 +5,12 @@ test("public search exposes filters and protected-location copy", async ({ page 
 
   await expect(page.getByRole("heading", { name: "Find a verified place" })).toBeVisible();
   await expect(page.getByRole("form", { name: "Property filters" })).toBeVisible();
-  await expect(page.getByLabel("Rental mode")).toBeVisible();
+  await expect(page.getByRole("group", { name: "Rental mode" })).toBeVisible();
   await expect(page.getByText("Exact addresses remain protected until managed release.")).toBeVisible();
 
   await page.getByLabel("City").fill("nairobi");
   await page.getByRole("button", { name: "Apply filters" }).click();
-  await expect(page).toHaveURL(/\/en\/search\?city=nairobi/);
+  await expect(page).toHaveURL(/\/en\/search\?.*city=nairobi/);
 
 });
 

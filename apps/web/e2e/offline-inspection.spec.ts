@@ -42,7 +42,7 @@ test("verifier can save an inspection draft while offline and retry upload", asy
     page.getByRole("button", { name: "Retry upload" }),
   ).toBeVisible();
 
-  await page.route("http://localhost:4000/media/upload-target", async (route) =>
+  await page.route("**/api/bff/media/upload-target", async (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -56,7 +56,7 @@ test("verifier can save an inspection draft while offline and retry upload", asy
   await page.route("http://storage.local/upload/media-offline-1", async (route) =>
     route.fulfill({ status: 200 }),
   );
-  await page.route("http://localhost:4000/media/media-offline-1/complete", async (route) =>
+  await page.route("**/api/bff/media/media-offline-1/complete", async (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -64,7 +64,7 @@ test("verifier can save an inspection draft while offline and retry upload", asy
     }),
   );
   await page.route(
-    "http://localhost:4000/verification/inspections/inspection-1/submit",
+    "**/api/bff/verification/inspections/inspection-1/submit",
     async (route) =>
       route.fulfill({
         status: 200,
@@ -73,7 +73,7 @@ test("verifier can save an inspection draft while offline and retry upload", asy
       }),
   );
   await page.route(
-    "http://localhost:4000/verification/inspections/inspection-1/evidence/media-offline-1/sync",
+    "**/api/bff/verification/inspections/inspection-1/evidence/media-offline-1/sync",
     async (route) =>
       route.fulfill({
         status: 200,

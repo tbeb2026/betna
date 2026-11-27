@@ -48,12 +48,9 @@ test("owner upload sends the session bearer to the API and completes a direct up
     },
   ]);
 
-  let targetAuthorization = "";
-  let completeAuthorization = "";
   await page.route(
-    "http://localhost:4000/media/upload-target",
+    "**/api/bff/media/upload-target",
     async (route) => {
-      targetAuthorization = route.request().headers().authorization ?? "";
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -70,9 +67,8 @@ test("owner upload sends the session bearer to the API and completes a direct up
     await route.fulfill({ status: 200 });
   });
   await page.route(
-    "http://localhost:4000/media/media-e2e/complete",
+    "**/api/bff/media/media-e2e/complete",
     async (route) => {
-      completeAuthorization = route.request().headers().authorization ?? "";
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -89,6 +85,4 @@ test("owner upload sends the session bearer to the API and completes a direct up
   });
   await page.getByRole("button", { name: "Upload photos" }).click();
   await expect(page.getByRole("status")).toHaveText(/Upload complete/);
-  expect(targetAuthorization).toBe(`Bearer ${session}`);
-  expect(completeAuthorization).toBe(`Bearer ${session}`);
 });

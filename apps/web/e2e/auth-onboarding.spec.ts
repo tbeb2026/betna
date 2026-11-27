@@ -33,7 +33,7 @@ test("owner onboarding requests both codes and proves failed then successful act
   await page.getByLabel("Password").fill("secret123");
   await page.getByLabel(/own or am authorized/i).check();
   await page.getByRole("button", { name: /create owner account/i }).click();
-  await expect(page.getByRole("alert")).toContainText("email verification code is invalid or expired");
+  await expect(page.locator('p[role="alert"]')).toContainText(/email verification code is invalid or expired/i);
 
   await page.getByLabel("Email verification code").fill("654321");
   await page.getByRole("button", { name: /create owner account/i }).click();
