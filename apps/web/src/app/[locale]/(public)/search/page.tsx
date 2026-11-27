@@ -5,6 +5,10 @@ import { PropertyCard } from "../../../../features/search/property-card";
 import { canonicalLocale, collectionJsonLd, collectionMetadata, jsonLd, siteUrl } from "../../../../features/search/seo";
 import { getTranslations } from "next-intl/server";
 
+// Listings come from the API. Rendering this route dynamically prevents image
+// builds from depending on the availability of the public API.
+export const dynamic = "force-dynamic";
+
 type SearchParams = Record<string, string | string[] | undefined>;
 function first(value: string | string[] | undefined) { return Array.isArray(value) ? value[0] : value; }
 
