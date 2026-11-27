@@ -43,6 +43,11 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
+      # API typechecking consumes generated Prisma types and the declarations
+      # emitted by the workspace packages. A clean runner has neither yet.
+      - run: pnpm --filter @betna/config build
+      - run: pnpm --filter @betna/contracts build
+      - run: pnpm --filter @betna/api exec prisma generate
       - run: pnpm typecheck
       - run: pnpm --filter @betna/api prisma migrate deploy
       - name: Seed critical flow fixtures
