@@ -103,8 +103,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - run: docker build --file infra/Dockerfile.api --tag betna-api:ci .
-      - run: docker build --build-arg NEXT_PUBLIC_API_URL=https://api.ci.invalid --file infra/Dockerfile.web --tag betna-web:ci .
+      - run: docker build --pull --file infra/Dockerfile.api --tag betna-api:ci .
+      - run: docker build --pull --build-arg NEXT_PUBLIC_API_URL=https://api.ci.invalid --file infra/Dockerfile.web --tag betna-web:ci .
       - uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: betna-api:ci

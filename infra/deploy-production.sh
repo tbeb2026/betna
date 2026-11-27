@@ -10,7 +10,7 @@ export GIT_TERMINAL_PROMPT=0
 git fetch --prune origin main
 git merge --ff-only origin/main
 
-"${COMPOSE[@]}" build api web migrate
+"${COMPOSE[@]}" build --pull api web migrate
 "${COMPOSE[@]}" run --rm migrate
 "${COMPOSE[@]}" up -d api
 
