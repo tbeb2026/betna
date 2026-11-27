@@ -113,3 +113,36 @@ jobs:
           ignore-unfixed: true
           severity: CRITICAL,HIGH
       - run: docker compose -f infra/docker-compose.yml config
+
+  deploy-production:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [quality, containers]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    concurrency:
+      group: betna-production-deploy
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy over SSH
+        env:
+          CONTABO_HOST: ${{ secrets.CONTABO_HOST }}
+          CONTABO_USER: ${{ secrets.CONTABO_USER }}
+          CONTABO_SSH_KEY: ${{ secrets.CONTABO_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$CONTABO_HOST"
+          test -n "$CONTABO_USER"
+          test -n "$CONTABO_SSH_KEY"
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$CONTABO_SSH_KEY" > "$HOME/.ssh/betna_deploy_key"
+          chmod 600 "$HOME/.ssh/betna_deploy_key"
+          ssh-keyscan -H "$CONTABO_HOST" >> "$HOME/.ssh/known_hosts" 2>/dev/null
+          ssh -i "$HOME/.ssh/betna_deploy_key" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            "$CONTABO_USER@$CONTABO_HOST" \
+            'bash -s' < infra/deploy-production.sh
