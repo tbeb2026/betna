@@ -81,6 +81,7 @@ test("verifier can save an inspection draft while offline and retry upload", asy
         body: JSON.stringify({ status: "READY_FOR_REVIEW" }),
       }),
   );
+  await context.setOffline(false);
   await page.getByRole("button", { name: "Retry upload" }).click();
   await expect(page.getByRole("status")).toHaveText(/upload synced/i);
 });

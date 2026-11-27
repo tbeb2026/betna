@@ -79,6 +79,13 @@ const server = http.createServer(async (request, response) => {
     });
     return;
   }
+  if (request.method === "POST" && url.pathname === "/public/inquiries") {
+    const body = await readBody(request);
+    if (String(body.email ?? "").startsWith("amina@")) {
+      json(response, 201, { inquiry: { id: "inquiry-e2e" }, message: "Reference inquiry-e2e" });
+      return;
+    }
+  }
 
   if (request.method === "GET" && url.pathname === "/owner/properties") {
     json(response, 200, [ownerDraft]);
