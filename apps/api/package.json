@@ -4,7 +4,7 @@
   "scripts": {
     "dev": "nest start --watch",
     "build": "nest build",
-    "start": "node dist/main.js",
+    "start": "node dist/src/main.js",
     "lint": "eslint . --no-error-on-unmatched-pattern",
     "test": "vitest run",
     "test:db": "BETNA_RUN_DB_TESTS=1 vitest run --config vitest.db.config.ts",
