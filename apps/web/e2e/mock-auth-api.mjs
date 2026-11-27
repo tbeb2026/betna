@@ -115,6 +115,14 @@ const server = http.createServer(async (request, response) => {
     });
     return;
   }
+  if (request.method === "POST" && /^\/verification\/inspections\/[^/]+\/submit$/.test(url.pathname)) {
+    json(response, 200, { status: "PENDING_UPLOAD" });
+    return;
+  }
+  if (request.method === "POST" && /^\/verification\/inspections\/[^/]+\/evidence\/[^/]+\/sync$/.test(url.pathname)) {
+    json(response, 200, { status: "READY_FOR_REVIEW" });
+    return;
+  }
   if (request.method === "POST" && /^\/media\/[^/]+\/complete$/.test(url.pathname)) {
     json(response, 200, { mediaId: url.pathname.split("/")[2], status: "CLEAN" });
     return;

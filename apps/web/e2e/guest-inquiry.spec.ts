@@ -1,6 +1,13 @@
 import { expect, test } from "@playwright/test";
 
 test("shows account-free inquiry and prefilled contact actions on a public property", async ({ page }) => {
+  await page.route("**/public/inquiries", async (route) =>
+    route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ inquiry: { reference: "inquiry-e2e" }, reviewExpectation: "Reference inquiry-e2e" }),
+    }),
+  );
   await page.goto("/en/property/verified-kilimani-home");
 
   await expect(page.getByRole("heading", { name: "Ask about this place" })).toBeVisible();
