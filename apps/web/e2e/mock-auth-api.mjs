@@ -81,7 +81,7 @@ const server = http.createServer(async (request, response) => {
   }
   if (request.method === "POST" && url.pathname === "/public/inquiries") {
     const body = await readBody(request);
-    if (String(body.email ?? "").startsWith("amina@")) {
+    if (!String(body.email ?? "").startsWith("critical-")) {
       json(response, 201, { inquiry: { id: "inquiry-e2e" }, message: "Reference inquiry-e2e" });
       return;
     }
