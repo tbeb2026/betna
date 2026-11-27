@@ -89,7 +89,9 @@ jobs:
           BETNA_CRITICAL_FLOW_E2E: "1"
           # The API was migrated and seeded above; guest inquiry is a required
           # browser path and is intentionally not environment-skipped.
-          NEXT_PUBLIC_API_URL: http://127.0.0.1:4000
+          # Playwright starts the mock API on 4400; it proxies unmocked
+          # critical-flow requests to the real API on 4000.
+          NEXT_PUBLIC_API_URL: http://127.0.0.1:4400
           BETNA_E2E_PROPERTY_SLUG: verified-kilimani-home
       - run: pnpm audit --audit-level=high
       - run: git diff --check
