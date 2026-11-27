@@ -12,7 +12,7 @@ RUN pnpm --filter=@betna/api deploy --prod /app/deploy
 RUN cp -R apps/api/dist /app/deploy/dist && cp -R apps/api/prisma /app/deploy/prisma
 RUN cd /app/deploy && pnpm exec prisma generate --schema=prisma/schema.prisma
 
-FROM gcr.io/distroless/nodejs22-debian12:nonroot AS runtime
+FROM gcr.io/distroless/nodejs22-debian13:nonroot AS runtime
 
 WORKDIR /app
 ENV NODE_ENV=production
