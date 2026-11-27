@@ -95,6 +95,15 @@ const server = http.createServer(async (request, response) => {
     json(response, 200, ownerDraft);
     return;
   }
+  if (request.method === "GET" && /^\/verification\/inspections\/[^/]+$/.test(url.pathname)) {
+    json(response, 200, {
+      id: url.pathname.split("/").pop(),
+      propertyId: "property-1",
+      status: "ASSIGNED",
+      property: { id: "property-1", category: "residential" },
+    });
+    return;
+  }
   if (request.method === "GET" && url.pathname === "/owner/properties/taxonomy") {
     json(response, 200, [
       { category: "residential", label: "Residential", subcategories: [{ value: "apartment", label: "Apartment" }] },

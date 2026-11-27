@@ -35,7 +35,16 @@ test("owner onboarding requests both codes and proves failed then successful act
   await page.getByRole("button", { name: /create owner account/i }).click();
   await expect(page.locator('p[role="alert"]')).toContainText(/email verification code is invalid or expired/i);
 
+  // A server-action form also works before hydration. Its fallback response
+  // re-renders the form, so restore the required values before retrying.
+  await page.getByLabel("First name").fill("E2E");
+  await page.getByLabel("Last name").fill("Owner");
+  await page.getByLabel("Email address").fill("e2e-owner@example.com");
+  await page.getByLabel("Phone or WhatsApp").fill("+254700000099");
+  await page.getByLabel("WhatsApp verification code").fill("123456");
   await page.getByLabel("Email verification code").fill("654321");
+  await page.getByLabel("Password").fill("secret123");
+  await page.getByLabel(/own or am authorized/i).check();
   await page.getByRole("button", { name: /create owner account/i }).click();
   await expect(page).toHaveURL(/\/en\/owner$/);
   await expect(page.getByRole("heading", { name: "Owner portal" })).toBeVisible();
