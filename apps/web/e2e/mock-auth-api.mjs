@@ -6,6 +6,14 @@ const port = Number(process.env.MOCK_API_PORT ?? 4400);
 const upstream = process.env.BETNA_E2E_UPSTREAM_API ?? "http://127.0.0.1:4000";
 let activationAttempts = 0;
 
+function testSessionToken() {
+  const payload = Buffer.from(JSON.stringify({
+    user: { id: "owner-e2e", roles: ["OWNER"] },
+    session: { userId: "owner-e2e", roles: ["OWNER"] },
+  })).toString("base64url");
+  return `test.${payload}`;
+}
+
 const ownerDraft = {
   id: "property-1",
   status: "DRAFT",
@@ -69,7 +77,7 @@ const server = http.createServer(async (request, response) => {
     }
     json(response, 201, {
       user: { id: "owner-e2e", roles: ["OWNER"] },
-      session: { token: `session-e2e-${activationAttempts}` },
+      session: { token: testSessionToken() },
     });
     return;
   }

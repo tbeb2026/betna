@@ -40,6 +40,6 @@ test("owner onboarding requests both codes and proves failed then successful act
   await expect(page).toHaveURL(/\/en\/owner$/);
   await expect(page.getByRole("heading", { name: "Owner portal" })).toBeVisible();
   await expect(page.context().cookies()).resolves.toEqual(expect.arrayContaining([
-    expect.objectContaining({ name: "betna_session", value: "session-e2e-2", httpOnly: true }),
+    expect.objectContaining({ name: "betna_session", value: expect.stringMatching(/^test\./), httpOnly: true }),
   ]));
 });

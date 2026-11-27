@@ -37,7 +37,7 @@ export function OnboardingForm({ locale, labels }: { locale: string; labels: Onb
       <label>{labels.emailVerificationCodeLabel}<input name="emailVerificationCode" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required /></label>
       <label>{labels.passwordLabel}<input name="password" type="password" minLength={8} required /></label>
       <label className="check-label"><input name="authorizationAttested" type="checkbox" required /> {labels.authorizationAttestation}</label>
-      <button className="button primary" type="submit" disabled={pending}>{pending ? labels.creatingOwnerAccount : labels.createOwnerAccount}</button>
+      <button className="button primary" type="submit" formNoValidate disabled={pending}>{pending ? labels.creatingOwnerAccount : labels.createOwnerAccount}</button>
       {state.message ? <p className="form-error" role="alert">{state.message}</p> : null}
     </form>
   );
