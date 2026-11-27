@@ -5,6 +5,8 @@ RUN corepack enable
 COPY . .
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @betna/api exec prisma generate
+RUN pnpm --filter @betna/config build
+RUN pnpm --filter @betna/contracts build
 RUN pnpm --filter @betna/api build
 RUN pnpm --filter=@betna/api deploy --prod /app/deploy
 RUN cp -R apps/api/dist /app/deploy/dist && cp -R apps/api/prisma /app/deploy/prisma
