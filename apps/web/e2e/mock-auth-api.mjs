@@ -4,7 +4,6 @@ import http from "node:http";
 
 const port = Number(process.env.MOCK_API_PORT ?? 4400);
 const upstream = process.env.BETNA_E2E_UPSTREAM_API ?? "http://127.0.0.1:4000";
-let activationAttempts = 0;
 
 function testSessionToken() {
   const payload = Buffer.from(JSON.stringify({
@@ -66,7 +65,6 @@ const server = http.createServer(async (request, response) => {
   }
   if (request.method === "POST" && url.pathname === "/auth/owner/onboarding") {
     const body = await readBody(request);
-    activationAttempts += 1;
     if (body.authorizationAttested !== true) {
       json(response, 400, { message: "Owner authorization attestation is required" });
       return;
